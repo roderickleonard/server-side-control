@@ -4,16 +4,19 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/build"
 ENV_FILE="/etc/server-side-control/panel.env"
+INSTALL_STATE_FILE="/etc/server-side-control/install-state.env"
 UNIT_FILE="/etc/systemd/system/server-side-control.service"
 BINARY_PATH="/usr/local/bin/server-side-control"
 INSTALLER_PATH="/usr/local/bin/server-side-control-installer"
 HELPER_PATH="/usr/local/bin/server-side-control-helper"
+UPDATER_PATH="/usr/local/bin/server-side-control-update"
 SUDOERS_PATH="/etc/sudoers.d/server-side-control-helper"
 SERVICE_USER="server-side-control"
 GO_VERSION="1.22.5"
 GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
 GO_URL="https://go.dev/dl/${GO_TARBALL}"
 APT_UPDATED=0
+SKIP_INSTALLER="${SSC_SKIP_INSTALLER:-0}"
 
 if [[ "${EUID}" -ne 0 ]]; then
     echo "Run this installer as root on the Ubuntu target host."
@@ -21,6 +24,23 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+
+write_install_state() {
+    local git_remote=""
+    local git_branch=""
+
+    if git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git_remote="$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || true)"
+        git_branch="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    fi
+
+    cat >"$INSTALL_STATE_FILE" <<EOF
+INSTALL_ROOT=$(printf '%q' "$ROOT_DIR")
+GIT_REMOTE=$(printf '%q' "$git_remote")
+GIT_BRANCH=$(printf '%q' "$git_branch")
+EOF
+    chmod 600 "$INSTALL_STATE_FILE"
+}
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -78,6 +98,11 @@ ensure_go() {
     ln -sf /usr/local/go/bin/go /usr/local/bin/go
 }
 
+ensure_go_modules() {
+    echo "Downloading Go module dependencies"
+    GOFLAGS=-mod=mod go mod download
+}
+
 ensure_pm2() {
     if command_exists pm2; then
         echo "Skipping PM2 install ($(pm2 -v 2>/dev/null || echo installed) already available)"
@@ -113,6 +138,7 @@ ensure_base_dependencies() {
 
 ensure_base_dependencies
 ensure_go
+ensure_go_modules
 ensure_pm2
 systemctl enable --now mysql
 
@@ -129,11 +155,22 @@ fi
 install -Dm755 "$BUILD_DIR/server-side-control" "$BINARY_PATH"
 install -Dm755 "$BUILD_DIR/server-side-control-installer" "$INSTALLER_PATH"
 install -Dm755 "$BUILD_DIR/server-side-control-helper" "$HELPER_PATH"
+install -Dm755 "$ROOT_DIR/scripts/update.sh" "$UPDATER_PATH"
 install -Dm644 "$ROOT_DIR/deploy/systemd/server-side-control.service" "$UNIT_FILE"
 install -Dm440 "$ROOT_DIR/deploy/sudoers/server-side-control-helper" "$SUDOERS_PATH"
 mkdir -p /etc/server-side-control
+write_install_state
 
-PANEL_ENV_FILE="$ENV_FILE" "$INSTALLER_PATH"
+if [[ "$SKIP_INSTALLER" == "1" ]]; then
+    if [[ ! -f "$ENV_FILE" ]]; then
+        echo "SSC_SKIP_INSTALLER=1 was set but $ENV_FILE does not exist."
+        exit 1
+    fi
+    echo "Skipping installer questions and reusing existing configuration from $ENV_FILE"
+else
+    PANEL_ENV_FILE="$ENV_FILE" "$INSTALLER_PATH"
+fi
+
 chown root:"$SERVICE_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"
 

@@ -39,6 +39,7 @@ Kurulum scripti geri kalan büyük kısmı otomatik yapar.
 11. Verdiğin MySQL root bilgisiyle panel veritabanını ve panel DB kullanıcısını oluşturur
 12. MySQL admin bilgisini root-only dosyada saklar
 13. Panel servisini başlatır
+14. Repo yolu ve branch bilgisini update icin kaydeder
 
 ## 4. Script hangi paketleri kurar?
 
@@ -211,14 +212,42 @@ Bu model sayesinde web uygulaması root haklarıyla sürekli çalışmaz.
 ## 13. Önemli dosya yolları
 
 - env dosyası: `/etc/server-side-control/panel.env`
+- install state dosyası: `/etc/server-side-control/install-state.env`
 - MySQL admin dosyası: `/etc/server-side-control/mysql-admin.cnf`
 - panel binary: `/usr/local/bin/server-side-control`
 - helper binary: `/usr/local/bin/server-side-control-helper`
 - installer binary: `/usr/local/bin/server-side-control-installer`
+- updater binary/script: `/usr/local/bin/server-side-control-update`
 - systemd unit: `/etc/systemd/system/server-side-control.service`
 - sudoers kuralı: `/etc/sudoers.d/server-side-control-helper`
 
-## 14. Kurulumdan sonra önerilen ilk sıra
+## 14. Update nasil yapacaksin?
+
+Ilk kurulumdan sonra yeni versiyon geldiginde paneli yeniden bastan kurman gerekmez.
+
+Sunucuda su komutu calistirman yeterli:
+
+```bash
+sudo /usr/local/bin/server-side-control-update
+```
+
+Bu script sunucuda sunlari yapar:
+
+1. Ilk kurulumda kaydedilen repo yolunu okur
+2. Repo icinde `git fetch` yapar
+3. Kaydedilen branch icin `git pull --ff-only` yapar
+4. `install.sh` scriptini tekrar calistirir
+5. Mevcut `/etc/server-side-control/panel.env` dosyasini korur
+6. Installer sorularini tekrar sormaz
+7. Binary dosyalarini yeniden build eder
+8. Servisi restart eder
+
+Not:
+- Sunucudaki repo klasorunde local degisiklik varsa update scripti durur
+- Bu sayede el ile yapilan degisiklikler yanlislikla ezilmez
+- Guncelleme repo tabanli oldugu icin sunucuda `.git` klasoru durmalidir
+
+## 15. Kurulumdan sonra önerilen ilk sıra
 
 1. Panel login test et
 2. `Users` ekranından deploy kullanıcısı oluştur
@@ -230,7 +259,7 @@ Bu model sayesinde web uygulaması root haklarıyla sürekli çalışmaz.
 8. `Processes` ekranından PM2 süreçlerini kontrol et
 9. `Logs` ekranından audit kayıtlarını kontrol et
 
-## 15. Sorun giderme
+## 16. Sorun giderme
 
 MySQL bağlanmıyorsa:
 - root bilgilerini installer'da doğru girdiğini kontrol et
@@ -242,6 +271,12 @@ Script paket kurmuyorsa:
 - `apt-get update` çalışıyor mu kontrol et
 - sunucunun internete çıkabildiğini kontrol et
 - apt source list bozuk mu kontrol et
+
+Update script calismiyorsa:
+- `/etc/server-side-control/install-state.env` dosyasi var mi kontrol et
+- sunucudaki repo klasorunde `.git` dizini duruyor mu kontrol et
+- repo icinde local degisiklik var mi kontrol et
+- `git -C /opt/server-side-control status` ile durumu incele
 
 Helper çalışmıyorsa:
 - `visudo -cf /etc/sudoers.d/server-side-control-helper`

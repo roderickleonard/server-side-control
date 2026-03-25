@@ -39,6 +39,7 @@ Planned next:
 - `internal/web`: HTTP handlers, templates, middleware, static assets
 - `deploy/systemd`: unit file for Ubuntu deployment
 - `scripts/install.sh`: root installer entrypoint for Ubuntu
+- `scripts/update.sh`: repo-based updater that pulls from git and re-runs install without re-asking config questions
 
 ## Quick start on Ubuntu
 
@@ -47,6 +48,14 @@ Planned next:
 3. Let the installer auto-install missing Ubuntu packages, Go, and PM2.
 4. Answer the installer questions.
 5. Open the configured base URL and log in with the bootstrap credentials.
+
+## Updating on Ubuntu
+
+After the first install, you can update the panel directly from the cloned repository source:
+
+1. Run `sudo /usr/local/bin/server-side-control-update`
+2. The updater reads the saved install state, fetches the latest code from the same git branch, runs `git pull --ff-only`, rebuilds the binaries, and restarts the service.
+3. Existing panel configuration in `/etc/server-side-control/panel.env` is reused, so the installer does not ask the setup questions again during updates.
 
 ## Environment variables
 
@@ -71,6 +80,7 @@ The installer writes these values to `panel.env`:
 
 - The panel systemd unit now runs as the dedicated `server-side-control` user. Privileged operations are delegated to `/usr/local/bin/server-side-control-helper` through `/etc/sudoers.d/server-side-control-helper`.
 - The install script is idempotent for dependency bootstrap: it skips apt packages, Go, and PM2 when they are already installed.
+- The install script writes `/etc/server-side-control/install-state.env` so the updater knows which repository path and branch to pull from later.
 - The installer now asks for MySQL root/admin access, creates the panel database and panel MySQL user automatically, writes the panel DSN into `panel.env`, and stores the MySQL admin credentials in a root-only defaults file.
 - PAM support depends on the Ubuntu target host exposing libpam and a working PAM service such as `login`.
 - MySQL tables are created automatically during startup if the DSN is reachable.
