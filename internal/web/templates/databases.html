@@ -1,9 +1,9 @@
 {{define "content"}}
 <section class="hero compact">
     <div>
-        <p class="eyebrow">MySQL provisioning</p>
-        <h2>Create a database and scoped application user</h2>
-        <p class="lead">This operation runs through the privileged helper and the saved MySQL admin defaults file, so the panel DSN does not need global MySQL privileges.</p>
+        <span class="eyebrow">Databases</span>
+        <h2>MySQL Database Management</h2>
+        <p class="lead">Provision databases, create scoped MySQL users, and manage passwords. All operations run through the privileged helper against the saved admin credentials.</p>
     </div>
 </section>
 
@@ -24,7 +24,7 @@
 
 <section class="grid">
     <article class="panel">
-        <h3>Create database access</h3>
+        <h3><i class="bi bi-database-add" style="color:var(--accent);margin-right:6px;"></i>Create database access</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="database_action" value="provision">
             <div class="form-grid two-up">
@@ -47,7 +47,7 @@
         </form>
     </article>
     <article class="panel">
-        <h3>Rotate MySQL admin password</h3>
+        <h3><i class="bi bi-shield-lock" style="color:var(--muted);margin-right:6px;"></i>Rotate MySQL admin password</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="database_action" value="rotate_admin_password">
             <div class="form-grid">
@@ -63,7 +63,7 @@
         <p class="muted">This updates the password of the MySQL admin account currently stored in the root-only defaults file and immediately rewrites that file.</p>
     </article>
     <article class="panel">
-        <h3>Current rules</h3>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current rules</h3>
         <ul>
             <li>Names must start with a letter and contain only letters, numbers, and underscores.</li>
             <li>The created user receives privileges only on the requested database.</li>
@@ -75,7 +75,7 @@
 
 <section class="grid single">
     <article class="panel">
-        <h3>Existing databases</h3>
+        <h3><i class="bi bi-database" style="color:var(--accent);margin-right:6px;"></i>Existing databases</h3>
         {{if .DatabaseAccess}}
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">

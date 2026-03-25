@@ -1,9 +1,9 @@
 {{define "content"}}
 <section class="hero compact">
     <div>
-        <p class="eyebrow">PHP-FPM switching</p>
-        <h2>Switch the active PHP version for a managed site</h2>
-        <p class="lead">Choose a managed site, update the PHP-FPM socket version in its Nginx config, validate the config, then reload Nginx safely.</p>
+        <span class="eyebrow">PHP</span>
+        <h2>PHP-FPM Version Switching</h2>
+        <p class="lead">Switch the active PHP-FPM version for any managed Nginx site. The config is validated before Nginx is reloaded.</p>
     </div>
 </section>
 
@@ -24,7 +24,7 @@
 
 <section class="grid">
     <article class="panel">
-        <h3>Switch version</h3>
+        <h3><i class="bi bi-arrow-left-right" style="color:var(--accent);margin-right:6px;"></i>Switch version</h3>
         <form method="post" class="stack-form">
             <div class="form-grid two-up">
                 <label>
@@ -52,7 +52,7 @@
         </form>
     </article>
     <article class="panel">
-        <h3>Installed PHP versions</h3>
+        <h3><i class="bi bi-code-slash" style="color:var(--muted);margin-right:6px;"></i>Installed PHP versions</h3>
         {{if .PHPVersions}}
         <div class="badge-row">
             {{range .PHPVersions}}
@@ -71,7 +71,7 @@
 
 <section class="grid single">
     <article class="panel">
-        <h3>Managed PHP sites</h3>
+        <h3><i class="bi bi-list-ul" style="color:var(--accent);margin-right:6px;"></i>Managed PHP sites</h3>
         {{if .ManagedSites}}
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">
@@ -105,7 +105,7 @@
 
 <section class="grid single">
     <article class="panel">
-        <h3>Current behavior</h3>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current behavior</h3>
         <ul>
             <li>The panel uses the stored Nginx config path for the managed site.</li>
             <li>The config is edited only when a PHP-FPM socket entry exists.</li>

@@ -1,9 +1,9 @@
 {{define "content"}}
 <section class="hero compact">
     <div>
-        <p class="eyebrow">PM2 processes</p>
-        <h2>Inspect, control, and debug PM2 apps under a Linux user</h2>
-        <p class="lead">Choose the owning Linux user, inspect the PM2 table, then run start, stop, restart, reload, or log-tail operations against a named process.</p>
+        <span class="eyebrow">Processes</span>
+        <h2>PM2 Process Management</h2>
+        <p class="lead">List, start, stop, restart, reload and tail logs for PM2 processes running under any Linux user on the host.</p>
     </div>
 </section>
 
@@ -22,7 +22,7 @@
 {{if .CommandOutput}}
 <section class="grid single">
     <article class="panel">
-        <h3>PM2 output</h3>
+        <h3><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>PM2 output</h3>
         <pre class="command-output">{{.CommandOutput}}</pre>
     </article>
 </section>
@@ -30,7 +30,7 @@
 
 <section class="grid">
     <article class="panel">
-        <h3>Process action</h3>
+        <h3><i class="bi bi-cpu" style="color:var(--accent);margin-right:6px;"></i>Process action</h3>
         <form method="post" class="stack-form">
             <div class="form-grid two-up">
                 <label>
@@ -68,7 +68,7 @@
         </form>
     </article>
     <article class="panel">
-        <h3>Current behavior</h3>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current behavior</h3>
         <ul>
             <li>The manager runs PM2 commands as the selected Linux user with `sudo -u`.</li>
             <li>Listing shows the owning user's PM2 table only.</li>

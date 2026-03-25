@@ -1,15 +1,15 @@
 {{define "content"}}
 <section class="hero compact">
     <div>
-        <p class="eyebrow">Audit trail</p>
-        <h2>Recent privileged operations and outcomes</h2>
-        <p class="lead">This view shows the latest authenticated actions recorded by the panel, including actor, target, result, and raw metadata for debugging.</p>
+        <span class="eyebrow">Logs</span>
+        <h2>Audit Trail</h2>
+        <p class="lead">Authenticated panel operations are recorded here with actor, target, outcome and metadata for full auditability.</p>
     </div>
 </section>
 
 <section class="grid single">
     <article class="panel">
-        <h3>Recent audit logs</h3>
+        <h3><i class="bi bi-journal-code" style="color:var(--accent);margin-right:6px;"></i>Recent audit logs</h3>
         {{if .AuditLogs}}
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">

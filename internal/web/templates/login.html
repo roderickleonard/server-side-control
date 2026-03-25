@@ -1,23 +1,34 @@
 {{define "content"}}
 <section class="login-shell">
     <div class="login-card">
-        <p class="eyebrow">Authenticate</p>
-        <h2>Sign in to {{.AppName}}</h2>
-        <p class="lead">Use your Ubuntu username and password through PAM on the target host. The bootstrap account remains available as an emergency fallback.</p>
-        {{if .RequestError}}
-        <div class="alert">{{.RequestError}}</div>
-        {{end}}
-        <form method="post" class="login-form">
-            <label>
-                <span>Username</span>
-                <input type="text" name="username" autocomplete="username" required>
-            </label>
-            <label>
-                <span>Password</span>
-                <input type="password" name="password" autocomplete="current-password" required>
-            </label>
-            <button type="submit">Sign in</button>
-        </form>
+        <div class="login-card-header">
+            <div class="login-card-header-icon">
+                <i class="bi bi-server"></i>
+            </div>
+            <div class="login-card-header-text">
+                <h1>Sign in</h1>
+                <div class="brand-name">{{.AppName}}</div>
+            </div>
+        </div>
+        <div class="login-card-body">
+            <p class="login-subtitle">Use your Ubuntu system account credentials to sign in via PAM. The bootstrap account is available as an emergency fallback.</p>
+            {{if .RequestError}}
+            <div class="alert" style="margin-bottom: 16px;">{{.RequestError}}</div>
+            {{end}}
+            <form method="post" class="login-form">
+                <label>
+                    <span>Username</span>
+                    <input type="text" name="username" autocomplete="username" placeholder="e.g. ubuntu" required>
+                </label>
+                <label>
+                    <span>Password</span>
+                    <input type="password" name="password" autocomplete="current-password" placeholder="••••••••" required>
+                </label>
+                <button type="submit">
+                    <i class="bi bi-box-arrow-in-right"></i> Sign in
+                </button>
+            </form>
+        </div>
     </div>
 </section>
 {{end}}

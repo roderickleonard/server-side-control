@@ -1,9 +1,9 @@
 {{define "content"}}
 <section class="hero compact">
     <div>
-        <p class="eyebrow">Site details</p>
+        <span class="eyebrow">Site details</span>
         <h2>{{.SelectedSite.Name}}</h2>
-        <p class="lead">Manage the repository that lives under this site's root directory and keep deploy activity attached to the site itself.</p>
+        <p class="lead">Repository sync, runtime management, git authentication and release history for this site.</p>
     </div>
 </section>
 
@@ -31,7 +31,7 @@
 {{if .CommandOutput}}
 <section class="grid single">
     <article class="panel">
-        <h3>Command output</h3>
+        <h3><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Command output</h3>
         <pre class="command-output">{{.CommandOutput}}</pre>
     </article>
 </section>
@@ -41,7 +41,7 @@
     <article class="panel">
         <div class="section-head">
             <div>
-                <p class="eyebrow">Managed site</p>
+                <span class="eyebrow">Managed site</span>
                 <h3>Site summary</h3>
             </div>
             <a class="btn btn-sm btn-outline-secondary" href="/sites">Back to sites</a>
@@ -60,7 +60,7 @@
     <article class="panel">
         <div class="section-head">
             <div>
-                <p class="eyebrow">Repository state</p>
+                <span class="eyebrow">Repository state</span>
                 <h3>{{if .RepositoryStatus.IsGitRepo}}Git repository detected{{else}}No git repository yet{{end}}</h3>
             </div>
             <span class="badge subtle-badge">{{if .RepositoryStatus.DirectoryExists}}Directory ready{{else}}Directory missing{{end}}</span>
@@ -77,7 +77,7 @@
 
 <section class="grid single">
     <article class="panel">
-        <h3>{{if .RepositoryStatus.IsGitRepo}}Pull latest code{{else}}Clone repository{{end}}</h3>
+        <h3><i class="bi bi-git" style="color:var(--accent);margin-right:6px;"></i>{{if .RepositoryStatus.IsGitRepo}}Pull latest code{{else}}Clone repository{{end}}</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="details_action" value="sync_repository">
             <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
@@ -114,7 +114,7 @@
     <article class="panel">
         <div class="section-head">
             <div>
-                <p class="eyebrow">Node runtime</p>
+                <span class="eyebrow">Node runtime</span>
                 <h3>{{if .RuntimeStatus.NVMInstalled}}Runtime ready{{else}}Runtime not prepared yet{{end}}</h3>
             </div>
             <span class="badge subtle-badge">{{if .RuntimeStatus.PM2Installed}}PM2 installed{{else}}PM2 missing{{end}}</span>
@@ -136,7 +136,7 @@
         {{end}}
     </article>
     <article class="panel">
-        <h3>Prepare runtime</h3>
+        <h3><i class="bi bi-layers" style="color:var(--accent);margin-right:6px;"></i>Prepare runtime</h3>
         <div class="stack-cluster">
             <form method="post" class="inline-form details-inline-form">
                 <input type="hidden" name="details_action" value="install_nvm">
@@ -179,7 +179,7 @@
 
 <section class="grid single">
     <article class="panel">
-        <h3>Start site with PM2</h3>
+        <h3><i class="bi bi-play-circle" style="color:var(--accent);margin-right:6px;"></i>Start site with PM2</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="details_action" value="start_pm2">
             <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
@@ -216,7 +216,7 @@
     <article class="panel">
         <div class="section-head">
             <div>
-                <p class="eyebrow">SSH deploy key</p>
+                <span class="eyebrow">SSH deploy key</span>
                 <h3>{{if .GitAuthStatus.DeployKeyReady}}Deploy key ready{{else}}No deploy key yet{{end}}</h3>
             </div>
             <span class="badge subtle-badge">{{if .GitAuthStatus.KnownHostTrusted}}Host trusted{{else}}Host not trusted{{end}}</span>
@@ -256,7 +256,7 @@
     <article class="panel">
         <div class="section-head">
             <div>
-                <p class="eyebrow">Private HTTPS access</p>
+                <span class="eyebrow">Private HTTPS access</span>
                 <h3>{{if .GitAuthStatus.CredentialConfigured}}Credentials stored{{else}}No stored credentials yet{{end}}</h3>
             </div>
             <span class="badge subtle-badge">Credential store</span>

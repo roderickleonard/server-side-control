@@ -1,7 +1,7 @@
 {{define "site_tls"}}
 <section class="grid">
     <article class="panel">
-        <h3>Enable TLS</h3>
+        <h3><i class="bi bi-shield-check" style="color:var(--accent);margin-right:6px;"></i>Enable TLS</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="site_action" value="tls">
             <div class="form-grid two-up">
@@ -24,7 +24,7 @@
         </form>
     </article>
     <article class="panel">
-        <h3>TLS notes</h3>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>TLS notes</h3>
         <ul>
             <li>DNS for the domain must already point to this server.</li>
             <li>Port 80 must be reachable for the HTTP-01 challenge.</li>

@@ -1,7 +1,7 @@
 {{define "content"}}
 <section class="hero compact">
     <div>
-        <p class="eyebrow">Database details</p>
+        <span class="eyebrow">Database details</span>
         <h2>{{.DatabaseDetails.DatabaseName}}</h2>
         <p class="lead">Inspect table structure, preview sample rows, and restore SQL content into this database.</p>
     </div>
@@ -22,7 +22,7 @@
 {{if .CommandOutput}}
 <section class="grid single">
     <article class="panel">
-        <h3>MySQL output</h3>
+        <h3><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>MySQL output</h3>
         <pre class="command-output">{{.CommandOutput}}</pre>
     </article>
 </section>
@@ -32,7 +32,7 @@
     <article class="panel">
         <div class="section-head">
             <div>
-                <p class="eyebrow">Summary</p>
+                <span class="eyebrow">Summary</span>
                 <h3>Database overview</h3>
             </div>
             <a class="btn btn-sm btn-outline-secondary" href="/databases">Back to databases</a>
@@ -65,7 +65,7 @@
         {{end}}
     </article>
     <article class="panel">
-        <h3>Restore database</h3>
+        <h3><i class="bi bi-cloud-upload" style="color:var(--accent);margin-right:6px;"></i>Restore database</h3>
         <form method="post" enctype="multipart/form-data" class="stack-form">
             <input type="hidden" name="database_details_action" value="restore">
             <input type="hidden" name="database_name" value="{{.DatabaseDetails.DatabaseName}}">
@@ -90,7 +90,7 @@
 
 <section class="grid">
     <article class="panel">
-        <h3>Tables</h3>
+        <h3><i class="bi bi-table" style="color:var(--accent);margin-right:6px;"></i>Tables</h3>
         {{if .DatabaseDetails.Tables}}
         <form method="get" class="inline-form details-inline-form bottom-gap">
             <input type="hidden" name="name" value="{{.DatabaseDetails.DatabaseName}}">
@@ -133,7 +133,7 @@
         {{end}}
     </article>
     <article class="panel">
-        <h3>Table preview</h3>
+        <h3><i class="bi bi-eye" style="color:var(--muted);margin-right:6px;"></i>Table preview</h3>
         {{if .DatabaseDetails.Preview.Columns}}
         <p class="muted">Showing up to 25 rows from {{.DatabaseDetails.Preview.Name}}.</p>
         <div class="table-card table-responsive">

@@ -1,9 +1,9 @@
 {{define "content"}}
 <section class="hero compact">
     <div>
-        <p class="eyebrow">Git deploys</p>
-        <h2>Deploy, inspect release history, and roll back by commit</h2>
-        <p class="lead">This flow performs branch-based clone or pull, records release metadata, and supports rollback to a previously recorded commit under the selected Linux account.</p>
+        <span class="eyebrow">Deploys</span>
+        <h2>Git Deploy &amp; Rollback</h2>
+        <p class="lead">Clone or pull a repository into a site root, run post-deploy commands, and rollback to any previously recorded commit SHA.</p>
     </div>
 </section>
 
@@ -31,7 +31,7 @@
 {{if .CommandOutput}}
 <section class="grid single">
     <article class="panel">
-        <h3>Command output</h3>
+        <h3><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Command output</h3>
         <pre class="command-output">{{.CommandOutput}}</pre>
     </article>
 </section>
@@ -39,7 +39,7 @@
 
 <section class="grid">
     <article class="panel">
-        <h3>Run deploy</h3>
+        <h3><i class="bi bi-rocket" style="color:var(--accent);margin-right:6px;"></i>Run deploy</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="deploy_mode" value="deploy">
             <div class="form-grid two-up">
@@ -75,7 +75,7 @@
         </form>
     </article>
     <article class="panel">
-        <h3>Rollback release</h3>
+        <h3><i class="bi bi-arrow-counterclockwise" style="color:var(--muted);margin-right:6px;"></i>Rollback release</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="deploy_mode" value="rollback">
             <div class="form-grid two-up">
@@ -110,7 +110,7 @@
 
 <section class="grid single">
     <article class="panel">
-        <h3>Current behavior</h3>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current behavior</h3>
         <ul>
             <li>If the target directory already contains a git repository, the panel fetches and fast-forward pulls the selected branch.</li>
             <li>If the target directory is empty, the panel clones the repository directly into it.</li>

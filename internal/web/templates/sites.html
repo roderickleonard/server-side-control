@@ -1,9 +1,9 @@
 {{define "content"}}
 <section class="hero compact">
     <div>
-        <p class="eyebrow">Nginx sites</p>
-        <h2>Create a site and validate before reload</h2>
-        <p class="lead">This first slice supports reverse proxy, static root, and PHP-FPM site generation. The panel writes the vhost, runs nginx syntax validation, and reloads only when the config passes.</p>
+        <span class="eyebrow">Sites</span>
+        <h2>Nginx Site Management</h2>
+        <p class="lead">Create and manage Nginx vhosts with reverse proxy, static, and PHP-FPM modes. Configs are validated before reload.</p>
     </div>
 </section>
 
@@ -25,7 +25,7 @@
 {{if .CommandOutput}}
 <section class="grid single">
     <article class="panel">
-        <h3>Site operation output</h3>
+        <h3><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Site operation output</h3>
         <pre class="command-output">{{.CommandOutput}}</pre>
     </article>
 </section>
@@ -33,7 +33,7 @@
 
 <section class="grid">
     <article class="panel">
-        <h3>Create site</h3>
+        <h3><i class="bi bi-plus-circle" style="color:var(--accent);margin-right:6px;"></i>Create site</h3>
         <form method="post" class="stack-form">
             <div class="form-grid two-up">
                 <label>
@@ -86,7 +86,7 @@
         </form>
     </article>
     <article class="panel">
-        <h3>Mode rules</h3>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Mode rules</h3>
         <ul>
             <li>Reverse proxy requires a domain and upstream target.</li>
             <li>The panel always creates a root directory inside the selected Linux user's web directory.</li>
@@ -101,7 +101,7 @@
     <article class="panel">
         <div class="section-head">
             <div>
-                <p class="eyebrow">Managed sites</p>
+                <span class="eyebrow">Managed sites</span>
                 <h3>Existing site records</h3>
             </div>
             <span class="badge">{{len .ManagedSites}} site</span>
@@ -167,7 +167,7 @@
         <div class="modal-content site-modal">
             <div class="modal-header border-0 pb-0">
                 <div>
-                    <p class="eyebrow mb-1">Confirm deletion</p>
+                    <span class="eyebrow mb-1">Confirm deletion</span>
                     <h5 class="modal-title" id="delete-site-title">Delete site</h5>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>

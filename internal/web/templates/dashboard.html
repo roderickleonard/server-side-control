@@ -1,14 +1,14 @@
 {{define "content"}}
-<section class="hero">
+<section class="hero compact">
     <div>
-        <p class="eyebrow">Operations dashboard</p>
-        <h2>Single-server control panel foundation</h2>
-        <p class="lead">This first slice wires configuration, auth, migration bootstrapping, and live Linux metrics into a minimal control surface.</p>
+        <span class="eyebrow">Overview</span>
+        <h2>{{if .Metrics.Hostname}}{{.Metrics.Hostname}}{{else}}Server Dashboard{{end}}</h2>
+        <p class="lead">{{.Metrics.OSName}} &mdash; live system metrics collected at {{.Metrics.CollectedAt.Format "15:04:05"}}</p>
     </div>
     <div class="hero-card">
-        <span>Host</span>
-        <strong>{{if .Metrics.Hostname}}{{.Metrics.Hostname}}{{else}}unknown{{end}}</strong>
-        <small>{{.Metrics.OSName}}</small>
+        <span>Database</span>
+        <strong>{{.DatabaseStatus}}</strong>
+        <small>MySQL connectivity</small>
     </div>
 </section>
 
@@ -24,44 +24,44 @@
     <article class="card">
         <span class="label">Uptime</span>
         <strong>{{.Metrics.Uptime}}</strong>
-        <small>Collected {{.Metrics.CollectedAt.Format "15:04:05"}}</small>
+        <small>System uptime</small>
     </article>
     <article class="card">
         <span class="label">Load average</span>
-        <strong>{{printf "%.2f / %.2f / %.2f" .Metrics.Load1 .Metrics.Load5 .Metrics.Load15}}</strong>
-        <small>{{.Metrics.CPUCores}} CPU cores</small>
+        <strong>{{printf "%.2f" .Metrics.Load1}}</strong>
+        <small>1 min &mdash; {{printf "%.2f / %.2f" .Metrics.Load5 .Metrics.Load15}} (5/15 min)</small>
     </article>
     <article class="card">
         <span class="label">Memory</span>
-        <strong>{{.Metrics.MemoryUsedMB}} / {{.Metrics.MemoryTotalMB}} MB</strong>
-        <small>Used / total RAM</small>
+        <strong>{{.Metrics.MemoryUsedMB}} MB</strong>
+        <small>Used of {{.Metrics.MemoryTotalMB}} MB total</small>
     </article>
     <article class="card">
         <span class="label">Disk</span>
-        <strong>{{.Metrics.DiskUsedGB}} / {{.Metrics.DiskTotalGB}} GB</strong>
-        <small>Used / total root filesystem</small>
+        <strong>{{.Metrics.DiskUsedGB}} GB</strong>
+        <small>Used of {{.Metrics.DiskTotalGB}} GB root filesystem</small>
     </article>
 </section>
 
 <section class="grid">
     <article class="panel">
-        <h3>Implemented now</h3>
+        <h3><i class="bi bi-check2-circle" style="color:var(--accent);margin-right:6px;"></i>System features</h3>
         <ul>
             <li>Go web service with graceful shutdown</li>
             <li>Interactive installer writing env config</li>
             <li>MySQL migration bootstrap</li>
             <li>Linux metrics collector for Ubuntu hosts</li>
-            <li>Protected panel routes with bootstrap auth</li>
+            <li>Protected panel routes with PAM auth</li>
         </ul>
     </article>
     <article class="panel">
-        <h3>Next implementation slices</h3>
+        <h3><i class="bi bi-tools" style="color:var(--accent);margin-right:6px;"></i>Panel capabilities</h3>
         <ul>
-            <li>Real PAM login flow and role mapping</li>
-            <li>Linux user provisioning from UI</li>
-            <li>MySQL database/user creation flows</li>
-            <li>Nginx vhost management with safe reload</li>
-            <li>PM2 user-context process operations</li>
+            <li>Linux user provisioning and management</li>
+            <li>MySQL database and user provisioning</li>
+            <li>Nginx vhost management with TLS (Certbot)</li>
+            <li>NVM, Node.js and PM2 process management</li>
+            <li>Git repo clone, pull and release history</li>
         </ul>
     </article>
 </section>
