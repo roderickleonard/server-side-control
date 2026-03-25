@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -178,7 +180,7 @@ func (linuxRuntimeManager) RunNPMScript(spec NPMScriptSpec) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	nvmUse := ""
 	if spec.NodeVersion != "" {
@@ -186,6 +188,37 @@ func (linuxRuntimeManager) RunNPMScript(spec NPMScriptSpec) (string, error) {
 	}
 	cmd := nvmUse + "cd " + shellQuote(spec.WorkingDirectory) + " && npm run " + shellQuote(spec.ScriptName)
 	return runBashAsUser(ctx, spec.User, buildNVMCommand(homeDirectory, cmd))
+}
+
+func StreamNPMScript(spec NPMScriptSpec, stdout io.Writer, stderr io.Writer) error {
+	spec.User = strings.TrimSpace(spec.User)
+	spec.WorkingDirectory = strings.TrimSpace(spec.WorkingDirectory)
+	spec.ScriptName = strings.TrimSpace(spec.ScriptName)
+	spec.NodeVersion = strings.TrimSpace(spec.NodeVersion)
+	if !usernamePattern.MatchString(spec.User) {
+		return ErrInvalidRunAsUser
+	}
+	if !filepath.IsAbs(spec.WorkingDirectory) {
+		return ErrInvalidTargetDirectory
+	}
+	if !npmScriptNamePattern.MatchString(spec.ScriptName) {
+		return fmt.Errorf("invalid npm script name")
+	}
+	if spec.NodeVersion != "" && !nodeVersionPattern.MatchString(spec.NodeVersion) {
+		return ErrInvalidNodeVersion
+	}
+	homeDirectory, err := lookupUserHome(spec.User)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	nvmUse := ""
+	if spec.NodeVersion != "" {
+		nvmUse = "nvm use " + shellQuote(spec.NodeVersion) + " && "
+	}
+	cmd := nvmUse + "cd " + shellQuote(spec.WorkingDirectory) + " && npm run " + shellQuote(spec.ScriptName)
+	return runBashAsUserStream(ctx, spec.User, buildNVMCommand(homeDirectory, cmd), stdout, stderr)
 }
 
 func (linuxRuntimeManager) RunNPMInstall(spec NPMInstallSpec) (string, error) {
@@ -205,7 +238,7 @@ func (linuxRuntimeManager) RunNPMInstall(spec NPMInstallSpec) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	nvmUse := ""
 	if spec.NodeVersion != "" {
@@ -217,6 +250,37 @@ func (linuxRuntimeManager) RunNPMInstall(spec NPMInstallSpec) (string, error) {
 	}
 	cmd := nvmUse + "cd " + shellQuote(spec.WorkingDirectory) + " && " + installCmd
 	return runBashAsUser(ctx, spec.User, buildNVMCommand(homeDirectory, cmd))
+}
+
+func StreamNPMInstall(spec NPMInstallSpec, stdout io.Writer, stderr io.Writer) error {
+	spec.User = strings.TrimSpace(spec.User)
+	spec.WorkingDirectory = strings.TrimSpace(spec.WorkingDirectory)
+	spec.NodeVersion = strings.TrimSpace(spec.NodeVersion)
+	if !usernamePattern.MatchString(spec.User) {
+		return ErrInvalidRunAsUser
+	}
+	if !filepath.IsAbs(spec.WorkingDirectory) {
+		return ErrInvalidTargetDirectory
+	}
+	if spec.NodeVersion != "" && !nodeVersionPattern.MatchString(spec.NodeVersion) {
+		return ErrInvalidNodeVersion
+	}
+	homeDirectory, err := lookupUserHome(spec.User)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	nvmUse := ""
+	if spec.NodeVersion != "" {
+		nvmUse = "nvm use " + shellQuote(spec.NodeVersion) + " && "
+	}
+	installCmd := "npm install"
+	if spec.CI {
+		installCmd = "npm ci"
+	}
+	cmd := nvmUse + "cd " + shellQuote(spec.WorkingDirectory) + " && " + installCmd
+	return runBashAsUserStream(ctx, spec.User, buildNVMCommand(homeDirectory, cmd), stdout, stderr)
 }
 
 func lookupUserHome(username string) (string, error) {
@@ -272,6 +336,43 @@ func runBashAsUser(ctx context.Context, user string, script string) (string, err
 		return output.String(), fmt.Errorf("command failed: %w", err)
 	}
 	return strings.TrimSpace(output.String()), nil
+}
+
+func runBashAsUserStream(ctx context.Context, user string, script string, stdout io.Writer, stderr io.Writer) error {
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = stdout
+	}
+	cmd := exec.CommandContext(ctx, "sudo", "-u", user, "--", "bash", "-lc", script)
+	cmdStdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	cmdStderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(stdout, cmdStdout)
+	}()
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(stderr, cmdStderr)
+	}()
+	err = cmd.Wait()
+	wg.Wait()
+	if err != nil {
+		return fmt.Errorf("command failed: %w", err)
+	}
+	return nil
 }
 
 func buildNVMCommand(homeDirectory string, command string) string {

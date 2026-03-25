@@ -20,6 +20,10 @@ func main() {
 		writeFailure(errors.New("helper must run as root"), "")
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "stream-runtime" {
+		handleStreamMode()
+		return
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		writeFailure(fmt.Errorf("load config: %w", err), "")
@@ -37,6 +41,39 @@ func main() {
 	}
 
 	handle(cfg, request)
+}
+
+func handleStreamMode() {
+	var request system.HelperRequest
+	if err := json.NewDecoder(io.LimitReader(os.Stdin, system.MaxHelperPayloadBytes)).Decode(&request); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "decode request: %v\n", err)
+		os.Exit(1)
+	}
+	switch request.Action {
+	case "runtime.run_npm_script":
+		var spec system.NPMScriptSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode npm script spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamNPMScript(spec, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "runtime.run_npm_install":
+		var spec system.NPMInstallSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode npm install spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamNPMInstall(spec, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	default:
+		_, _ = fmt.Fprintf(os.Stderr, "stream action not supported: %s\n", request.Action)
+		os.Exit(1)
+	}
 }
 
 func handle(cfg config.Config, request system.HelperRequest) {

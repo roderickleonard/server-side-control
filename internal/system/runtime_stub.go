@@ -2,7 +2,10 @@
 
 package system
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 type stubRuntimeManager struct{}
 
@@ -36,4 +39,12 @@ func (stubRuntimeManager) RunNPMScript(spec NPMScriptSpec) (string, error) {
 
 func (stubRuntimeManager) RunNPMInstall(spec NPMInstallSpec) (string, error) {
 	return "", fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
+}
+
+func StreamNPMScript(spec NPMScriptSpec, stdout io.Writer, stderr io.Writer) error {
+	return fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
+}
+
+func StreamNPMInstall(spec NPMInstallSpec, stdout io.Writer, stderr io.Writer) error {
+	return fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
 }

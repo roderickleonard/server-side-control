@@ -28,13 +28,16 @@
 </section>
 {{end}}
 
-<section class="grid single{{if not .CommandOutput}} hidden{{end}}" id="cmd-output-section">
+<section class="grid single" id="cmd-output-section">
     <article class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
             <h3 style="margin:0"><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Command output</h3>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('cmd-output-section').classList.add('hidden')">✕ Close</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="cmd-output-toggle">{{if .CommandOutput}}Hide{{else}}Show{{end}}</button>
         </div>
-        <pre class="command-output">{{.CommandOutput}}</pre>
+        <div id="cmd-output-body"{{if not .CommandOutput}} class="hidden"{{end}}>
+            <div id="cmd-output-status" class="muted details-note" style="margin-bottom:10px;"></div>
+            <pre class="command-output" id="cmd-output-pre">{{.CommandOutput}}</pre>
+        </div>
     </article>
 </section>
 {{if .CommandOutput}}
@@ -204,8 +207,8 @@
             <input type="hidden" name="npm_script_node_version" value="{{.NpmScriptNodeVersion}}">
             <hr style="border:none;border-top:1px solid var(--border);margin:16px 0 12px;">
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('runtime-npm-action').value='npm_install';document.getElementById('runtime-npm-script-name').value='';document.getElementById('runtime-npm-actions').submit()">npm install</button>
-                <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('runtime-npm-action').value='run_npm_script';document.getElementById('runtime-npm-script-name').value='build';document.getElementById('runtime-npm-actions').submit()">npm run build</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="npm_install">npm install</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_npm_script" data-runtime-script="build">npm run build</button>
             </div>
         </form>
     </article>
@@ -475,5 +478,93 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
 <div style="margin-top:24px;"></div>
 
 {{template "deploy_history" .}}
+
+<script>
+(function () {
+    const runtimeForm = document.getElementById('runtime-npm-actions');
+    const outputSection = document.getElementById('cmd-output-section');
+    const outputBody = document.getElementById('cmd-output-body');
+    const outputPre = document.getElementById('cmd-output-pre');
+    const outputStatus = document.getElementById('cmd-output-status');
+    const outputToggle = document.getElementById('cmd-output-toggle');
+    if (!runtimeForm || !outputSection || !outputBody || !outputPre || !outputStatus || !outputToggle) {
+        return;
+    }
+
+    function setOutputVisibility(isVisible) {
+        outputBody.classList.toggle('hidden', !isVisible);
+        outputToggle.textContent = isVisible ? 'Hide' : 'Show';
+    }
+
+    outputToggle.addEventListener('click', () => {
+        setOutputVisibility(outputBody.classList.contains('hidden'));
+    });
+
+    async function streamRuntimeCommand(action, scriptName) {
+        const buttons = Array.from(runtimeForm.querySelectorAll('button'));
+        buttons.forEach((button) => {
+            button.disabled = true;
+        });
+
+        runtimeForm.querySelector('#runtime-npm-action').value = action;
+        runtimeForm.querySelector('#runtime-npm-script-name').value = scriptName || '';
+
+        setOutputVisibility(true);
+        outputPre.textContent = '';
+        outputStatus.textContent = 'Running...';
+        outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        try {
+            const payload = new URLSearchParams(new FormData(runtimeForm));
+            const response = await fetch('/sites/details/runtime-stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                },
+                body: payload.toString()
+            });
+
+            if (!response.ok || !response.body) {
+                const text = await response.text();
+                outputStatus.textContent = 'Failed';
+                outputPre.textContent = text || 'Command could not be started.';
+                return;
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    break;
+                }
+                outputPre.textContent += decoder.decode(value, { stream: true });
+                outputPre.scrollTop = outputPre.scrollHeight;
+            }
+
+            if (outputPre.textContent.includes('[command failed]')) {
+                outputStatus.textContent = 'Failed';
+            } else {
+                outputStatus.textContent = 'Completed';
+            }
+        } catch (error) {
+            outputStatus.textContent = 'Failed';
+            outputPre.textContent += '\n' + String(error);
+        } finally {
+            buttons.forEach((button) => {
+                button.disabled = false;
+            });
+        }
+    }
+
+    runtimeForm.querySelectorAll('[data-runtime-action]').forEach((button) => {
+        button.addEventListener('click', () => {
+            streamRuntimeCommand(button.dataset.runtimeAction || '', button.dataset.runtimeScript || '');
+        });
+    });
+
+    setOutputVisibility(!outputBody.classList.contains('hidden'));
+})();
+</script>
 
 {{end}}

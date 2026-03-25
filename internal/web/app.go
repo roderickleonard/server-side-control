@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"html/template"
+	"encoding/json"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -139,10 +140,17 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/databases/details", a.handleDatabaseDetails)
 	a.router.HandleFunc("/sites", a.handleSites)
 	a.router.HandleFunc("/sites/details", a.handleSiteDetails)
+	a.router.HandleFunc("/sites/details/runtime-stream", a.handleSiteRuntimeStream)
 	a.router.HandleFunc("/php", a.handlePHP)
 	a.router.HandleFunc("/deploys", a.handleDeploys)
 	a.router.HandleFunc("/processes", a.handleProcesses)
 	a.router.HandleFunc("/logs", a.handleLogs)
+}
+
+func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 func (a *App) nav() []NavItem {
