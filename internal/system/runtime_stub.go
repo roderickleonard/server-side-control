@@ -33,3 +33,7 @@ func (stubRuntimeManager) StartPM2(spec PM2StartSpec) (string, error) {
 func (stubRuntimeManager) RunNPMScript(spec NPMScriptSpec) (string, error) {
 	return "", fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
 }
+
+func (stubRuntimeManager) RunNPMInstall(spec NPMInstallSpec) (string, error) {
+	return "", fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
+}

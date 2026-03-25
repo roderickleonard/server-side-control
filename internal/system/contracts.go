@@ -166,6 +166,13 @@ type NPMScriptSpec struct {
 	NodeVersion      string `json:"node_version"`
 }
 
+type NPMInstallSpec struct {
+	User             string `json:"user"`
+	WorkingDirectory string `json:"working_directory"`
+	NodeVersion      string `json:"node_version"`
+	CI               bool   `json:"ci"`
+}
+
 type RuntimeManager interface {
 	Inspect(spec RuntimeInspectSpec) (RuntimeStatus, error)
 	InstallNVM(user string) (string, error)
@@ -173,6 +180,7 @@ type RuntimeManager interface {
 	InstallPM2(spec PM2InstallSpec) (string, error)
 	StartPM2(spec PM2StartSpec) (string, error)
 	RunNPMScript(spec NPMScriptSpec) (string, error)
+	RunNPMInstall(spec NPMInstallSpec) (string, error)
 }
 
 type GitAuthInspectSpec struct {

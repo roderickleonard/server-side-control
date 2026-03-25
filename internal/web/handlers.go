@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -1132,17 +1131,43 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		content := r.FormValue("env_content")
-		if err := os.WriteFile(envPath, []byte(content), 0o600); err != nil {
-			data.RequestError = "Could not write .env file: " + err.Error()
+		_, actionErr = a.helper.Call(r.Context(), "files.write_env", map[string]string{
+			"path":    envPath,
+			"content": content,
+			"owner":   site.OwnerLinuxUser,
+		}, nil)
+		if actionErr != nil {
+			data.RequestError = "Could not write .env file: " + actionErr.Error()
 			break
-		}
-		if u, err := user.Lookup(site.OwnerLinuxUser); err == nil {
-			uid, _ := strconv.Atoi(u.Uid)
-			gid, _ := strconv.Atoi(u.Gid)
-			_ = os.Chown(envPath, uid, gid)
 		}
 		a.recordAudit(r.Context(), "site.edit_env", site.Name, "success", nil)
 		successMessage = ".env file saved successfully."
+	case "npm_install":
+		nodeVersion := strings.TrimSpace(r.FormValue("npm_script_node_version"))
+		ci := r.FormValue("npm_ci") == "1"
+		output, actionErr = a.runtime.RunNPMInstall(system.NPMInstallSpec{
+			User:             site.OwnerLinuxUser,
+			WorkingDirectory: site.RootDirectory,
+			NodeVersion:      nodeVersion,
+			CI:               ci,
+		})
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			installCmd := "npm install"
+			if ci {
+				installCmd = "npm ci"
+			}
+			a.recordAudit(r.Context(), "runtime.npm_install", site.Name, "failure", map[string]any{"cmd": installCmd, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		installLabel := "npm install"
+		if ci {
+			installLabel = "npm ci"
+		}
+		a.recordAudit(r.Context(), "runtime.npm_install", site.Name, "success", map[string]any{"cmd": installLabel})
+		successMessage = installLabel + " completed successfully."
 	case "restart_pm2":
 		processName := strings.TrimSpace(r.FormValue("process_name"))
 		output, actionErr = a.pm2.Restart(site.OwnerLinuxUser, processName)

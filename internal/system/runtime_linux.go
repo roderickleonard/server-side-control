@@ -188,6 +188,37 @@ func (linuxRuntimeManager) RunNPMScript(spec NPMScriptSpec) (string, error) {
 	return runBashAsUser(ctx, spec.User, buildNVMCommand(homeDirectory, cmd))
 }
 
+func (linuxRuntimeManager) RunNPMInstall(spec NPMInstallSpec) (string, error) {
+	spec.User = strings.TrimSpace(spec.User)
+	spec.WorkingDirectory = strings.TrimSpace(spec.WorkingDirectory)
+	spec.NodeVersion = strings.TrimSpace(spec.NodeVersion)
+	if !usernamePattern.MatchString(spec.User) {
+		return "", ErrInvalidRunAsUser
+	}
+	if !filepath.IsAbs(spec.WorkingDirectory) {
+		return "", ErrInvalidTargetDirectory
+	}
+	if spec.NodeVersion != "" && !nodeVersionPattern.MatchString(spec.NodeVersion) {
+		return "", ErrInvalidNodeVersion
+	}
+	homeDirectory, err := lookupUserHome(spec.User)
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	nvmUse := ""
+	if spec.NodeVersion != "" {
+		nvmUse = "nvm use " + shellQuote(spec.NodeVersion) + " && "
+	}
+	installCmd := "npm install"
+	if spec.CI {
+		installCmd = "npm ci"
+	}
+	cmd := nvmUse + "cd " + shellQuote(spec.WorkingDirectory) + " && " + installCmd
+	return runBashAsUser(ctx, spec.User, buildNVMCommand(homeDirectory, cmd))
+}
+
 func lookupUserHome(username string) (string, error) {
 	username = strings.TrimSpace(username)
 	if !usernamePattern.MatchString(username) {

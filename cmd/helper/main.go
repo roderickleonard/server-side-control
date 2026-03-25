@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
+	"path/filepath"
+	"regexp"
+	"strconv"
 
 	"github.com/kaganyegin/server-side-control/internal/config"
 	"github.com/kaganyegin/server-side-control/internal/system"
@@ -190,7 +194,7 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		result, err := system.NewDeployManager().Inspect(spec)
 		writeSuccess(result, "", err)
-	case "runtime.inspect", "runtime.install_nvm", "runtime.install_node", "runtime.install_pm2", "runtime.start_pm2", "runtime.run_npm_script":
+	case "runtime.inspect", "runtime.install_nvm", "runtime.install_node", "runtime.install_pm2", "runtime.start_pm2", "runtime.run_npm_script", "runtime.run_npm_install":
 		handleRuntime(request)
 	case "git_auth.inspect", "git_auth.ensure_deploy_key", "git_auth.trust_host", "git_auth.store_credential":
 		handleGitAuth(request)
@@ -210,6 +214,42 @@ func handle(cfg config.Config, request system.HelperRequest) {
 	case "php.list_versions":
 		versions, err := system.NewPHPManager().ListAvailableVersions()
 		writeSuccess(versions, "", err)
+	case "files.write_env":
+		var input struct {
+			Path    string `json:"path"`
+			Content string `json:"content"`
+			Owner   string `json:"owner"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		cleanPath := filepath.Clean(input.Path)
+		if !filepath.IsAbs(cleanPath) || filepath.Base(cleanPath) != ".env" {
+			writeFailure(errors.New("invalid env file path: must be absolute and end with /.env"), "")
+			return
+		}
+		ownerPat := regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+		if !ownerPat.MatchString(input.Owner) {
+			writeFailure(errors.New("invalid owner username"), "")
+			return
+		}
+		u, err := user.Lookup(input.Owner)
+		if err != nil {
+			writeFailure(fmt.Errorf("user not found: %w", err), "")
+			return
+		}
+		uid, _ := strconv.Atoi(u.Uid)
+		gid, _ := strconv.Atoi(u.Gid)
+		if err := os.WriteFile(cleanPath, []byte(input.Content), 0o600); err != nil {
+			writeFailure(fmt.Errorf("write env file: %w", err), "")
+			return
+		}
+		if err := os.Chown(cleanPath, uid, gid); err != nil {
+			writeFailure(fmt.Errorf("chown env file: %w", err), "")
+			return
+		}
+		writeSuccess(nil, "", nil)
 	default:
 		writeFailure(fmt.Errorf("unknown helper action: %s", request.Action), "")
 	}
@@ -297,6 +337,14 @@ func handleRuntime(request system.HelperRequest) {
 			return
 		}
 		output, err := manager.RunNPMScript(spec)
+		writeSuccess(nil, output, err)
+	case "runtime.run_npm_install":
+		var spec system.NPMInstallSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := manager.RunNPMInstall(spec)
 		writeSuccess(nil, output, err)
 	default:
 		writeFailure(fmt.Errorf("unknown runtime action: %s", request.Action), "")

@@ -32,6 +32,7 @@ type App struct {
 	gitAuth   system.GitAuthManager
 	pm2       system.PM2Manager
 	php       system.PHPManager
+	helper    *system.HelperClient
 	auth      auth.Authenticator
 	sessions  *auth.SessionManager
 	router    *http.ServeMux
@@ -111,6 +112,7 @@ func New(cfg config.Config, logger *slog.Logger, dataStore *store.Store, metrics
 		gitAuth:  system.NewHelperGitAuthManager(helperClient),
 		pm2:      system.NewHelperPM2Manager(helperClient),
 		php:      system.NewHelperPHPManager(helperClient),
+		helper:   helperClient,
 		auth:     authenticator,
 		sessions: sessions,
 		router:   http.NewServeMux(),

@@ -292,6 +292,10 @@ func (m *helperRuntimeManager) RunNPMScript(spec NPMScriptSpec) (string, error) 
 	return m.client.Call(context.Background(), "runtime.run_npm_script", spec, nil)
 }
 
+func (m *helperRuntimeManager) RunNPMInstall(spec NPMInstallSpec) (string, error) {
+	return m.client.Call(context.Background(), "runtime.run_npm_install", spec, nil)
+}
+
 func (m *helperGitAuthManager) Inspect(spec GitAuthInspectSpec) (GitAuthStatus, error) {
 	var result GitAuthStatus
 	_, err := m.client.Call(context.Background(), "git_auth.inspect", spec, &result)
