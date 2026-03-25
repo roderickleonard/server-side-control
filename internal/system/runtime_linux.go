@@ -186,7 +186,9 @@ func (linuxRuntimeManager) RunNPMScript(spec NPMScriptSpec) (string, error) {
 	}
 	cmd := nvmUse + "cd " + shellQuote(spec.WorkingDirectory) + " && npm run " + shellQuote(spec.ScriptName)
 	return runBashAsUser(ctx, spec.User, buildNVMCommand(homeDirectory, cmd))
-}(username string) (string, error) {
+}
+
+func lookupUserHome(username string) (string, error) {
 	username = strings.TrimSpace(username)
 	if !usernamePattern.MatchString(username) {
 		return "", ErrInvalidUsername
