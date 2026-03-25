@@ -58,7 +58,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := a.sessions.Create(r.Context(), *identity, r.RemoteAddr)
+	session, err := a.sessions.Create(r.Context(), *identity, a.clientAddress(r))
 	if err != nil {
 		http.Error(w, "session error", http.StatusInternalServerError)
 		return

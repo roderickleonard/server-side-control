@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -44,10 +45,30 @@ func (a *App) currentSession(r *http.Request) (auth.Session, error) {
 	if err != nil {
 		return auth.Session{}, err
 	}
-	if session.RemoteAddr != "" && session.RemoteAddr != r.RemoteAddr {
+	if session.RemoteAddr != "" && session.RemoteAddr != a.clientAddress(r) {
 		return auth.Session{}, errors.New("remote address mismatch")
 	}
 	return session, nil
+}
+
+func (a *App) clientAddress(r *http.Request) string {
+	if forwardedFor := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwardedFor != "" {
+		parts := strings.Split(forwardedFor, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+
+	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
+		return realIP
+	}
+
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil {
+		return host
+	}
+
+	return strings.TrimSpace(r.RemoteAddr)
 }
 
 func (a *App) setSessionCookie(w http.ResponseWriter, session auth.Session) {
