@@ -298,4 +298,28 @@
 </section>
 
 {{template "deploy_history" .}}
+
+{{if .PackageScripts}}
+<section class="grid single">
+    <article class="panel">
+        <h3><i class="bi bi-terminal-fill" style="color:var(--accent);margin-right:6px;"></i>NPM scripts</h3>
+        <form method="post" class="stack-form compact-form" id="npm-scripts-form">
+            <input type="hidden" name="details_action" value="run_npm_script">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="script_name" id="npm-script-name" value="">
+            <div class="form-grid two-up" style="margin-bottom:12px;">
+                <label>
+                    <span>Node version</span>
+                    <input type="text" name="npm_script_node_version" value="{{.NpmScriptNodeVersion}}" placeholder="e.g. v22.22.2">
+                </label>
+            </div>
+            <div class="badge-row" style="flex-wrap:wrap;gap:8px;">
+                {{range .PackageScripts}}
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('npm-script-name').value='{{.}}';document.getElementById('npm-scripts-form').submit()">npm run {{.}}</button>
+                {{end}}
+            </div>
+        </form>
+    </article>
+</section>
+{{end}}
 {{end}}

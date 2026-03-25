@@ -30,6 +30,7 @@ var allowedHelperActions = map[string]struct{}{
 	"runtime.install_node": {},
 	"runtime.install_pm2": {},
 	"runtime.start_pm2": {},
+	"runtime.run_npm_script": {},
 	"git_auth.inspect": {},
 	"git_auth.ensure_deploy_key": {},
 	"git_auth.trust_host": {},

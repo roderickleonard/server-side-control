@@ -190,7 +190,7 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		result, err := system.NewDeployManager().Inspect(spec)
 		writeSuccess(result, "", err)
-	case "runtime.inspect", "runtime.install_nvm", "runtime.install_node", "runtime.install_pm2", "runtime.start_pm2":
+	case "runtime.inspect", "runtime.install_nvm", "runtime.install_node", "runtime.install_pm2", "runtime.start_pm2", "runtime.run_npm_script":
 		handleRuntime(request)
 	case "git_auth.inspect", "git_auth.ensure_deploy_key", "git_auth.trust_host", "git_auth.store_credential":
 		handleGitAuth(request)
@@ -289,6 +289,14 @@ func handleRuntime(request system.HelperRequest) {
 			return
 		}
 		output, err := manager.StartPM2(spec)
+		writeSuccess(nil, output, err)
+	case "runtime.run_npm_script":
+		var spec system.NPMScriptSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := manager.RunNPMScript(spec)
 		writeSuccess(nil, output, err)
 	default:
 		writeFailure(fmt.Errorf("unknown runtime action: %s", request.Action), "")

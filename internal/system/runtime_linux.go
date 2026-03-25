@@ -19,6 +19,7 @@ import (
 
 var nodeVersionPattern = regexp.MustCompile(`^(?:lts(?:/[A-Za-z0-9*._-]+)?|node|v?[0-9]+(?:\.[0-9]+){0,2})$`)
 var pm2ProcessPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+var npmScriptNamePattern = regexp.MustCompile(`^[A-Za-z0-9:._/-]{1,64}$`)
 var scriptPathPattern = regexp.MustCompile(`^[A-Za-z0-9._/@+-][A-Za-z0-9._/@+\-/:]*$`)
 var processArgsPattern = regexp.MustCompile(`^[A-Za-z0-9._/@=,+:\-\s]*$`)
 var installedNodePattern = regexp.MustCompile(`v[0-9]+\.[0-9]+\.[0-9]+`)
@@ -156,7 +157,36 @@ func (linuxRuntimeManager) StartPM2(spec PM2StartSpec) (string, error) {
 	return runBashAsUser(ctx, spec.User, buildNVMCommand(homeDirectory, pm2Command))
 }
 
-func lookupUserHome(username string) (string, error) {
+func (linuxRuntimeManager) RunNPMScript(spec NPMScriptSpec) (string, error) {
+	spec.User = strings.TrimSpace(spec.User)
+	spec.WorkingDirectory = strings.TrimSpace(spec.WorkingDirectory)
+	spec.ScriptName = strings.TrimSpace(spec.ScriptName)
+	spec.NodeVersion = strings.TrimSpace(spec.NodeVersion)
+	if !usernamePattern.MatchString(spec.User) {
+		return "", ErrInvalidRunAsUser
+	}
+	if !filepath.IsAbs(spec.WorkingDirectory) {
+		return "", ErrInvalidTargetDirectory
+	}
+	if !npmScriptNamePattern.MatchString(spec.ScriptName) {
+		return "", fmt.Errorf("invalid npm script name")
+	}
+	if spec.NodeVersion != "" && !nodeVersionPattern.MatchString(spec.NodeVersion) {
+		return "", ErrInvalidNodeVersion
+	}
+	homeDirectory, err := lookupUserHome(spec.User)
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	nvmUse := ""
+	if spec.NodeVersion != "" {
+		nvmUse = "nvm use " + shellQuote(spec.NodeVersion) + " && "
+	}
+	cmd := nvmUse + "cd " + shellQuote(spec.WorkingDirectory) + " && npm run " + shellQuote(spec.ScriptName)
+	return runBashAsUser(ctx, spec.User, buildNVMCommand(homeDirectory, cmd))
+}(username string) (string, error) {
 	username = strings.TrimSpace(username)
 	if !usernamePattern.MatchString(username) {
 		return "", ErrInvalidUsername

@@ -83,6 +83,8 @@ type TemplateData struct {
 	Metrics        system.Snapshot
 	AuditLogs      []domain.AuditLog
 	DeploymentReleases []domain.DeploymentRelease
+	PackageScripts []string
+	NpmScriptNodeVersion string
 	Alerts         []string
 	Nav            []NavItem
 	Now            time.Time

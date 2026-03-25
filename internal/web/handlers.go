@@ -3,11 +3,13 @@ package web
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -1081,6 +1083,24 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		a.recordAudit(r.Context(), "git_auth.store_credential", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser, "protocol": data.GitCredentialProtocol, "host": data.GitCredentialHost, "username": data.GitCredentialUsername})
 		data.CommandOutput = output
 		successMessage = "Git credentials were stored for private HTTPS access successfully."
+	case "run_npm_script":
+		scriptName := strings.TrimSpace(r.FormValue("script_name"))
+		nodeVersion := strings.TrimSpace(r.FormValue("npm_script_node_version"))
+		output, actionErr = a.runtime.RunNPMScript(system.NPMScriptSpec{
+			User:             site.OwnerLinuxUser,
+			WorkingDirectory: site.RootDirectory,
+			ScriptName:       scriptName,
+			NodeVersion:      nodeVersion,
+		})
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "runtime.run_npm_script", site.Name, "failure", map[string]any{"script": scriptName, "node_version": nodeVersion, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "runtime.run_npm_script", site.Name, "success", map[string]any{"script": scriptName, "node_version": nodeVersion})
+		data.CommandOutput = output
+		successMessage = "npm run " + scriptName + " completed successfully."
 	default:
 		data.RequestError = "Invalid site details action."
 	}
@@ -1292,6 +1312,7 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.RuntimeStatus = runtimeStatus
 	data.GitAuthStatus = gitAuthStatus
 	data.DeploymentReleases = releases
+	data.PackageScripts = readPackageJSONScripts(site.RootDirectory)
 	if data.GitRepositoryURL == "" {
 		data.GitRepositoryURL = repositoryStatus.RemoteURL
 	}
@@ -1321,6 +1342,25 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		data.GitCredentialHost = gitAuthStatus.RepositoryHost
 	}
 	a.render(r.Context(), w, r.URL.Path, "site_details.html", data)
+}
+
+func readPackageJSONScripts(rootDir string) []string {
+	data, err := os.ReadFile(filepath.Join(rootDir, "package.json"))
+	if err != nil {
+		return nil
+	}
+	var pkg struct {
+		Scripts map[string]string `json:"scripts"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(pkg.Scripts))
+	for name := range pkg.Scripts {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func deployErrorMessage(err error) string {

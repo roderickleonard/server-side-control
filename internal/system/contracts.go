@@ -159,12 +159,20 @@ type PM2StartSpec struct {
 	NodeVersion      string
 }
 
+type NPMScriptSpec struct {
+	User             string `json:"user"`
+	WorkingDirectory string `json:"working_directory"`
+	ScriptName       string `json:"script_name"`
+	NodeVersion      string `json:"node_version"`
+}
+
 type RuntimeManager interface {
 	Inspect(spec RuntimeInspectSpec) (RuntimeStatus, error)
 	InstallNVM(user string) (string, error)
 	InstallNode(spec NodeInstallSpec) (string, error)
 	InstallPM2(spec PM2InstallSpec) (string, error)
 	StartPM2(spec PM2StartSpec) (string, error)
+	RunNPMScript(spec NPMScriptSpec) (string, error)
 }
 
 type GitAuthInspectSpec struct {
