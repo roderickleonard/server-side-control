@@ -119,13 +119,14 @@
                         <th>PHP</th>
                         <th>Root</th>
                         <th>Config path</th>
-                        <th>Actions</th>
+                        <th>Details</th>
+                        <th>Delete</th>
                     </tr>
                 </thead>
                 <tbody>
                     {{range .ManagedSites}}
                     <tr>
-                        <td class="fw-semibold">{{.Name}}</td>
+                        <td class="fw-semibold"><a class="table-link" href="/sites/details?name={{.Name}}">{{.Name}}</a></td>
                         <td>{{.DomainName}}</td>
                         <td>{{if .OwnerLinuxUser}}{{.OwnerLinuxUser}}{{else}}-{{end}}</td>
                         <td><span class="badge subtle-badge">{{.Runtime}}</span></td>
@@ -134,21 +135,21 @@
                         <td class="text-break">{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}</td>
                         <td class="text-break">{{if .NginxConfigPath}}{{.NginxConfigPath}}{{else}}-{{end}}</td>
                         <td>
-                            <div class="table-actions">
-                                <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.Name}}">Details</a>
-                                <button
-                                    type="button"
-                                    class="btn btn-sm btn-danger modal-trigger delete-site-trigger"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#deleteSiteModal"
-                                    data-site-name="{{.Name}}"
-                                    data-site-domain="{{.DomainName}}"
-                                    data-site-mode="{{.Runtime}}"
-                                    data-site-upstream="{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}-{{end}}"
-                                    data-site-root="{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}"
-                                    data-site-config="{{if .NginxConfigPath}}{{.NginxConfigPath}}{{else}}-{{end}}"
-                                >Delete site</button>
-                            </div>
+                            <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.Name}}">Details</a>
+                        </td>
+                        <td>
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-danger modal-trigger delete-site-trigger"
+                                data-bs-toggle="modal"
+                                data-bs-target="#deleteSiteModal"
+                                data-site-name="{{.Name}}"
+                                data-site-domain="{{.DomainName}}"
+                                data-site-mode="{{.Runtime}}"
+                                data-site-upstream="{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}-{{end}}"
+                                data-site-root="{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}"
+                                data-site-config="{{if .NginxConfigPath}}{{.NginxConfigPath}}{{else}}-{{end}}"
+                            >Delete site</button>
                         </td>
                     </tr>
                     {{end}}

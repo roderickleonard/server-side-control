@@ -170,6 +170,15 @@ body.login-page {
     flex-wrap: wrap;
 }
 
+.table-link {
+    color: var(--accent-strong);
+    text-decoration: none;
+}
+
+.table-link:hover {
+    text-decoration: underline;
+}
+
 .content {
     padding: 32px;
 }
