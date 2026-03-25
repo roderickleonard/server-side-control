@@ -22,6 +22,10 @@ func main() {
 		slog.Error("load config", "error", err)
 		os.Exit(1)
 	}
+	if cfg.BootstrapPassword == "" {
+		slog.Error("load config", "error", "PANEL_BOOTSTRAP_PASSWORD must be set")
+		os.Exit(1)
+	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 

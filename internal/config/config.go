@@ -2,7 +2,6 @@ package config
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -27,10 +26,7 @@ type Config struct {
 }
 
 func Load() (Config, error) {
-	envPath := os.Getenv("PANEL_ENV_FILE")
-	if envPath == "" {
-		envPath = "config/panel.env"
-	}
+	envPath := resolveEnvPath()
 
 	_ = loadEnvFile(envPath)
 
@@ -52,11 +48,20 @@ func Load() (Config, error) {
 		HelperBinary:      getenv("PANEL_HELPER_BINARY", "/usr/local/bin/server-side-control-helper"),
 	}
 
-	if cfg.BootstrapPassword == "" {
-		return Config{}, errors.New("PANEL_BOOTSTRAP_PASSWORD must be set")
+	return cfg, nil
+}
+
+func resolveEnvPath() string {
+	if envPath := os.Getenv("PANEL_ENV_FILE"); envPath != "" {
+		return envPath
 	}
 
-	return cfg, nil
+	const localEnvPath = "config/panel.env"
+	if _, err := os.Stat(localEnvPath); err == nil {
+		return localEnvPath
+	}
+
+	return "/etc/server-side-control/panel.env"
 }
 
 func (c Config) ToEnv() string {
