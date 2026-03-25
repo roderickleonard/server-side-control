@@ -194,8 +194,9 @@ func runAsUser(ctx context.Context, username string, output *bytes.Buffer, name 
 }
 
 func runShellAsUser(ctx context.Context, username string, workingDir string, command string, output *bytes.Buffer) error {
-	shellCommand := fmt.Sprintf("cd %s && %s", shellQuote(workingDir), command)
-	cmd := exec.CommandContext(ctx, "sudo", "-u", username, "--", "sh", "-lc", shellCommand)
+	// Source NVM automatically so post-deploy commands can use the user's managed Node version.
+	shellCommand := fmt.Sprintf(". ~/.nvm/nvm.sh 2>/dev/null || true; cd %s && %s", shellQuote(workingDir), command)
+	cmd := exec.CommandContext(ctx, "sudo", "-u", username, "--", "bash", "-lc", shellCommand)
 	cmd.Stdout = output
 	cmd.Stderr = output
 	if err := cmd.Run(); err != nil {
