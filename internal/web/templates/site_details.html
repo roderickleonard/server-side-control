@@ -196,6 +196,18 @@
         {{else}}
         <p class="muted details-note">No Node versions are installed for this Linux user yet.</p>
         {{end}}
+        <form method="post" class="stack-form compact-form" id="runtime-npm-actions" style="margin-top:16px;">
+            <input type="hidden" name="details_action" id="runtime-npm-action" value="npm_install">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="script_name" id="runtime-npm-script-name" value="">
+            <input type="hidden" name="npm_ci" value="0">
+            <input type="hidden" name="npm_script_node_version" value="{{.NpmScriptNodeVersion}}">
+            <hr style="border:none;border-top:1px solid var(--border);margin:16px 0 12px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('runtime-npm-action').value='npm_install';document.getElementById('runtime-npm-script-name').value='';document.getElementById('runtime-npm-actions').submit()">npm install</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('runtime-npm-action').value='run_npm_script';document.getElementById('runtime-npm-script-name').value='build';document.getElementById('runtime-npm-actions').submit()">npm run build</button>
+            </div>
+        </form>
     </article>
     <article class="panel">
         <h3><i class="bi bi-layers" style="color:var(--accent);margin-right:6px;"></i>Prepare runtime</h3>
@@ -235,36 +247,6 @@
                     <button type="submit">Install PM2</button>
                 </div>
             </form>
-            {{if .RuntimeStatus.NVMInstalled}}
-            <form method="post" class="stack-form compact-form" id="npm-scripts-form">
-                <input type="hidden" name="details_action" id="npm-form-action" value="run_npm_script">
-                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
-                <input type="hidden" name="script_name" id="npm-script-name" value="">
-                <input type="hidden" name="npm_ci" id="npm-ci-flag" value="0">
-                <hr style="border:none;border-top:1px solid var(--border);margin:4px 0 12px;">
-                <div class="form-grid two-up" style="margin-bottom:12px;">
-                    <label>
-                        <span>Node version (npm)</span>
-                        <input type="text" name="npm_script_node_version" value="{{.NpmScriptNodeVersion}}" placeholder="e.g. v22.22.2">
-                    </label>
-                </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('npm-form-action').value='npm_install';document.getElementById('npm-ci-flag').value='0';document.getElementById('npm-scripts-form').submit()">npm install</button>
-                    <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('npm-form-action').value='npm_install';document.getElementById('npm-ci-flag').value='1';document.getElementById('npm-scripts-form').submit()">npm ci</button>
-                    {{range .PackageScripts}}{{if eq . "build"}}
-                    <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('npm-form-action').value='run_npm_script';document.getElementById('npm-script-name').value='build';document.getElementById('npm-scripts-form').submit()">npm run build</button>
-                    {{end}}{{end}}
-                </div>
-                {{if .PackageScripts}}
-                <hr style="border:none;border-top:1px solid var(--border);margin:12px 0 10px;">
-                <div class="badge-row" style="flex-wrap:wrap;gap:8px;">
-                    {{range .PackageScripts}}
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('npm-form-action').value='run_npm_script';document.getElementById('npm-script-name').value='{{.}}';document.getElementById('npm-scripts-form').submit()">npm run {{.}}</button>
-                    {{end}}
-                </div>
-                {{end}}
-            </form>
-            {{end}}
         </div>
     </article>
 </section>
