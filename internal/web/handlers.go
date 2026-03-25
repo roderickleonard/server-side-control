@@ -925,7 +925,6 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 	}
 	repositoryURL := repositoryStatus.RemoteURL
 	gitAuthStatus, gitAuthErr := a.gitAuth.Inspect(system.GitAuthInspectSpec{User: site.OwnerLinuxUser, SiteName: site.Name, RepositoryURL: repositoryURL})
-	postDeployCommand := ""
 	releases := a.listSiteDeploymentReleases(r, site.RootDirectory, site.OwnerLinuxUser)
 
 	if r.Method == http.MethodGet {
