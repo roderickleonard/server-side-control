@@ -602,6 +602,19 @@ func (a *App) handleSiteDelete(w http.ResponseWriter, r *http.Request, users []s
 	}
 
 	siteName := r.FormValue("delete_site_name")
+	if r.FormValue("confirm_delete") != "1" {
+		a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+			Title:          "Sites",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
+			ManagedSites:   sites,
+			PHPVersions:    versions,
+			RequestError:   "Site deletion was not confirmed.",
+		})
+		return
+	}
+
 	site, err := a.store.GetManagedSiteByName(r.Context(), siteName)
 	if err != nil {
 		a.recordAudit(r.Context(), "nginx.delete_site", siteName, "failure", map[string]any{"error": err.Error()})

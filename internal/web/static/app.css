@@ -27,20 +27,69 @@ body {
     min-height: 100vh;
 }
 
+body.login-page {
+    min-height: 100vh;
+}
+
 .shell {
     display: grid;
     grid-template-columns: 280px 1fr;
     min-height: 100vh;
 }
 
+.login-page-main {
+    min-height: 100vh;
+    padding: 32px;
+}
+
 .sidebar {
-    padding: 28px;
+    padding: 24px 22px;
     border-right: 1px solid var(--line);
     background: rgba(255, 248, 239, 0.72);
     backdrop-filter: blur(18px);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+    gap: 24px;
+}
+
+.sidebar-top {
+    display: grid;
+    gap: 22px;
+}
+
+.sidebar-brand {
+    padding: 6px 4px 0;
+}
+
+.sidebar-nav-group {
+    display: grid;
+    gap: 10px;
+}
+
+.sidebar-section-title,
+.sidebar-panel-label {
+    margin: 0;
+    font-size: 0.76rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.sidebar-panel {
+    padding: 16px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.56);
+    border: 1px solid rgba(24, 33, 38, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    display: grid;
+    gap: 6px;
+}
+
+.sidebar-status-panel strong,
+.sidebar-user-block strong {
+    font-family: "Space Grotesk", "Segoe UI", sans-serif;
+    font-size: 1rem;
 }
 
 .sidebar h1,
@@ -68,16 +117,18 @@ body {
 
 .nav {
     display: grid;
-    gap: 10px;
-    margin: 28px 0;
+    gap: 8px;
+    margin: 0;
 }
 
 .nav-link {
     text-decoration: none;
     color: var(--ink);
-    padding: 12px 14px;
-    border-radius: 16px;
-    border: 1px solid transparent;
+    padding: 13px 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(24, 33, 38, 0.04);
+    background: rgba(255, 255, 255, 0.38);
+    font-weight: 500;
     transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
@@ -89,15 +140,23 @@ body {
 }
 
 .sidebar-footer {
-    padding: 16px;
-    border-radius: 18px;
+    padding: 18px;
+    border-radius: 22px;
     background: var(--surface);
     box-shadow: var(--shadow);
+    display: grid;
+    gap: 16px;
+}
+
+.sidebar-user-block {
+    display: grid;
+    gap: 6px;
 }
 
 .logout-link {
     color: var(--accent-strong);
     text-decoration: none;
+    font-weight: 600;
 }
 
 .logout-link:hover {
@@ -206,7 +265,7 @@ body {
 
 .login-card {
     width: min(100%, 520px);
-    padding: 28px;
+    padding: 34px;
     border-radius: 28px;
     background: var(--surface-strong);
     border: 1px solid var(--line);
@@ -394,6 +453,51 @@ body {
     vertical-align: top;
 }
 
+.site-modal {
+    border-radius: 26px;
+    border: 1px solid rgba(24, 33, 38, 0.08);
+    background: linear-gradient(180deg, rgba(255, 250, 242, 0.98), rgba(247, 240, 230, 0.98));
+}
+
+.site-delete-summary {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.62);
+    border: 1px solid rgba(24, 33, 38, 0.08);
+}
+
+.site-delete-summary div {
+    display: grid;
+    gap: 4px;
+}
+
+.site-delete-summary strong {
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.site-delete-summary span {
+    word-break: break-word;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.modal-confirm-row {
+    margin-bottom: 6px;
+}
+
+.modal-trigger {
+    white-space: nowrap;
+}
+
 .table-note-row td {
     background: rgba(15, 118, 110, 0.03);
 }
@@ -548,6 +652,10 @@ li + li {
         gap: 20px;
     }
 
+    .login-page-main {
+        padding: 18px;
+    }
+
     .hero,
     .cards,
     .grid {
@@ -569,6 +677,10 @@ li + li {
 
     .table-action-form {
         min-width: 0;
+    }
+
+    .modal-actions {
+        flex-direction: column-reverse;
     }
 
     .span-2 {

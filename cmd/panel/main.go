@@ -45,6 +45,13 @@ func main() {
 			logger.Error("run migrations", "error", err)
 			os.Exit(1)
 		}
+
+		repairedCount, repairErr := dataStore.RepairManagedSiteUpstreams(ctx)
+		if repairErr != nil {
+			logger.Error("repair managed site upstreams", "error", repairErr)
+		} else if repairedCount > 0 {
+			logger.Info("repaired managed site upstreams", "count", repairedCount)
+		}
 	}
 
 	authenticator := auth.NewChainAuthenticator(
