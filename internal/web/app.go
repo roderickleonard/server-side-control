@@ -133,7 +133,7 @@ func (a *App) render(ctx context.Context, w http.ResponseWriter, currentPath str
 		}
 	}
 
-	tmpl, err := template.ParseFS(assets, "templates/*.html")
+	tmpl, err := template.ParseFS(assets, "templates/layout.html", "templates/"+page)
 	if err != nil {
 		a.logger.Error("parse template", "page", page, "error", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
