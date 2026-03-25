@@ -91,6 +91,10 @@ type helperNginxManager struct{ client *HelperClient }
 
 type helperDeployManager struct{ client *HelperClient }
 
+type helperRuntimeManager struct{ client *HelperClient }
+
+type helperGitAuthManager struct{ client *HelperClient }
+
 type helperPM2Manager struct{ client *HelperClient }
 
 type helperPHPManager struct{ client *HelperClient }
@@ -109,6 +113,14 @@ func NewHelperNginxManager(client *HelperClient) NginxManager {
 
 func NewHelperDeployManager(client *HelperClient) DeployManager {
 	return &helperDeployManager{client: client}
+}
+
+func NewHelperRuntimeManager(client *HelperClient) RuntimeManager {
+	return &helperRuntimeManager{client: client}
+}
+
+func NewHelperGitAuthManager(client *HelperClient) GitAuthManager {
+	return &helperGitAuthManager{client: client}
 }
 
 func NewHelperPM2Manager(client *HelperClient) PM2Manager {
@@ -233,6 +245,54 @@ func (m *helperDeployManager) Rollback(spec RollbackSpec) (DeployResult, error) 
 		return result, err
 	}
 	return result, nil
+}
+
+func (m *helperDeployManager) Inspect(spec RepositoryInspectSpec) (RepositoryStatus, error) {
+	var result RepositoryStatus
+	_, err := m.client.Call(context.Background(), "deploy.inspect", spec, &result)
+	return result, err
+}
+
+func (m *helperRuntimeManager) Inspect(spec RuntimeInspectSpec) (RuntimeStatus, error) {
+	var result RuntimeStatus
+	_, err := m.client.Call(context.Background(), "runtime.inspect", spec, &result)
+	return result, err
+}
+
+func (m *helperRuntimeManager) InstallNVM(user string) (string, error) {
+	return m.client.Call(context.Background(), "runtime.install_nvm", map[string]any{"user": user}, nil)
+}
+
+func (m *helperRuntimeManager) InstallNode(spec NodeInstallSpec) (string, error) {
+	return m.client.Call(context.Background(), "runtime.install_node", spec, nil)
+}
+
+func (m *helperRuntimeManager) InstallPM2(spec PM2InstallSpec) (string, error) {
+	return m.client.Call(context.Background(), "runtime.install_pm2", spec, nil)
+}
+
+func (m *helperRuntimeManager) StartPM2(spec PM2StartSpec) (string, error) {
+	return m.client.Call(context.Background(), "runtime.start_pm2", spec, nil)
+}
+
+func (m *helperGitAuthManager) Inspect(spec GitAuthInspectSpec) (GitAuthStatus, error) {
+	var result GitAuthStatus
+	_, err := m.client.Call(context.Background(), "git_auth.inspect", spec, &result)
+	return result, err
+}
+
+func (m *helperGitAuthManager) EnsureDeployKey(spec GitDeployKeySpec) (GitAuthStatus, string, error) {
+	var result GitAuthStatus
+	output, err := m.client.Call(context.Background(), "git_auth.ensure_deploy_key", spec, &result)
+	return result, output, err
+}
+
+func (m *helperGitAuthManager) TrustHost(spec GitHostTrustSpec) (string, error) {
+	return m.client.Call(context.Background(), "git_auth.trust_host", spec, nil)
+}
+
+func (m *helperGitAuthManager) StoreCredential(spec GitCredentialSpec) (string, error) {
+	return m.client.Call(context.Background(), "git_auth.store_credential", spec, nil)
 }
 
 func (m *helperPM2Manager) List(user string) (string, error) {

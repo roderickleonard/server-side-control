@@ -9,18 +9,15 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const selectedOption = ownerSelect.options[ownerSelect.selectedIndex];
-        const homeDirectory = selectedOption ? (selectedOption.dataset.home || "") : "";
+        const username = selectedOption ? (selectedOption.value || "") : "";
         const siteName = (siteNameInput.value || "").trim();
 
-        if (!homeDirectory || !siteName) {
+        if (!username || !siteName) {
             rootPreview.textContent = "Select a Linux user and site name";
             return;
         }
 
-        const normalizedHome = homeDirectory.replace(/\/$/, "");
-        const rootDirectory = normalizedHome.startsWith("/var/www/")
-            ? `${normalizedHome}/${siteName}`
-            : `${normalizedHome}/var/www/${siteName}`;
+        const rootDirectory = `/var/www/${username}/${siteName}`;
 
         rootPreview.textContent = rootDirectory;
     };

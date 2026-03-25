@@ -163,6 +163,13 @@ body.login-page {
     text-decoration: underline;
 }
 
+.table-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
 .content {
     padding: 32px;
 }
@@ -247,6 +254,40 @@ body.login-page {
     color: var(--accent-strong);
 }
 
+.section-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.stack-cluster {
+    display: grid;
+    gap: 14px;
+}
+
+.compact-form {
+    margin-top: 0;
+}
+
+.details-inline-form {
+    align-items: start;
+}
+
+.checkbox-align-end {
+    align-self: end;
+    margin: 0;
+}
+
+.details-pre {
+    margin-top: 16px;
+}
+
+.top-gap {
+    margin-top: 16px;
+}
+
 .grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -255,6 +296,14 @@ body.login-page {
 
 .grid.single {
     grid-template-columns: 1fr;
+}
+
+.details-summary span {
+    word-break: break-word;
+}
+
+.details-note {
+    margin: 16px 0 0;
 }
 
 .login-shell {

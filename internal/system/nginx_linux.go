@@ -221,7 +221,15 @@ func (m linuxNginxManager) deleteTLSCertificate(domain string) error {
 }
 
 func ensureSiteRootDirectory(rootDirectory string, ownerLinuxUser string) error {
-	if err := os.MkdirAll(rootDirectory, 0o755); err != nil {
+	ownerLinuxUser = strings.TrimSpace(ownerLinuxUser)
+	targetPath := filepath.Clean(rootDirectory)
+	if ownerLinuxUser != "" && strings.HasPrefix(targetPath, filepath.Join("/var/www", ownerLinuxUser)+"/") {
+		ownerBasePath := filepath.Join("/var/www", ownerLinuxUser)
+		if err := os.MkdirAll(ownerBasePath, 0o755); err != nil {
+			return fmt.Errorf("create owner web root directory: %w", err)
+		}
+	}
+	if err := os.MkdirAll(targetPath, 0o755); err != nil {
 		return fmt.Errorf("create site root directory: %w", err)
 	}
 	if ownerLinuxUser == "" {
@@ -235,7 +243,12 @@ func ensureSiteRootDirectory(rootDirectory string, ownerLinuxUser string) error 
 		return ErrUserNotFound
 	}
 
-	cmd := exec.CommandContext(ctx, "chown", "-R", ownerLinuxUser+":"+ownerLinuxUser, rootDirectory)
+	chownTarget := targetPath
+	ownerBasePath := filepath.Join("/var/www", ownerLinuxUser)
+	if strings.HasPrefix(targetPath, ownerBasePath+"/") {
+		chownTarget = ownerBasePath
+	}
+	cmd := exec.CommandContext(ctx, "chown", "-R", ownerLinuxUser+":"+ownerLinuxUser, chownTarget)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("chown site root directory: %w: %s", err, strings.TrimSpace(string(output)))

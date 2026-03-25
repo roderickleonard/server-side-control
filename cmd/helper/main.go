@@ -163,6 +163,18 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		result, err := system.NewDeployManager().Rollback(spec)
 		writeSuccess(result, result.Output, err)
+	case "deploy.inspect":
+		var spec system.RepositoryInspectSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		result, err := system.NewDeployManager().Inspect(spec)
+		writeSuccess(result, "", err)
+	case "runtime.inspect", "runtime.install_nvm", "runtime.install_node", "runtime.install_pm2", "runtime.start_pm2":
+		handleRuntime(request)
+	case "git_auth.inspect", "git_auth.ensure_deploy_key", "git_auth.trust_host", "git_auth.store_credential":
+		handleGitAuth(request)
 	case "pm2.list", "pm2.restart", "pm2.reload", "pm2.start", "pm2.stop", "pm2.logs":
 		handlePM2(request)
 	case "php.switch":
@@ -214,6 +226,94 @@ func handlePM2(request system.HelperRequest) {
 		output, err = manager.Logs(input.User, input.ProcessName, input.Lines)
 	}
 	writeSuccess(nil, output, err)
+}
+
+func handleRuntime(request system.HelperRequest) {
+	manager := system.NewRuntimeManager()
+	switch request.Action {
+	case "runtime.inspect":
+		var spec system.RuntimeInspectSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		result, err := manager.Inspect(spec)
+		writeSuccess(result, "", err)
+	case "runtime.install_nvm":
+		var input struct{ User string `json:"user"` }
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := manager.InstallNVM(input.User)
+		writeSuccess(nil, output, err)
+	case "runtime.install_node":
+		var spec system.NodeInstallSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := manager.InstallNode(spec)
+		writeSuccess(nil, output, err)
+	case "runtime.install_pm2":
+		var spec system.PM2InstallSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := manager.InstallPM2(spec)
+		writeSuccess(nil, output, err)
+	case "runtime.start_pm2":
+		var spec system.PM2StartSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := manager.StartPM2(spec)
+		writeSuccess(nil, output, err)
+	default:
+		writeFailure(fmt.Errorf("unknown runtime action: %s", request.Action), "")
+	}
+}
+
+func handleGitAuth(request system.HelperRequest) {
+	manager := system.NewGitAuthManager()
+	switch request.Action {
+	case "git_auth.inspect":
+		var spec system.GitAuthInspectSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		result, err := manager.Inspect(spec)
+		writeSuccess(result, "", err)
+	case "git_auth.ensure_deploy_key":
+		var spec system.GitDeployKeySpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		result, output, err := manager.EnsureDeployKey(spec)
+		writeSuccess(result, output, err)
+	case "git_auth.trust_host":
+		var spec system.GitHostTrustSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := manager.TrustHost(spec)
+		writeSuccess(nil, output, err)
+	case "git_auth.store_credential":
+		var spec system.GitCredentialSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := manager.StoreCredential(spec)
+		writeSuccess(nil, output, err)
+	default:
+		writeFailure(fmt.Errorf("unknown git auth action: %s", request.Action), "")
+	}
 }
 
 func writeSuccess(data any, output string, err error) {

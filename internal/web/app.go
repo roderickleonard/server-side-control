@@ -28,6 +28,8 @@ type App struct {
 	databases system.DatabaseManager
 	nginx     system.NginxManager
 	deploys   system.DeployManager
+	runtime   system.RuntimeManager
+	gitAuth   system.GitAuthManager
 	pm2       system.PM2Manager
 	php       system.PHPManager
 	auth      auth.Authenticator
@@ -54,7 +56,22 @@ type TemplateData struct {
 	LinuxUsers     []system.LinuxUser
 	DatabaseAccess []system.DatabaseAccess
 	ManagedSites   []domain.ManagedSite
+	SelectedSite   domain.ManagedSite
 	PHPVersions    []string
+	RepositoryStatus system.RepositoryStatus
+	RuntimeStatus  system.RuntimeStatus
+	GitAuthStatus  system.GitAuthStatus
+	GitRepositoryURL string
+	GitBranch      string
+	GitPostDeployCommand string
+	RuntimeNodeVersion string
+	PM2NodeVersion string
+	PM2ProcessName string
+	PM2ScriptPath string
+	PM2Arguments string
+	GitCredentialProtocol string
+	GitCredentialHost string
+	GitCredentialUsername string
 	GeneratedSecret string
 	ResultPath     string
 	CommandOutput  string
@@ -84,6 +101,8 @@ func New(cfg config.Config, logger *slog.Logger, dataStore *store.Store, metrics
 		databases: system.NewHelperDatabaseManager(helperClient),
 		nginx:    system.NewHelperNginxManager(helperClient),
 		deploys:  system.NewHelperDeployManager(helperClient),
+		runtime:  system.NewHelperRuntimeManager(helperClient),
+		gitAuth:  system.NewHelperGitAuthManager(helperClient),
 		pm2:      system.NewHelperPM2Manager(helperClient),
 		php:      system.NewHelperPHPManager(helperClient),
 		auth:     authenticator,
@@ -109,6 +128,7 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/users", a.handleUsers)
 	a.router.HandleFunc("/databases", a.handleDatabases)
 	a.router.HandleFunc("/sites", a.handleSites)
+	a.router.HandleFunc("/sites/details", a.handleSiteDetails)
 	a.router.HandleFunc("/php", a.handlePHP)
 	a.router.HandleFunc("/deploys", a.handleDeploys)
 	a.router.HandleFunc("/processes", a.handleProcesses)
@@ -167,6 +187,8 @@ func templateFilesForPage(page string) []string {
 	case "sites.html":
 		files = append(files, "templates/site_tls.html")
 	case "deploys.html":
+		files = append(files, "templates/deploy_history.html")
+	case "site_details.html":
 		files = append(files, "templates/deploy_history.html")
 	}
 

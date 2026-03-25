@@ -46,13 +46,19 @@ func (linuxUserManager) CreateLinuxUser(username string, createHome bool) error 
 		return ErrUserExists
 	}
 
-	args := []string{}
+	homeDirectory := "/home/" + username
+	args := []string{"--system"}
 	if createHome {
-		args = append(args, "-m")
+		args = append(args, "--create-home")
 	} else {
-		args = append(args, "-M")
+		args = append(args, "--no-create-home")
 	}
-	args = append(args, username)
+	args = append(args,
+		"--home-dir", homeDirectory,
+		"--shell", "/bin/bash",
+		"--user-group",
+		username,
+	)
 
 	cmd := exec.CommandContext(ctx, "useradd", args...)
 	output, err := cmd.CombinedOutput()
@@ -146,11 +152,11 @@ func shouldExposeLinuxUser(username string, uid int, homeDirectory string, shell
 	if username == "nobody" {
 		return false
 	}
-	if uid < 1000 {
-		return false
-	}
 	if strings.Contains(shell, "nologin") || strings.Contains(shell, "false") {
 		return false
 	}
-	return strings.HasPrefix(homeDirectory, "/home/") || strings.HasPrefix(homeDirectory, "/var/www/") || strings.HasPrefix(homeDirectory, "/srv/")
+	if strings.HasPrefix(homeDirectory, "/home/") || strings.HasPrefix(homeDirectory, "/var/www/") || strings.HasPrefix(homeDirectory, "/srv/") {
+		return true
+	}
+	return uid >= 1000
 }

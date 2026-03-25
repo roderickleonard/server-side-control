@@ -573,11 +573,7 @@ func buildManagedSiteRootDirectory(users []system.LinuxUser, ownerLinuxUser stri
 		if user.Username != ownerLinuxUser {
 			continue
 		}
-		homeDirectory := filepath.Clean(user.HomeDirectory)
-		if strings.HasPrefix(homeDirectory, "/var/www/") {
-			return filepath.Join(homeDirectory, siteName), nil
-		}
-		return filepath.Join(homeDirectory, "var", "www", siteName), nil
+		return filepath.Join("/var/www", ownerLinuxUser, siteName), nil
 	}
 
 	return "", errors.New("Selected Linux user home directory could not be resolved.")
@@ -720,6 +716,244 @@ func (a *App) handleSiteDelete(w http.ResponseWriter, r *http.Request, users []s
 		PHPVersions:    versions,
 		SuccessMessage: "Site, Nginx configuration, and related directory were deleted successfully.",
 	})
+}
+
+func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
+	if a.store == nil {
+		a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+			Title:          "Sites",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     a.listLinuxUsers(),
+			ManagedSites:   a.listManagedSites(r),
+			PHPVersions:    a.listPHPVersions(),
+			RequestError:   "Managed site storage is not configured yet. Set PANEL_DATABASE_DSN first.",
+		})
+		return
+	}
+
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	siteName := strings.TrimSpace(r.URL.Query().Get("name"))
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "invalid form", http.StatusBadRequest)
+			return
+		}
+		siteName = strings.TrimSpace(r.FormValue("site_name"))
+	}
+	if siteName == "" {
+		http.Redirect(w, r, "/sites", http.StatusSeeOther)
+		return
+	}
+
+	site, err := a.store.GetManagedSiteByName(r.Context(), siteName)
+	if err != nil {
+		a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+			Title:          "Sites",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     a.listLinuxUsers(),
+			ManagedSites:   a.listManagedSites(r),
+			PHPVersions:    a.listPHPVersions(),
+			RequestError:   "Managed site could not be found by that name.",
+		})
+		return
+	}
+
+	repositoryStatus, statusErr := a.deploys.Inspect(system.RepositoryInspectSpec{
+		TargetDirectory: site.RootDirectory,
+		RunAsUser:       site.OwnerLinuxUser,
+	})
+	runtimeStatus, runtimeErr := a.runtime.Inspect(system.RuntimeInspectSpec{User: site.OwnerLinuxUser})
+	branch := repositoryStatus.Branch
+	if branch == "" {
+		branch = "main"
+	}
+	repositoryURL := repositoryStatus.RemoteURL
+	gitAuthStatus, gitAuthErr := a.gitAuth.Inspect(system.GitAuthInspectSpec{User: site.OwnerLinuxUser, SiteName: site.Name, RepositoryURL: repositoryURL})
+	postDeployCommand := ""
+	releases := a.listSiteDeploymentReleases(r, site.RootDirectory, site.OwnerLinuxUser)
+
+	if r.Method == http.MethodGet {
+		data := TemplateData{}
+		if statusErr != nil {
+			data.RequestError = "Repository status could not be inspected: " + statusErr.Error()
+		} else if runtimeErr != nil {
+			data.RequestError = "Runtime status could not be inspected: " + runtimeErr.Error()
+		} else if gitAuthErr != nil {
+			data.RequestError = "Git auth status could not be inspected: " + gitAuthErr.Error()
+		}
+		a.renderSiteDetails(w, r, site, repositoryStatus, runtimeStatus, gitAuthStatus, releases, data)
+		return
+	}
+
+	action := r.FormValue("details_action")
+	if action == "" {
+		a.renderSiteDetails(w, r, site, repositoryStatus, runtimeStatus, gitAuthStatus, releases, TemplateData{
+			RequestError: "Invalid site details action.",
+		})
+		return
+	}
+
+	data := TemplateData{
+		GitRepositoryURL:    firstNonEmpty(strings.TrimSpace(r.FormValue("repository_url")), repositoryURL),
+		GitBranch:           firstNonEmpty(strings.TrimSpace(r.FormValue("branch")), branch),
+		GitPostDeployCommand: r.FormValue("post_deploy_command"),
+		RuntimeNodeVersion:  strings.TrimSpace(r.FormValue("node_version")),
+		PM2NodeVersion:      strings.TrimSpace(r.FormValue("pm2_node_version")),
+		PM2ProcessName:      firstNonEmpty(strings.TrimSpace(r.FormValue("process_name")), site.Name),
+		PM2ScriptPath:       strings.TrimSpace(r.FormValue("script_path")),
+		PM2Arguments:        strings.TrimSpace(r.FormValue("process_arguments")),
+		GitCredentialProtocol: firstNonEmpty(strings.TrimSpace(r.FormValue("credential_protocol")), firstNonEmpty(gitAuthStatus.RepositoryProtocol, "https")),
+		GitCredentialHost:   firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
+		GitCredentialUsername: strings.TrimSpace(r.FormValue("credential_username")),
+	}
+
+	var output string
+	var actionErr error
+	var successMessage string
+
+	switch action {
+	case "sync_repository":
+		if data.GitRepositoryURL == "" {
+			data.RequestError = "Repository URL is required."
+			break
+		}
+		spec := system.DeploySpec{
+			RepositoryURL:     data.GitRepositoryURL,
+			Branch:            data.GitBranch,
+			TargetDirectory:   site.RootDirectory,
+			RunAsUser:         site.OwnerLinuxUser,
+			PostDeployCommand: data.GitPostDeployCommand,
+		}
+		wasGitRepo := repositoryStatus.IsGitRepo
+		result, err := a.deploys.Deploy(spec)
+		if err != nil {
+			a.recordAudit(r.Context(), "deploy.site_sync", site.Name, "failure", map[string]any{"repository_url": spec.RepositoryURL, "branch": spec.Branch, "run_as_user": spec.RunAsUser, "target_directory": spec.TargetDirectory, "error": err.Error()})
+			data.RequestError = deployErrorMessage(err)
+			data.CommandOutput = result.Output
+			break
+		}
+		if a.store != nil {
+			_ = a.store.CreateDeployment(r.Context(), domain.Deployment{SiteID: site.ID, RepositoryURL: spec.RepositoryURL, BranchName: spec.Branch, TargetDirectory: spec.TargetDirectory, RunAsUser: spec.RunAsUser, LastStatus: "success", LastOutput: result.Output})
+			_ = a.store.CreateDeploymentRelease(r.Context(), domain.DeploymentRelease{RepositoryURL: spec.RepositoryURL, BranchName: spec.Branch, TargetDirectory: spec.TargetDirectory, RunAsUser: spec.RunAsUser, Action: result.Action, Status: "success", CommitSHA: result.CommitSHA, PreviousCommitSHA: result.PreviousCommitSHA, Output: result.Output})
+		}
+		a.recordAudit(r.Context(), "deploy.site_sync", site.Name, "success", map[string]any{"repository_url": spec.RepositoryURL, "branch": spec.Branch, "run_as_user": spec.RunAsUser, "target_directory": spec.TargetDirectory, "action": result.Action})
+		output = result.Output
+		data.CommandOutput = result.Output
+		data.CommitSHA = result.CommitSHA
+		data.PreviousCommitSHA = result.PreviousCommitSHA
+		data.ResultPath = site.RootDirectory
+		if wasGitRepo {
+			successMessage = "Repository pulled for this site successfully."
+		} else {
+			successMessage = "Repository cloned into the site root successfully."
+		}
+	case "install_nvm":
+		output, actionErr = a.runtime.InstallNVM(site.OwnerLinuxUser)
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "runtime.install_nvm", site.Name, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "runtime.install_nvm", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser})
+		data.CommandOutput = output
+		successMessage = "NVM was installed for the site owner successfully."
+	case "install_node":
+		output, actionErr = a.runtime.InstallNode(system.NodeInstallSpec{User: site.OwnerLinuxUser, Version: data.RuntimeNodeVersion, SetDefault: r.FormValue("set_default_node") == "1"})
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "runtime.install_node", site.Name, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "version": data.RuntimeNodeVersion, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "runtime.install_node", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser, "version": data.RuntimeNodeVersion})
+		data.CommandOutput = output
+		successMessage = "Node version was installed successfully for the site owner."
+	case "install_pm2":
+		output, actionErr = a.runtime.InstallPM2(system.PM2InstallSpec{User: site.OwnerLinuxUser, NodeVersion: data.PM2NodeVersion})
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "runtime.install_pm2", site.Name, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "node_version": data.PM2NodeVersion, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "runtime.install_pm2", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser, "node_version": data.PM2NodeVersion})
+		data.CommandOutput = output
+		successMessage = "PM2 was installed successfully for the site owner."
+	case "start_pm2":
+		output, actionErr = a.runtime.StartPM2(system.PM2StartSpec{User: site.OwnerLinuxUser, WorkingDirectory: site.RootDirectory, ProcessName: data.PM2ProcessName, ScriptPath: data.PM2ScriptPath, Arguments: data.PM2Arguments, NodeVersion: data.PM2NodeVersion})
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "runtime.start_pm2", site.Name, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "process_name": data.PM2ProcessName, "script_path": data.PM2ScriptPath, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "runtime.start_pm2", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser, "process_name": data.PM2ProcessName, "script_path": data.PM2ScriptPath})
+		data.CommandOutput = output
+		successMessage = "PM2 process was started for this site successfully."
+	case "generate_deploy_key":
+		var updatedStatus system.GitAuthStatus
+		updatedStatus, output, actionErr = a.gitAuth.EnsureDeployKey(system.GitDeployKeySpec{User: site.OwnerLinuxUser, SiteName: site.Name, RepositoryURL: data.GitRepositoryURL})
+		if actionErr != nil {
+			data.RequestError = gitAuthErrorMessage(actionErr)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "git_auth.ensure_deploy_key", site.Name, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "error": actionErr.Error()})
+			break
+		}
+		gitAuthStatus = updatedStatus
+		a.recordAudit(r.Context(), "git_auth.ensure_deploy_key", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser})
+		data.CommandOutput = output
+		successMessage = "SSH deploy key is ready. Add the public key to your git provider and use the SSH repo URL."
+	case "trust_git_host":
+		output, actionErr = a.gitAuth.TrustHost(system.GitHostTrustSpec{User: site.OwnerLinuxUser, Host: data.GitCredentialHost})
+		if actionErr != nil {
+			data.RequestError = gitAuthErrorMessage(actionErr)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "git_auth.trust_host", site.Name, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "host": data.GitCredentialHost, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "git_auth.trust_host", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser, "host": data.GitCredentialHost})
+		data.CommandOutput = output
+		successMessage = "Git host was added to known_hosts successfully."
+	case "store_git_credential":
+		output, actionErr = a.gitAuth.StoreCredential(system.GitCredentialSpec{User: site.OwnerLinuxUser, Protocol: data.GitCredentialProtocol, Host: data.GitCredentialHost, Username: data.GitCredentialUsername, Password: r.FormValue("credential_password")})
+		if actionErr != nil {
+			data.RequestError = gitAuthErrorMessage(actionErr)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "git_auth.store_credential", site.Name, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "protocol": data.GitCredentialProtocol, "host": data.GitCredentialHost, "username": data.GitCredentialUsername, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "git_auth.store_credential", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser, "protocol": data.GitCredentialProtocol, "host": data.GitCredentialHost, "username": data.GitCredentialUsername})
+		data.CommandOutput = output
+		successMessage = "Git credentials were stored for private HTTPS access successfully."
+	default:
+		data.RequestError = "Invalid site details action."
+	}
+
+	repositoryStatus, statusErr = a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser})
+	runtimeStatus, runtimeErr = a.runtime.Inspect(system.RuntimeInspectSpec{User: site.OwnerLinuxUser})
+	repositoryURL = firstNonEmpty(data.GitRepositoryURL, repositoryStatus.RemoteURL)
+	gitAuthStatus, gitAuthErr = a.gitAuth.Inspect(system.GitAuthInspectSpec{User: site.OwnerLinuxUser, SiteName: site.Name, RepositoryURL: repositoryURL})
+	releases = a.listSiteDeploymentReleases(r, site.RootDirectory, site.OwnerLinuxUser)
+	if successMessage != "" {
+		data.SuccessMessage = successMessage
+	}
+	if data.RequestError == "" {
+		if statusErr != nil {
+			data.RequestError = "Repository status refreshed with an error: " + statusErr.Error()
+		} else if runtimeErr != nil {
+			data.RequestError = "Runtime status refreshed with an error: " + runtimeErr.Error()
+		} else if gitAuthErr != nil {
+			data.RequestError = "Git auth status refreshed with an error: " + gitAuthErr.Error()
+		}
+	}
+	a.renderSiteDetails(w, r, site, repositoryStatus, runtimeStatus, gitAuthStatus, releases, data)
 }
 
 func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
@@ -898,6 +1132,108 @@ func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, users
 		PreviousCommitSHA: result.PreviousCommitSHA,
 		DeploymentReleases: releases,
 	})
+}
+
+func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site domain.ManagedSite, repositoryStatus system.RepositoryStatus, runtimeStatus system.RuntimeStatus, gitAuthStatus system.GitAuthStatus, releases []domain.DeploymentRelease, data TemplateData) {
+	data.Title = site.Name + " details"
+	data.DatabaseStatus = a.databaseStatus(r.Context())
+	data.Metrics = a.metrics.Snapshot()
+	data.SelectedSite = site
+	data.RepositoryStatus = repositoryStatus
+	data.RuntimeStatus = runtimeStatus
+	data.GitAuthStatus = gitAuthStatus
+	data.DeploymentReleases = releases
+	if data.GitRepositoryURL == "" {
+		data.GitRepositoryURL = repositoryStatus.RemoteURL
+	}
+	if data.GitBranch == "" {
+		if repositoryStatus.Branch != "" {
+			data.GitBranch = repositoryStatus.Branch
+		} else {
+			data.GitBranch = "main"
+		}
+	}
+	if data.RuntimeNodeVersion == "" {
+		data.RuntimeNodeVersion = runtimeStatus.DefaultNodeVersion
+	}
+	if data.PM2NodeVersion == "" {
+		data.PM2NodeVersion = firstNonEmpty(runtimeStatus.DefaultNodeVersion, data.RuntimeNodeVersion)
+	}
+	if data.PM2ProcessName == "" {
+		data.PM2ProcessName = site.Name
+	}
+	if data.PM2ScriptPath == "" {
+		data.PM2ScriptPath = "server.js"
+	}
+	if data.GitCredentialProtocol == "" {
+		data.GitCredentialProtocol = firstNonEmpty(gitAuthStatus.RepositoryProtocol, "https")
+	}
+	if data.GitCredentialHost == "" {
+		data.GitCredentialHost = gitAuthStatus.RepositoryHost
+	}
+	a.render(r.Context(), w, r.URL.Path, "site_details.html", data)
+}
+
+func deployErrorMessage(err error) string {
+	message := err.Error()
+	switch {
+	case errors.Is(err, system.ErrInvalidRepoURL):
+		message = "Repository URL is invalid. Use an https or git@ style URL."
+	case errors.Is(err, system.ErrInvalidBranch):
+		message = "Branch name is invalid."
+	case errors.Is(err, system.ErrInvalidTargetDirectory):
+		message = "Target directory must be an absolute path."
+	case errors.Is(err, system.ErrInvalidRunAsUser):
+		message = "Run-as user is invalid for Ubuntu deployment."
+	}
+	return message
+}
+
+func runtimeErrorMessage(err error) string {
+	message := err.Error()
+	switch {
+	case errors.Is(err, system.ErrInvalidNodeVersion):
+		message = "Node version is invalid. Use values like 20, 20.11.1, or lts/*."
+	case errors.Is(err, system.ErrNVMNotInstalled):
+		message = "NVM is not installed yet for this Linux user. Install NVM first."
+	case errors.Is(err, system.ErrInvalidProcessName):
+		message = "PM2 process name is invalid."
+	case errors.Is(err, system.ErrInvalidScriptPath):
+		message = "Script path is invalid. Use a relative file like server.js or an absolute path."
+	case errors.Is(err, system.ErrInvalidArguments):
+		message = "PM2 process arguments contain unsupported characters."
+	case errors.Is(err, system.ErrInvalidTargetDirectory):
+		message = "Target directory must be an absolute path."
+	case errors.Is(err, system.ErrInvalidUsername), errors.Is(err, system.ErrInvalidRunAsUser):
+		message = "Linux user is invalid for this runtime action."
+	}
+	return message
+}
+
+func gitAuthErrorMessage(err error) string {
+	message := err.Error()
+	switch {
+	case errors.Is(err, system.ErrInvalidGitHost):
+		message = "Git host is invalid."
+	case errors.Is(err, system.ErrInvalidCredentialProtocol):
+		message = "Credential protocol must be http or https."
+	case errors.Is(err, system.ErrInvalidCredentialUsername):
+		message = "Credential username is invalid."
+	case errors.Is(err, system.ErrInvalidCredentialPassword):
+		message = "Credential password or token is required."
+	case errors.Is(err, system.ErrInvalidUsername):
+		message = "Linux user is invalid for this git authentication action."
+	}
+	return message
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
@@ -1096,6 +1432,27 @@ func (a *App) listManagedSites(r *http.Request) []domain.ManagedSite {
 		return nil
 	}
 	return sites
+}
+
+func (a *App) listSiteDeploymentReleases(r *http.Request, targetDirectory string, runAsUser string) []domain.DeploymentRelease {
+	if a.store == nil {
+		return nil
+	}
+	releases, err := a.store.ListDeploymentReleases(r.Context(), 50)
+	if err != nil {
+		return nil
+	}
+	filtered := make([]domain.DeploymentRelease, 0, len(releases))
+	for _, release := range releases {
+		if release.TargetDirectory != targetDirectory {
+			continue
+		}
+		if runAsUser != "" && release.RunAsUser != runAsUser {
+			continue
+		}
+		filtered = append(filtered, release)
+	}
+	return filtered
 }
 
 func (a *App) listPHPVersions() []string {

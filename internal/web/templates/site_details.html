@@ -1,0 +1,301 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">Site details</p>
+        <h2>{{.SelectedSite.Name}}</h2>
+        <p class="lead">Manage the repository that lives under this site's root directory and keep deploy activity attached to the site itself.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+    {{if .ResultPath}}
+    <div class="alert success">Target path: <strong>{{.ResultPath}}</strong></div>
+    {{end}}
+    {{if .CommitSHA}}
+    <div class="alert success">Current commit: <strong>{{.CommitSHA}}</strong></div>
+    {{end}}
+    {{if .PreviousCommitSHA}}
+    <div class="alert success">Previous commit: <strong>{{.PreviousCommitSHA}}</strong></div>
+    {{end}}
+</section>
+{{end}}
+
+{{if .CommandOutput}}
+<section class="grid single">
+    <article class="panel">
+        <h3>Command output</h3>
+        <pre class="command-output">{{.CommandOutput}}</pre>
+    </article>
+</section>
+{{end}}
+
+<section class="grid">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">Managed site</p>
+                <h3>Site summary</h3>
+            </div>
+            <a class="btn btn-sm btn-outline-secondary" href="/sites">Back to sites</a>
+        </div>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Domain</strong><span>{{.SelectedSite.DomainName}}</span></div>
+            <div><strong>Owner</strong><span>{{if .SelectedSite.OwnerLinuxUser}}{{.SelectedSite.OwnerLinuxUser}}{{else}}-{{end}}</span></div>
+            <div><strong>Mode</strong><span>{{.SelectedSite.Runtime}}</span></div>
+            <div><strong>PHP</strong><span>{{if .SelectedSite.PHPVersion}}{{.SelectedSite.PHPVersion}}{{else}}-{{end}}</span></div>
+            <div><strong>Root</strong><span>{{if .SelectedSite.RootDirectory}}{{.SelectedSite.RootDirectory}}{{else}}-{{end}}</span></div>
+            <div><strong>Nginx config</strong><span>{{if .SelectedSite.NginxConfigPath}}{{.SelectedSite.NginxConfigPath}}{{else}}-{{end}}</span></div>
+            <div><strong>Upstream</strong><span>{{if .SelectedSite.UpstreamURL}}{{.SelectedSite.UpstreamURL}}{{else}}-{{end}}</span></div>
+            <div><strong>Updated</strong><span>{{.SelectedSite.UpdatedAt.Format "2006-01-02 15:04:05"}}</span></div>
+        </div>
+    </article>
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">Repository state</p>
+                <h3>{{if .RepositoryStatus.IsGitRepo}}Git repository detected{{else}}No git repository yet{{end}}</h3>
+            </div>
+            <span class="badge subtle-badge">{{if .RepositoryStatus.DirectoryExists}}Directory ready{{else}}Directory missing{{end}}</span>
+        </div>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Remote</strong><span>{{if .RepositoryStatus.RemoteURL}}{{.RepositoryStatus.RemoteURL}}{{else}}-{{end}}</span></div>
+            <div><strong>Branch</strong><span>{{if .RepositoryStatus.Branch}}{{.RepositoryStatus.Branch}}{{else}}-{{end}}</span></div>
+            <div><strong>Commit</strong><span>{{if .RepositoryStatus.CurrentCommit}}{{.RepositoryStatus.CurrentCommit}}{{else}}-{{end}}</span></div>
+            <div><strong>Target</strong><span>{{.RepositoryStatus.TargetDirectory}}</span></div>
+        </div>
+        <p class="muted details-note">{{if .RepositoryStatus.IsGitRepo}}Use the sync form to pull the latest branch state into this site root.{{else}}Connect a repository and the panel will clone it directly into this site's root directory.{{end}}</p>
+    </article>
+</section>
+
+<section class="grid single">
+    <article class="panel">
+        <h3>{{if .RepositoryStatus.IsGitRepo}}Pull latest code{{else}}Clone repository{{end}}</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="details_action" value="sync_repository">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <div class="form-grid two-up">
+                <label class="span-2">
+                    <span>Repository URL</span>
+                    <input type="text" name="repository_url" value="{{.GitRepositoryURL}}" placeholder="https://github.com/org/repo.git" required>
+                </label>
+                <label>
+                    <span>Branch</span>
+                    <input type="text" name="branch" value="{{.GitBranch}}" placeholder="main">
+                </label>
+                <label>
+                    <span>Run as Linux user</span>
+                    <input type="text" value="{{.SelectedSite.OwnerLinuxUser}}" disabled>
+                </label>
+                <label class="span-2">
+                    <span>Target directory</span>
+                    <input type="text" value="{{.SelectedSite.RootDirectory}}" disabled>
+                </label>
+                <label class="span-2">
+                    <span>Post-deploy command</span>
+                    <input type="text" name="post_deploy_command" value="{{.GitPostDeployCommand}}" placeholder="npm ci && npm run build && pm2 reload {{.SelectedSite.Name}}">
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">{{if .RepositoryStatus.IsGitRepo}}Pull latest{{else}}Clone into site root{{end}}</button>
+            </div>
+        </form>
+    </article>
+</section>
+
+<section class="grid">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">Node runtime</p>
+                <h3>{{if .RuntimeStatus.NVMInstalled}}Runtime ready{{else}}Runtime not prepared yet{{end}}</h3>
+            </div>
+            <span class="badge subtle-badge">{{if .RuntimeStatus.PM2Installed}}PM2 installed{{else}}PM2 missing{{end}}</span>
+        </div>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Linux user</strong><span>{{.RuntimeStatus.User}}</span></div>
+            <div><strong>Home</strong><span>{{.RuntimeStatus.HomeDirectory}}</span></div>
+            <div><strong>NVM</strong><span>{{if .RuntimeStatus.NVMInstalled}}Installed{{else}}Not installed{{end}}</span></div>
+            <div><strong>Default node</strong><span>{{if .RuntimeStatus.DefaultNodeVersion}}{{.RuntimeStatus.DefaultNodeVersion}}{{else}}-{{end}}</span></div>
+        </div>
+        {{if .RuntimeStatus.InstalledNodeVersions}}
+        <div class="badge-row">
+            {{range .RuntimeStatus.InstalledNodeVersions}}
+            <span class="badge">{{.}}</span>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="muted details-note">No Node versions are installed for this Linux user yet.</p>
+        {{end}}
+    </article>
+    <article class="panel">
+        <h3>Prepare runtime</h3>
+        <div class="stack-cluster">
+            <form method="post" class="inline-form details-inline-form">
+                <input type="hidden" name="details_action" value="install_nvm">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <button type="submit">Install NVM</button>
+            </form>
+            <form method="post" class="stack-form compact-form">
+                <input type="hidden" name="details_action" value="install_node">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <div class="form-grid two-up">
+                    <label>
+                        <span>Node version</span>
+                        <input type="text" name="node_version" value="{{.RuntimeNodeVersion}}" placeholder="20 or lts/*" required>
+                    </label>
+                    <label class="checkbox-row compact checkbox-align-end">
+                        <input type="checkbox" name="set_default_node" value="1" checked>
+                        <span>Set as default node</span>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit">Install node version</button>
+                </div>
+            </form>
+            <form method="post" class="stack-form compact-form">
+                <input type="hidden" name="details_action" value="install_pm2">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <div class="form-grid two-up">
+                    <label>
+                        <span>Node version for PM2</span>
+                        <input type="text" name="pm2_node_version" value="{{.PM2NodeVersion}}" placeholder="Use default if left empty">
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit">Install PM2</button>
+                </div>
+            </form>
+        </div>
+    </article>
+</section>
+
+<section class="grid single">
+    <article class="panel">
+        <h3>Start site with PM2</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="details_action" value="start_pm2">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Process name</span>
+                    <input type="text" name="process_name" value="{{.PM2ProcessName}}" placeholder="{{.SelectedSite.Name}}" required>
+                </label>
+                <label>
+                    <span>Node version</span>
+                    <input type="text" name="pm2_node_version" value="{{.PM2NodeVersion}}" placeholder="20">
+                </label>
+                <label>
+                    <span>Start script</span>
+                    <input type="text" name="script_path" value="{{.PM2ScriptPath}}" placeholder="server.js" required>
+                </label>
+                <label>
+                    <span>Process arguments</span>
+                    <input type="text" name="process_arguments" value="{{.PM2Arguments}}" placeholder="--port 3000">
+                </label>
+                <label class="span-2">
+                    <span>Working directory</span>
+                    <input type="text" value="{{.SelectedSite.RootDirectory}}" disabled>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Start with PM2</button>
+            </div>
+        </form>
+    </article>
+</section>
+
+<section class="grid">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">SSH deploy key</p>
+                <h3>{{if .GitAuthStatus.DeployKeyReady}}Deploy key ready{{else}}No deploy key yet{{end}}</h3>
+            </div>
+            <span class="badge subtle-badge">{{if .GitAuthStatus.KnownHostTrusted}}Host trusted{{else}}Host not trusted{{end}}</span>
+        </div>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Repository host</strong><span>{{if .GitAuthStatus.RepositoryHost}}{{.GitAuthStatus.RepositoryHost}}{{else}}-{{end}}</span></div>
+            <div><strong>Protocol</strong><span>{{if .GitAuthStatus.RepositoryProtocol}}{{.GitAuthStatus.RepositoryProtocol}}{{else}}-{{end}}</span></div>
+            <div><strong>Key path</strong><span>{{if .GitAuthStatus.SSHKeyPath}}{{.GitAuthStatus.SSHKeyPath}}{{else}}-{{end}}</span></div>
+        </div>
+        {{if .GitAuthStatus.PublicKey}}
+        <pre class="command-output details-pre">{{.GitAuthStatus.PublicKey}}</pre>
+        {{else}}
+        <p class="muted details-note">Generate a deploy key, add the public key to GitHub/GitLab, then clone the repository using the SSH URL.</p>
+        {{end}}
+        <div class="stack-cluster top-gap">
+            <form method="post" class="inline-form details-inline-form">
+                <input type="hidden" name="details_action" value="generate_deploy_key">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="repository_url" value="{{.GitRepositoryURL}}">
+                <button type="submit">Generate SSH deploy key</button>
+            </form>
+            <form method="post" class="stack-form compact-form">
+                <input type="hidden" name="details_action" value="trust_git_host">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <div class="form-grid two-up">
+                    <label>
+                        <span>SSH host</span>
+                        <input type="text" name="credential_host" value="{{.GitCredentialHost}}" placeholder="github.com" required>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit">Trust SSH host</button>
+                </div>
+            </form>
+        </div>
+    </article>
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">Private HTTPS access</p>
+                <h3>{{if .GitAuthStatus.CredentialConfigured}}Credentials stored{{else}}No stored credentials yet{{end}}</h3>
+            </div>
+            <span class="badge subtle-badge">Credential store</span>
+        </div>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Store path</strong><span>{{if .GitAuthStatus.CredentialStorePath}}{{.GitAuthStatus.CredentialStorePath}}{{else}}-{{end}}</span></div>
+            <div><strong>Target host</strong><span>{{if .GitCredentialHost}}{{.GitCredentialHost}}{{else}}-{{end}}</span></div>
+        </div>
+        <p class="muted details-note">Use this for private repositories accessed over HTTPS with a username and personal access token.</p>
+        <form method="post" class="stack-form compact-form">
+            <input type="hidden" name="details_action" value="store_git_credential">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Protocol</span>
+                    <select name="credential_protocol">
+                        <option value="https" {{if eq .GitCredentialProtocol "https"}}selected{{end}}>https</option>
+                        <option value="http" {{if eq .GitCredentialProtocol "http"}}selected{{end}}>http</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Host</span>
+                    <input type="text" name="credential_host" value="{{.GitCredentialHost}}" placeholder="github.com" required>
+                </label>
+                <label>
+                    <span>Username</span>
+                    <input type="text" name="credential_username" value="{{.GitCredentialUsername}}" placeholder="git or your-username" required>
+                </label>
+                <label>
+                    <span>Password or token</span>
+                    <input type="password" name="credential_password" placeholder="ghp_xxx or PAT" required>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Store HTTPS credentials</button>
+            </div>
+        </form>
+    </article>
+</section>
+
+{{template "deploy_history" .}}
+{{end}}

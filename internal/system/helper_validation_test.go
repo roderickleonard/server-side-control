@@ -9,6 +9,9 @@ func TestValidateHelperAction(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "allowed deploy rollback", action: "deploy.rollback", wantErr: false},
+		{name: "allowed deploy inspect", action: "deploy.inspect", wantErr: false},
+		{name: "allowed runtime inspect", action: "runtime.inspect", wantErr: false},
+		{name: "allowed git auth", action: "git_auth.ensure_deploy_key", wantErr: false},
 		{name: "allowed mysql provisioning", action: "mysql.provision_database", wantErr: false},
 		{name: "allowed mysql admin password rotation", action: "mysql.rotate_admin_password", wantErr: false},
 		{name: "allowed tls", action: "nginx.enable_tls", wantErr: false},

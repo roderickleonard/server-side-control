@@ -5,7 +5,6 @@ package system
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,38 +16,6 @@ import (
 
 var repoURLPattern = regexp.MustCompile(`^(https://|git@)[^\s]+$`)
 var branchPattern = regexp.MustCompile(`^[A-Za-z0-9._/-]{1,128}$`)
-
-var ErrInvalidRepoURL = errors.New("invalid git repository url")
-var ErrInvalidBranch = errors.New("invalid branch name")
-var ErrInvalidTargetDirectory = errors.New("invalid target directory")
-var ErrInvalidRunAsUser = errors.New("invalid run-as user")
-
-type DeploySpec struct {
-	RepositoryURL    string
-	Branch           string
-	TargetDirectory  string
-	RunAsUser        string
-	PostDeployCommand string
-}
-
-type RollbackSpec struct {
-	TargetDirectory   string
-	RunAsUser         string
-	ReleaseCommitSHA  string
-	PostDeployCommand string
-}
-
-type DeployResult struct {
-	Action            string
-	Output            string
-	CommitSHA         string
-	PreviousCommitSHA string
-}
-
-type DeployManager interface {
-	Deploy(spec DeploySpec) (DeployResult, error)
-	Rollback(spec RollbackSpec) (DeployResult, error)
-}
 
 type linuxDeployManager struct{}
 
@@ -157,6 +124,38 @@ func (linuxDeployManager) Rollback(spec RollbackSpec) (DeployResult, error) {
 	return DeployResult{Action: "rollback", Output: strings.TrimSpace(output.String()), CommitSHA: commitSHA, PreviousCommitSHA: previousCommit}, nil
 }
 
+func (linuxDeployManager) Inspect(spec RepositoryInspectSpec) (RepositoryStatus, error) {
+	spec.TargetDirectory = strings.TrimSpace(spec.TargetDirectory)
+	spec.RunAsUser = strings.TrimSpace(spec.RunAsUser)
+	if !filepath.IsAbs(spec.TargetDirectory) {
+		return RepositoryStatus{}, ErrInvalidTargetDirectory
+	}
+	if !usernamePattern.MatchString(spec.RunAsUser) {
+		return RepositoryStatus{}, ErrInvalidRunAsUser
+	}
+
+	status := RepositoryStatus{
+		TargetDirectory: spec.TargetDirectory,
+		RunAsUser:       spec.RunAsUser,
+	}
+	if !dirExists(spec.TargetDirectory) {
+		return status, nil
+	}
+	status.DirectoryExists = true
+	if !dirExists(filepath.Join(spec.TargetDirectory, ".git")) {
+		return status, nil
+	}
+	status.IsGitRepo = true
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	status.RemoteURL = strings.TrimSpace(commandOutputAsUser(ctx, spec.RunAsUser, spec.TargetDirectory, "config", "--get", "remote.origin.url"))
+	status.Branch = strings.TrimSpace(commandOutputAsUser(ctx, spec.RunAsUser, spec.TargetDirectory, "rev-parse", "--abbrev-ref", "HEAD"))
+	status.CurrentCommit = strings.TrimSpace(commandOutputAsUser(ctx, spec.RunAsUser, spec.TargetDirectory, "rev-parse", "HEAD"))
+	return status, nil
+}
+
 func currentCommit(ctx context.Context, username string, directory string, output *bytes.Buffer) (string, error) {
 	if !dirExists(filepath.Join(directory, ".git")) {
 		return "", nil
@@ -172,6 +171,15 @@ func currentCommit(ctx context.Context, username string, directory string, outpu
 		output.Write(localOutput.Bytes())
 	}
 	return strings.TrimSpace(localOutput.String()), nil
+}
+
+func commandOutputAsUser(ctx context.Context, username string, directory string, args ...string) string {
+	var output bytes.Buffer
+	commandArgs := append([]string{"-C", directory}, args...)
+	if err := runAsUser(ctx, username, &output, "git", commandArgs...); err != nil {
+		return ""
+	}
+	return output.String()
 }
 
 func runAsUser(ctx context.Context, username string, output *bytes.Buffer, name string, args ...string) error {
