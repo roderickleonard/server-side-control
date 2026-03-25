@@ -168,6 +168,9 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		err := system.NewPHPManager().SwitchSiteVersion(input.ConfigPath, input.Version)
 		writeSuccess(nil, "", err)
+	case "php.list_versions":
+		versions, err := system.NewPHPManager().ListAvailableVersions()
+		writeSuccess(versions, "", err)
 	default:
 		writeFailure(fmt.Errorf("unknown helper action: %s", request.Action), "")
 	}

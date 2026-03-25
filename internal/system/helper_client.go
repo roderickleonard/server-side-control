@@ -270,3 +270,9 @@ func (m *helperPHPManager) SwitchSiteVersion(configPath string, version string) 
 	}, nil)
 	return err
 }
+
+func (m *helperPHPManager) ListAvailableVersions() ([]string, error) {
+	var versions []string
+	_, err := m.client.Call(context.Background(), "php.list_versions", map[string]any{}, &versions)
+	return versions, err
+}

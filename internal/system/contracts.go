@@ -45,4 +45,5 @@ type PM2Manager interface {
 
 type PHPManager interface {
 	SwitchSiteVersion(configPath string, version string) error
+	ListAvailableVersions() ([]string, error)
 }

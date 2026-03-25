@@ -27,30 +27,38 @@
         <h3>Create database access</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="database_action" value="provision">
-            <label>
-                <span>Database name</span>
-                <input type="text" name="database_name" placeholder="app_prod" required>
-            </label>
-            <label>
-                <span>MySQL username</span>
-                <input type="text" name="database_user" placeholder="app_prod_user" required>
-            </label>
-            <label>
-                <span>Password</span>
-                <input type="password" name="database_password" placeholder="Leave blank to generate">
-            </label>
-            <button type="submit">Provision database</button>
+            <div class="form-grid two-up">
+                <label>
+                    <span>Database name</span>
+                    <input type="text" name="database_name" placeholder="app_prod" required>
+                </label>
+                <label>
+                    <span>MySQL username</span>
+                    <input type="text" name="database_user" placeholder="app_prod_user" required>
+                </label>
+                <label class="span-2">
+                    <span>Password</span>
+                    <input type="password" name="database_password" placeholder="Leave blank to generate">
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Provision database</button>
+            </div>
         </form>
     </article>
     <article class="panel">
         <h3>Rotate MySQL admin password</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="database_action" value="rotate_admin_password">
-            <label>
-                <span>New admin password</span>
-                <input type="password" name="admin_password" placeholder="Leave blank to generate">
-            </label>
-            <button type="submit">Rotate admin password</button>
+            <div class="form-grid">
+                <label>
+                    <span>New admin password</span>
+                    <input type="password" name="admin_password" placeholder="Leave blank to generate">
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Rotate admin password</button>
+            </div>
         </form>
         <p class="muted">This updates the password of the MySQL admin account currently stored in the root-only defaults file and immediately rewrites that file.</p>
     </article>
@@ -69,8 +77,8 @@
     <article class="panel">
         <h3>Existing databases</h3>
         {{if .DatabaseAccess}}
-        <div class="audit-table">
-            <div class="audit-row audit-head release-head">
+        <div class="table-grid cols-5">
+            <div class="table-row table-head cols-5">
                 <span>Database</span>
                 <span>User</span>
                 <span>Host</span>
@@ -78,7 +86,7 @@
                 <span>Delete</span>
             </div>
             {{range .DatabaseAccess}}
-            <div class="audit-row release-row">
+            <div class="table-row cols-5">
                 <span>{{.DatabaseName}}</span>
                 <span>{{if .Username}}{{.Username}}{{else}}-{{end}}</span>
                 <span>{{if .Host}}{{.Host}}{{else}}-{{end}}</span>

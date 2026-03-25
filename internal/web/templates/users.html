@@ -24,15 +24,19 @@
         <h3>Create user</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="user_action" value="create">
-            <label>
-                <span>Linux username</span>
-                <input type="text" name="username" placeholder="deployapp" required>
-            </label>
+            <div class="form-grid">
+                <label>
+                    <span>Linux username</span>
+                    <input type="text" name="username" placeholder="deployapp" required>
+                </label>
+            </div>
             <label class="checkbox-row">
                 <input type="checkbox" name="create_home" value="1" checked>
                 <span>Create home directory</span>
             </label>
-            <button type="submit">Create user</button>
+            <div class="form-actions">
+                <button type="submit">Create user</button>
+            </div>
         </form>
     </article>
     <article class="panel">
@@ -49,8 +53,8 @@
     <article class="panel">
         <h3>Existing users</h3>
         {{if .LinuxUsers}}
-        <div class="audit-table">
-            <div class="audit-row audit-head release-head">
+        <div class="table-grid cols-5">
+            <div class="table-row table-head cols-5">
                 <span>Username</span>
                 <span>UID</span>
                 <span>Home</span>
@@ -58,7 +62,7 @@
                 <span>Delete</span>
             </div>
             {{range .LinuxUsers}}
-            <div class="audit-row release-row">
+            <div class="table-row cols-5">
                 <span>{{.Username}}</span>
                 <span>{{.UID}}</span>
                 <span>{{.HomeDirectory}}</span>

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -17,6 +18,40 @@ type linuxPHPManager struct{}
 
 func NewPHPManager() PHPManager {
 	return linuxPHPManager{}
+}
+
+func (linuxPHPManager) ListAvailableVersions() ([]string, error) {
+	versionSet := map[string]struct{}{}
+
+	entries, err := os.ReadDir("/etc/php")
+	if err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() || !phpVersionPattern.MatchString(entry.Name()) {
+				continue
+			}
+			if _, statErr := os.Stat(filepath.Join("/etc/php", entry.Name(), "fpm")); statErr == nil {
+				versionSet[entry.Name()] = struct{}{}
+			}
+		}
+	}
+
+	sockets, globErr := filepath.Glob("/run/php/php*-fpm.sock")
+	if globErr == nil {
+		for _, socketPath := range sockets {
+			name := strings.TrimSuffix(filepath.Base(socketPath), "-fpm.sock")
+			name = strings.TrimPrefix(name, "php")
+			if phpVersionPattern.MatchString(name) {
+				versionSet[name] = struct{}{}
+			}
+		}
+	}
+
+	versions := make([]string, 0, len(versionSet))
+	for version := range versionSet {
+		versions = append(versions, version)
+	}
+	sort.Strings(versions)
+	return versions, nil
 }
 
 func (linuxPHPManager) SwitchSiteVersion(configPath string, version string) error {

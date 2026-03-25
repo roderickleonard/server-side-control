@@ -419,11 +419,18 @@ func (a *App) handleDatabaseUserPasswordRotation(w http.ResponseWriter, r *http.
 }
 
 func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
+	users := a.listLinuxUsers()
+	sites := a.listManagedSites(r)
+	versions := a.listPHPVersions()
+
 	if r.Method == http.MethodGet {
 		a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
 			Title:          "Sites",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
+			ManagedSites:   sites,
+			PHPVersions:    versions,
 		})
 		return
 	}
@@ -438,13 +445,16 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 			Title:          "Sites",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
+			ManagedSites:   sites,
+			PHPVersions:    versions,
 			RequestError:   "The submitted site form could not be parsed.",
 		})
 		return
 	}
 
 	if r.FormValue("site_action") == "tls" {
-		a.handleSiteTLS(w, r)
+		a.handleSiteTLS(w, r, users, sites, versions)
 		return
 	}
 
@@ -480,6 +490,9 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 			Title:          "Sites",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
+			ManagedSites:   sites,
+			PHPVersions:    versions,
 			RequestError:   message,
 		})
 		return
@@ -498,16 +511,20 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.recordAudit(r.Context(), "nginx.apply_site", spec.Name, "success", map[string]any{"domain": spec.Domain, "mode": spec.Mode, "config_path": configPath})
+	sites = a.listManagedSites(r)
 	a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
 		Title:          "Sites",
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
+		LinuxUsers:     users,
+		ManagedSites:   sites,
+		PHPVersions:    versions,
 		SuccessMessage: "Nginx site was applied, validated, and reloaded successfully.",
 		ResultPath:     configPath,
 	})
 }
 
-func (a *App) handleSiteTLS(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleSiteTLS(w http.ResponseWriter, r *http.Request, users []system.LinuxUser, sites []domain.ManagedSite, versions []string) {
 	request := system.TLSRequest{
 		Domain:   r.FormValue("tls_domain"),
 		Email:    r.FormValue("tls_email"),
@@ -528,6 +545,9 @@ func (a *App) handleSiteTLS(w http.ResponseWriter, r *http.Request) {
 			Title:          "Sites",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
+			ManagedSites:   sites,
+			PHPVersions:    versions,
 			RequestError:   message,
 			CommandOutput:  output,
 		})
@@ -539,12 +559,16 @@ func (a *App) handleSiteTLS(w http.ResponseWriter, r *http.Request) {
 		Title:          "Sites",
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
+		LinuxUsers:     users,
+		ManagedSites:   sites,
+		PHPVersions:    versions,
 		SuccessMessage: "TLS certificate was issued and Nginx was reloaded successfully.",
 		CommandOutput:  output,
 	})
 }
 
 func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
+	users := a.listLinuxUsers()
 	releases := []domain.DeploymentRelease{}
 	if a.store != nil {
 		if entries, err := a.store.ListDeploymentReleases(r.Context(), 12); err == nil {
@@ -557,6 +581,7 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 			Title:          "Deploys",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
 			DeploymentReleases: releases,
 		})
 		return
@@ -572,6 +597,7 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 			Title:          "Deploys",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
 			RequestError:   "The submitted deploy form could not be parsed.",
 			DeploymentReleases: releases,
 		})
@@ -580,7 +606,7 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 
 	mode := r.FormValue("deploy_mode")
 	if mode == "rollback" {
-		a.handleDeployRollback(w, r, releases)
+		a.handleDeployRollback(w, r, users, releases)
 		return
 	}
 
@@ -610,6 +636,7 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 			Title:          "Deploys",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
 			RequestError:   message,
 			CommandOutput:  result.Output,
 			DeploymentReleases: releases,
@@ -653,6 +680,7 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 		Title:          "Deploys",
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
+		LinuxUsers:     users,
 		SuccessMessage: "Repository deploy completed successfully.",
 		ResultPath:     spec.TargetDirectory,
 		CommandOutput:  result.Output,
@@ -662,7 +690,7 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, releases []domain.DeploymentRelease) {
+func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, users []system.LinuxUser, releases []domain.DeploymentRelease) {
 	spec := system.RollbackSpec{
 		TargetDirectory:   r.FormValue("rollback_target_directory"),
 		RunAsUser:         r.FormValue("rollback_run_as_user"),
@@ -677,6 +705,7 @@ func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, relea
 			Title:          "Deploys",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
 			RequestError:   err.Error(),
 			CommandOutput:  result.Output,
 			DeploymentReleases: releases,
@@ -706,6 +735,7 @@ func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, relea
 		Title:          "Deploys",
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
+		LinuxUsers:     users,
 		SuccessMessage: "Rollback completed successfully.",
 		ResultPath:     spec.TargetDirectory,
 		CommandOutput:  result.Output,
@@ -716,11 +746,14 @@ func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, relea
 }
 
 func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
+	users := a.listLinuxUsers()
+
 	if r.Method == http.MethodGet {
 		a.render(r.Context(), w, r.URL.Path, "processes.html", TemplateData{
 			Title:          "Processes",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
 		})
 		return
 	}
@@ -735,6 +768,7 @@ func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
 			Title:          "Processes",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
 			RequestError:   "The submitted process form could not be parsed.",
 		})
 		return
@@ -780,6 +814,7 @@ func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
 			Title:          "Processes",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
 			RequestError:   err.Error(),
 			CommandOutput:  output,
 		})
@@ -791,17 +826,23 @@ func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
 		Title:          "Processes",
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
+		LinuxUsers:     users,
 		SuccessMessage: message,
 		CommandOutput:  output,
 	})
 }
 
 func (a *App) handlePHP(w http.ResponseWriter, r *http.Request) {
+	sites := a.listManagedSites(r)
+	versions := a.listPHPVersions()
+
 	if r.Method == http.MethodGet {
 		a.render(r.Context(), w, r.URL.Path, "php.html", TemplateData{
 			Title:          "PHP",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			ManagedSites:   sites,
+			PHPVersions:    versions,
 		})
 		return
 	}
@@ -816,6 +857,8 @@ func (a *App) handlePHP(w http.ResponseWriter, r *http.Request) {
 			Title:          "PHP",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			ManagedSites:   sites,
+			PHPVersions:    versions,
 			RequestError:   "Managed site storage is not configured yet. Set PANEL_DATABASE_DSN first.",
 		})
 		return
@@ -826,6 +869,8 @@ func (a *App) handlePHP(w http.ResponseWriter, r *http.Request) {
 			Title:          "PHP",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			ManagedSites:   sites,
+			PHPVersions:    versions,
 			RequestError:   "The submitted PHP form could not be parsed.",
 		})
 		return
@@ -847,24 +892,66 @@ func (a *App) handlePHP(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.php.SwitchSiteVersion(site.NginxConfigPath, phpVersion); err != nil {
 		a.recordAudit(r.Context(), "php.switch", siteName, "failure", map[string]any{"version": phpVersion, "config_path": site.NginxConfigPath, "error": err.Error()})
+		message := err.Error()
+		if errors.Is(err, system.ErrInvalidPHPVersion) {
+			message = "PHP version must look like 8.2 or 8.3."
+		}
 		a.render(r.Context(), w, r.URL.Path, "php.html", TemplateData{
 			Title:          "PHP",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
-			RequestError:   err.Error(),
+			ManagedSites:   sites,
+			PHPVersions:    versions,
+			RequestError:   message,
 		})
 		return
 	}
 
 	_ = a.store.UpdateManagedSitePHPVersion(r.Context(), siteName, phpVersion)
 	a.recordAudit(r.Context(), "php.switch", siteName, "success", map[string]any{"version": phpVersion, "config_path": site.NginxConfigPath})
+	sites = a.listManagedSites(r)
 	a.render(r.Context(), w, r.URL.Path, "php.html", TemplateData{
 		Title:          "PHP",
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
+		ManagedSites:   sites,
+		PHPVersions:    versions,
 		SuccessMessage: "PHP-FPM version switched successfully.",
 		ResultPath:     site.NginxConfigPath,
 	})
+}
+
+func (a *App) listLinuxUsers() []system.LinuxUser {
+	if a.users == nil {
+		return nil
+	}
+	users, err := a.users.ListLinuxUsers()
+	if err != nil {
+		return nil
+	}
+	return users
+}
+
+func (a *App) listManagedSites(r *http.Request) []domain.ManagedSite {
+	if a.store == nil {
+		return nil
+	}
+	sites, err := a.store.ListManagedSites(r.Context())
+	if err != nil {
+		return nil
+	}
+	return sites
+}
+
+func (a *App) listPHPVersions() []string {
+	if a.php == nil {
+		return nil
+	}
+	versions, err := a.php.ListAvailableVersions()
+	if err != nil {
+		return nil
+	}
+	return versions
 }
 
 func (a *App) handleLogs(w http.ResponseWriter, r *http.Request) {

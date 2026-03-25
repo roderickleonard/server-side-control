@@ -80,6 +80,40 @@ func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.M
 	return site, nil
 }
 
+func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, error) {
+	if s == nil {
+		return nil, errors.New("store is not configured")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, php_version, nginx_config_path, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("list managed sites: %w", err)
+	}
+	defer rows.Close()
+
+	sites := make([]domain.ManagedSite, 0)
+	for rows.Next() {
+		var site domain.ManagedSite
+		if err := rows.Scan(
+			&site.ID,
+			&site.Name,
+			&site.OwnerLinuxUser,
+			&site.DomainName,
+			&site.RootDirectory,
+			&site.Runtime,
+			&site.PHPVersion,
+			&site.NginxConfigPath,
+			&site.CreatedAt,
+			&site.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan managed site: %w", err)
+		}
+		sites = append(sites, site)
+	}
+
+	return sites, rows.Err()
+}
+
 func (s *Store) UpdateManagedSitePHPVersion(ctx context.Context, name string, version string) error {
 	if s == nil {
 		return errors.New("store is not configured")

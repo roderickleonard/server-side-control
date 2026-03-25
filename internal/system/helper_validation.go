@@ -28,6 +28,7 @@ var allowedHelperActions = map[string]struct{}{
 	"pm2.stop":         {},
 	"pm2.logs":         {},
 	"php.switch":       {},
+	"php.list_versions": {},
 }
 
 func ValidateHelperAction(action string) error {

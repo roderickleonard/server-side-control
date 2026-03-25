@@ -42,50 +42,68 @@
         <h3>Run deploy</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="deploy_mode" value="deploy">
-            <label>
-                <span>Repository URL</span>
-                <input type="text" name="repository_url" placeholder="https://github.com/org/repo.git" required>
-            </label>
-            <label>
-                <span>Branch</span>
-                <input type="text" name="branch" placeholder="main">
-            </label>
-            <label>
-                <span>Target directory</span>
-                <input type="text" name="target_directory" placeholder="/var/www/app/current" required>
-            </label>
-            <label>
-                <span>Run as Linux user</span>
-                <input type="text" name="run_as_user" placeholder="deployapp" required>
-            </label>
-            <label>
-                <span>Post-deploy command</span>
-                <input type="text" name="post_deploy_command" placeholder="npm ci && pm2 restart app">
-            </label>
-            <button type="submit">Deploy repository</button>
+            <div class="form-grid two-up">
+                <label class="span-2">
+                    <span>Repository URL</span>
+                    <input type="text" name="repository_url" placeholder="https://github.com/org/repo.git" required>
+                </label>
+                <label>
+                    <span>Branch</span>
+                    <input type="text" name="branch" placeholder="main">
+                </label>
+                <label>
+                    <span>Target directory</span>
+                    <input type="text" name="target_directory" placeholder="/var/www/app/current" required>
+                </label>
+                <label>
+                    <span>Run as Linux user</span>
+                    <select name="run_as_user" required>
+                        <option value="">Select Linux user</option>
+                        {{range .LinuxUsers}}
+                        <option value="{{.Username}}">{{.Username}}</option>
+                        {{end}}
+                    </select>
+                </label>
+                <label class="span-2">
+                    <span>Post-deploy command</span>
+                    <input type="text" name="post_deploy_command" placeholder="npm ci && pm2 restart app">
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Deploy repository</button>
+            </div>
         </form>
     </article>
     <article class="panel">
         <h3>Rollback release</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="deploy_mode" value="rollback">
-            <label>
-                <span>Target directory</span>
-                <input type="text" name="rollback_target_directory" placeholder="/var/www/app/current" required>
-            </label>
-            <label>
-                <span>Run as Linux user</span>
-                <input type="text" name="rollback_run_as_user" placeholder="deployapp" required>
-            </label>
-            <label>
-                <span>Release commit SHA</span>
-                <input type="text" name="release_commit_sha" placeholder="a1b2c3d4" required>
-            </label>
-            <label>
-                <span>Post-rollback command</span>
-                <input type="text" name="rollback_post_deploy_command" placeholder="pm2 restart app">
-            </label>
-            <button type="submit">Rollback to commit</button>
+            <div class="form-grid two-up">
+                <label>
+                    <span>Target directory</span>
+                    <input type="text" name="rollback_target_directory" placeholder="/var/www/app/current" required>
+                </label>
+                <label>
+                    <span>Run as Linux user</span>
+                    <select name="rollback_run_as_user" required>
+                        <option value="">Select Linux user</option>
+                        {{range .LinuxUsers}}
+                        <option value="{{.Username}}">{{.Username}}</option>
+                        {{end}}
+                    </select>
+                </label>
+                <label>
+                    <span>Release commit SHA</span>
+                    <input type="text" name="release_commit_sha" placeholder="a1b2c3d4" required>
+                </label>
+                <label>
+                    <span>Post-rollback command</span>
+                    <input type="text" name="rollback_post_deploy_command" placeholder="pm2 restart app">
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Rollback to commit</button>
+            </div>
         </form>
     </article>
 </section>

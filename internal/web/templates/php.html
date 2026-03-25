@@ -26,23 +26,84 @@
     <article class="panel">
         <h3>Switch version</h3>
         <form method="post" class="stack-form">
-            <label>
-                <span>Managed site name</span>
-                <input type="text" name="site_name" placeholder="app-main" required>
-            </label>
-            <label>
-                <span>PHP version</span>
-                <input type="text" name="php_version" placeholder="8.2" required>
-            </label>
-            <button type="submit">Switch PHP-FPM version</button>
+            <div class="form-grid two-up">
+                <label>
+                    <span>Managed site</span>
+                    <select name="site_name" required>
+                        <option value="">Select managed site</option>
+                        {{range .ManagedSites}}
+                        <option value="{{.Name}}">{{.Name}} · {{.DomainName}} · PHP {{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}</option>
+                        {{end}}
+                    </select>
+                </label>
+                <label>
+                    <span>PHP version</span>
+                    <select name="php_version" required>
+                        <option value="">Select PHP-FPM version</option>
+                        {{range .PHPVersions}}
+                        <option value="{{.}}">PHP {{.}}</option>
+                        {{end}}
+                    </select>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Switch PHP-FPM version</button>
+            </div>
         </form>
     </article>
+    <article class="panel">
+        <h3>Installed PHP versions</h3>
+        {{if .PHPVersions}}
+        <div class="badge-row">
+            {{range .PHPVersions}}
+            <span class="badge">PHP {{.}}</span>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="muted">No PHP-FPM versions were detected yet.</p>
+        {{end}}
+        <ul>
+            <li>The panel switches the `fastcgi_pass` socket inside the selected site's Nginx config.</li>
+            <li>Nginx validation runs before reload and reverts on failure.</li>
+        </ul>
+    </article>
+</section>
+
+<section class="grid single">
+    <article class="panel">
+        <h3>Managed PHP sites</h3>
+        {{if .ManagedSites}}
+        <div class="table-grid cols-5">
+            <div class="table-row table-head cols-5">
+                <span>Site</span>
+                <span>Domain</span>
+                <span>Current PHP</span>
+                <span>Config</span>
+                <span>Root</span>
+            </div>
+            {{range .ManagedSites}}
+            <div class="table-row cols-5">
+                <span>{{.Name}}</span>
+                <span>{{.DomainName}}</span>
+                <span>{{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}</span>
+                <span>{{.NginxConfigPath}}</span>
+                <span>{{.RootDirectory}}</span>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="muted">No managed sites are available for PHP switching yet.</p>
+        {{end}}
+    </article>
+</section>
+
+<section class="grid single">
     <article class="panel">
         <h3>Current behavior</h3>
         <ul>
             <li>The panel uses the stored Nginx config path for the managed site.</li>
             <li>The config is edited only when a PHP-FPM socket entry exists.</li>
-            <li>Nginx validation runs before reload and reverts on failure.</li>
+            <li>Only versions detected from the host are shown in the dropdown.</li>
         </ul>
     </article>
 </section>

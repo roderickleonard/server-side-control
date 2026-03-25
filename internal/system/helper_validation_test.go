@@ -12,6 +12,7 @@ func TestValidateHelperAction(t *testing.T) {
 		{name: "allowed mysql provisioning", action: "mysql.provision_database", wantErr: false},
 		{name: "allowed mysql admin password rotation", action: "mysql.rotate_admin_password", wantErr: false},
 		{name: "allowed tls", action: "nginx.enable_tls", wantErr: false},
+		{name: "allowed php version listing", action: "php.list_versions", wantErr: false},
 		{name: "blocked arbitrary shell", action: "shell.exec", wantErr: true},
 	}
 

@@ -53,6 +53,8 @@ type TemplateData struct {
 	SuccessMessage string
 	LinuxUsers     []system.LinuxUser
 	DatabaseAccess []system.DatabaseAccess
+	ManagedSites   []domain.ManagedSite
+	PHPVersions    []string
 	GeneratedSecret string
 	ResultPath     string
 	CommandOutput  string

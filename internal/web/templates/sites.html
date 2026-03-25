@@ -35,39 +35,53 @@
     <article class="panel">
         <h3>Create site</h3>
         <form method="post" class="stack-form">
-            <label>
-                <span>Site name</span>
-                <input type="text" name="site_name" placeholder="app-main" required>
-            </label>
-            <label>
-                <span>Owner Linux user</span>
-                <input type="text" name="owner_linux_user" placeholder="deployapp">
-            </label>
-            <label>
-                <span>Domain</span>
-                <input type="text" name="domain" placeholder="example.com" required>
-            </label>
-            <label>
-                <span>Mode</span>
-                <select name="mode">
-                    <option value="reverse_proxy">Reverse proxy</option>
-                    <option value="static">Static site</option>
-                    <option value="php">PHP site</option>
-                </select>
-            </label>
-            <label>
-                <span>Root directory</span>
-                <input type="text" name="root_directory" placeholder="/var/www/example/current/public">
-            </label>
-            <label>
-                <span>Upstream URL</span>
-                <input type="text" name="upstream_url" placeholder="127.0.0.1:3000">
-            </label>
-            <label>
-                <span>PHP version</span>
-                <input type="text" name="php_version" placeholder="8.2">
-            </label>
-            <button type="submit">Apply Nginx site</button>
+            <div class="form-grid two-up">
+                <label>
+                    <span>Site name</span>
+                    <input type="text" name="site_name" placeholder="app-main" required>
+                </label>
+                <label>
+                    <span>Owner Linux user</span>
+                    <select name="owner_linux_user">
+                        <option value="">Select Linux user</option>
+                        {{range .LinuxUsers}}
+                        <option value="{{.Username}}">{{.Username}} · {{.HomeDirectory}}</option>
+                        {{end}}
+                    </select>
+                </label>
+                <label>
+                    <span>Domain</span>
+                    <input type="text" name="domain" placeholder="example.com" required>
+                </label>
+                <label>
+                    <span>Mode</span>
+                    <select name="mode">
+                        <option value="reverse_proxy">Reverse proxy</option>
+                        <option value="static">Static site</option>
+                        <option value="php">PHP site</option>
+                    </select>
+                </label>
+                <label class="span-2">
+                    <span>Root directory</span>
+                    <input type="text" name="root_directory" placeholder="/var/www/example/current/public">
+                </label>
+                <label class="span-2">
+                    <span>Upstream URL</span>
+                    <input type="text" name="upstream_url" placeholder="127.0.0.1:3000">
+                </label>
+                <label>
+                    <span>PHP version</span>
+                    <select name="php_version">
+                        <option value="">Select PHP-FPM version</option>
+                        {{range .PHPVersions}}
+                        <option value="{{.}}">PHP {{.}}</option>
+                        {{end}}
+                    </select>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Apply Nginx site</button>
+            </div>
         </form>
     </article>
     <article class="panel">
@@ -78,6 +92,42 @@
             <li>PHP site requires an absolute root directory and a PHP-FPM version such as 8.2.</li>
             <li>On failure, the manager rolls back the written file and leaves Nginx unchanged.</li>
         </ul>
+    </article>
+</section>
+
+<section class="grid single">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">Managed sites</p>
+                <h3>Existing site records</h3>
+            </div>
+            <span class="badge">{{len .ManagedSites}} site</span>
+        </div>
+        {{if .ManagedSites}}
+        <div class="table-grid cols-6">
+            <div class="table-row table-head cols-6">
+                <span>Name</span>
+                <span>Domain</span>
+                <span>Owner</span>
+                <span>Mode</span>
+                <span>PHP</span>
+                <span>Root</span>
+            </div>
+            {{range .ManagedSites}}
+            <div class="table-row cols-6">
+                <span>{{.Name}}</span>
+                <span>{{.DomainName}}</span>
+                <span>{{if .OwnerLinuxUser}}{{.OwnerLinuxUser}}{{else}}-{{end}}</span>
+                <span>{{.Runtime}}</span>
+                <span>{{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}</span>
+                <span>{{.RootDirectory}}</span>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="muted">No managed sites recorded yet.</p>
+        {{end}}
     </article>
 </section>
 

@@ -32,30 +32,39 @@
     <article class="panel">
         <h3>Process action</h3>
         <form method="post" class="stack-form">
-            <label>
-                <span>Linux user</span>
-                <input type="text" name="run_as_user" placeholder="deployapp" required>
-            </label>
-            <label>
-                <span>Action</span>
-                <select name="action">
-                    <option value="list">List processes</option>
-                    <option value="start">Start process</option>
-                    <option value="stop">Stop process</option>
-                    <option value="restart">Restart process</option>
-                    <option value="reload">Reload process</option>
-                    <option value="logs">Show logs</option>
-                </select>
-            </label>
-            <label>
-                <span>Process name</span>
-                <input type="text" name="process_name" placeholder="api-app">
-            </label>
-            <label>
-                <span>Log lines</span>
-                <input type="text" name="log_lines" placeholder="100">
-            </label>
-            <button type="submit">Run PM2 action</button>
+            <div class="form-grid two-up">
+                <label>
+                    <span>Linux user</span>
+                    <select name="run_as_user" required>
+                        <option value="">Select Linux user</option>
+                        {{range .LinuxUsers}}
+                        <option value="{{.Username}}">{{.Username}}</option>
+                        {{end}}
+                    </select>
+                </label>
+                <label>
+                    <span>Action</span>
+                    <select name="action">
+                        <option value="list">List processes</option>
+                        <option value="start">Start process</option>
+                        <option value="stop">Stop process</option>
+                        <option value="restart">Restart process</option>
+                        <option value="reload">Reload process</option>
+                        <option value="logs">Show logs</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Process name</span>
+                    <input type="text" name="process_name" placeholder="api-app">
+                </label>
+                <label>
+                    <span>Log lines</span>
+                    <input type="text" name="log_lines" placeholder="100">
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Run PM2 action</button>
+            </div>
         </form>
     </article>
     <article class="panel">
