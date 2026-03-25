@@ -38,14 +38,14 @@
             <div class="form-grid two-up">
                 <label>
                     <span>Site name</span>
-                    <input type="text" name="site_name" placeholder="app-main" required>
+                    <input id="site-name-input" type="text" name="site_name" placeholder="app-main" required>
                 </label>
                 <label>
                     <span>Owner Linux user</span>
-                    <select name="owner_linux_user">
+                    <select id="site-owner-select" name="owner_linux_user" required>
                         <option value="">Select Linux user</option>
                         {{range .LinuxUsers}}
-                        <option value="{{.Username}}">{{.Username}} · {{.HomeDirectory}}</option>
+                        <option value="{{.Username}}" data-home="{{.HomeDirectory}}">{{.Username}} · {{.HomeDirectory}}</option>
                         {{end}}
                     </select>
                 </label>
@@ -62,10 +62,6 @@
                     </select>
                 </label>
                 <label class="span-2">
-                    <span>Root directory</span>
-                    <input type="text" name="root_directory" placeholder="/var/www/example/current/public">
-                </label>
-                <label class="span-2">
                     <span>Upstream URL</span>
                     <input type="text" name="upstream_url" placeholder="127.0.0.1:3000">
                 </label>
@@ -78,6 +74,11 @@
                         {{end}}
                     </select>
                 </label>
+                <div class="span-2 generated-path-card">
+                    <span class="sidebar-panel-label">Generated root directory</span>
+                    <strong id="site-root-preview">Select a Linux user and site name</strong>
+                    <small>The panel will always create the site root inside the selected user's web directory.</small>
+                </div>
             </div>
             <div class="form-actions">
                 <button type="submit">Apply Nginx site</button>
@@ -88,8 +89,9 @@
         <h3>Mode rules</h3>
         <ul>
             <li>Reverse proxy requires a domain and upstream target.</li>
-            <li>Static site requires an absolute root directory.</li>
-            <li>PHP site requires an absolute root directory and a PHP-FPM version such as 8.2.</li>
+            <li>The panel always creates a root directory inside the selected Linux user's web directory.</li>
+            <li>Static site uses that generated root directly for file serving.</li>
+            <li>PHP site uses the generated root and requires a PHP-FPM version such as 8.2.</li>
             <li>On failure, the manager rolls back the written file and leaves Nginx unchanged.</li>
         </ul>
     </article>
@@ -129,46 +131,21 @@
                         <td><span class="badge subtle-badge">{{.Runtime}}</span></td>
                         <td class="text-break">{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}-{{end}}</td>
                         <td>{{if eq .Runtime "php"}}{{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}{{else}}-{{end}}</td>
-                        <td class="text-break">{{if eq .Runtime "reverse_proxy"}}-{{else}}{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}{{end}}</td>
+                        <td class="text-break">{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}</td>
                         <td class="text-break">{{if .NginxConfigPath}}{{.NginxConfigPath}}{{else}}-{{end}}</td>
                         <td>
-                            <button type="button" class="btn btn-sm btn-danger modal-trigger" data-bs-toggle="modal" data-bs-target="#deleteSiteModal-{{.Name}}">Delete site</button>
-
-                            <div class="modal fade" id="deleteSiteModal-{{.Name}}" tabindex="-1" aria-hidden="true">
-                                <div class="modal-dialog modal-dialog-centered">
-                                    <div class="modal-content site-modal">
-                                        <div class="modal-header border-0 pb-0">
-                                            <div>
-                                                <p class="eyebrow mb-1">Confirm deletion</p>
-                                                <h5 class="modal-title">Delete {{.Name}}</h5>
-                                            </div>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                        </div>
-                                        <div class="modal-body pt-2">
-                                            <p class="mb-3">This will remove the Nginx site, stored panel record, TLS certificate, and related directory contents if present.</p>
-                                            <div class="site-delete-summary">
-                                                <div><strong>Domain</strong><span>{{.DomainName}}</span></div>
-                                                <div><strong>Mode</strong><span>{{.Runtime}}</span></div>
-                                                <div><strong>Upstream</strong><span>{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}-{{end}}</span></div>
-                                                <div><strong>Root</strong><span>{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}</span></div>
-                                                <div><strong>Config</strong><span>{{if .NginxConfigPath}}{{.NginxConfigPath}}{{else}}-{{end}}</span></div>
-                                            </div>
-                                            <form method="post" class="inline-form mt-3">
-                                                <input type="hidden" name="site_action" value="delete">
-                                                <input type="hidden" name="delete_site_name" value="{{.Name}}">
-                                                <label class="checkbox-row compact modal-confirm-row">
-                                                    <input type="checkbox" name="confirm_delete" value="1" required>
-                                                    <span>I understand this action permanently deletes this site.</span>
-                                                </label>
-                                                <div class="modal-actions">
-                                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                                                    <button type="submit" class="btn btn-danger">Delete permanently</button>
-                                                </div>
-                                            </form>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-danger modal-trigger delete-site-trigger"
+                                data-bs-toggle="modal"
+                                data-bs-target="#deleteSiteModal"
+                                data-site-name="{{.Name}}"
+                                data-site-domain="{{.DomainName}}"
+                                data-site-mode="{{.Runtime}}"
+                                data-site-upstream="{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}-{{end}}"
+                                data-site-root="{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}"
+                                data-site-config="{{if .NginxConfigPath}}{{.NginxConfigPath}}{{else}}-{{end}}"
+                            >Delete site</button>
                         </td>
                     </tr>
                     {{end}}
@@ -180,6 +157,42 @@
         {{end}}
     </article>
 </section>
+
+<div class="modal fade" id="deleteSiteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content site-modal">
+            <div class="modal-header border-0 pb-0">
+                <div>
+                    <p class="eyebrow mb-1">Confirm deletion</p>
+                    <h5 class="modal-title" id="delete-site-title">Delete site</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body pt-2">
+                <p class="mb-3">This will remove the Nginx site, stored panel record, TLS certificate, and related directory contents if present.</p>
+                <div class="site-delete-summary">
+                    <div><strong>Domain</strong><span id="delete-site-domain">-</span></div>
+                    <div><strong>Mode</strong><span id="delete-site-mode">-</span></div>
+                    <div><strong>Upstream</strong><span id="delete-site-upstream">-</span></div>
+                    <div><strong>Root</strong><span id="delete-site-root">-</span></div>
+                    <div><strong>Config</strong><span id="delete-site-config">-</span></div>
+                </div>
+                <form method="post" class="inline-form mt-3" id="delete-site-form">
+                    <input type="hidden" name="site_action" value="delete">
+                    <input type="hidden" name="delete_site_name" id="delete-site-name-input" value="">
+                    <label class="checkbox-row compact modal-confirm-row">
+                        <input type="checkbox" name="confirm_delete" value="1" required>
+                        <span>I understand this action permanently deletes this site.</span>
+                    </label>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-danger">Delete permanently</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
 {{template "site_tls" .}}
 {{end}}

@@ -87,7 +87,6 @@ func (m linuxNginxManager) ApplySite(spec SiteSpec) (string, error) {
 
 	switch spec.Mode {
 	case "reverse_proxy":
-		spec.RootDirectory = ""
 		spec.PHPVersion = ""
 	case "static":
 		spec.UpstreamURL = ""
@@ -111,16 +110,14 @@ func (m linuxNginxManager) ApplySite(spec SiteSpec) (string, error) {
 	if spec.Mode == "reverse_proxy" && !upstreamPattern.MatchString(spec.UpstreamURL) {
 		return "", ErrInvalidUpstream
 	}
-	if (spec.Mode == "static" || spec.Mode == "php") && !filepath.IsAbs(spec.RootDirectory) {
+	if !filepath.IsAbs(spec.RootDirectory) {
 		return "", ErrInvalidRootDirectory
 	}
 	if spec.Mode == "php" && !phpVersionPattern.MatchString(spec.PHPVersion) {
 		return "", ErrInvalidPHPVersion
 	}
-	if spec.Mode == "static" || spec.Mode == "php" {
-		if err := ensureSiteRootDirectory(spec.RootDirectory, spec.OwnerLinuxUser); err != nil {
-			return "", err
-		}
+	if err := ensureSiteRootDirectory(spec.RootDirectory, spec.OwnerLinuxUser); err != nil {
+		return "", err
 	}
 
 	if err := os.MkdirAll(m.availableDir, 0o755); err != nil {

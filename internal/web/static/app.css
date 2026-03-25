@@ -386,6 +386,25 @@ body.login-page {
     padding-top: 4px;
 }
 
+.generated-path-card {
+    display: grid;
+    gap: 6px;
+    padding: 16px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.58);
+    border: 1px solid rgba(24, 33, 38, 0.08);
+}
+
+.generated-path-card strong {
+    font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+    font-size: 0.94rem;
+    word-break: break-word;
+}
+
+.generated-path-card small {
+    color: var(--muted);
+}
+
 .checkbox-row {
     display: flex !important;
     align-items: center;
@@ -457,6 +476,10 @@ body.login-page {
     border-radius: 26px;
     border: 1px solid rgba(24, 33, 38, 0.08);
     background: linear-gradient(180deg, rgba(255, 250, 242, 0.98), rgba(247, 240, 230, 0.98));
+}
+
+.modal-backdrop.show {
+    opacity: 0.55;
 }
 
 .site-delete-summary {

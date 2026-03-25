@@ -5,7 +5,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/kaganyegin/server-side-control/internal/auth"
 	"github.com/kaganyegin/server-side-control/internal/domain"
@@ -467,14 +469,27 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 		OwnerLinuxUser: r.FormValue("owner_linux_user"),
 		Domain:         r.FormValue("domain"),
 		Mode:           r.FormValue("mode"),
-		RootDirectory:  r.FormValue("root_directory"),
 		UpstreamURL:    r.FormValue("upstream_url"),
 		PHPVersion:     r.FormValue("php_version"),
 	}
 
+	rootDirectory, rootErr := buildManagedSiteRootDirectory(users, spec.OwnerLinuxUser, spec.Name)
+	if rootErr != nil {
+		a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+			Title:          "Sites",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
+			ManagedSites:   sites,
+			PHPVersions:    versions,
+			RequestError:   rootErr.Error(),
+		})
+		return
+	}
+	spec.RootDirectory = rootDirectory
+
 	switch spec.Mode {
 	case "reverse_proxy":
-		spec.RootDirectory = ""
 		spec.PHPVersion = ""
 	case "static":
 		spec.UpstreamURL = ""
@@ -491,7 +506,7 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, system.ErrInvalidSiteName):
 			message = "Site name format is invalid. Use lowercase letters, numbers, and hyphens."
 		case errors.Is(err, system.ErrInvalidUsername):
-			message = "Owner Linux user format is invalid."
+			message = "Owner Linux user is required and must be valid."
 		case errors.Is(err, system.ErrUserNotFound):
 			message = "Selected Linux user could not be found on the host."
 		case errors.Is(err, system.ErrInvalidDomain):
@@ -542,6 +557,30 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 		SuccessMessage: "Nginx site was applied, validated, and reloaded successfully.",
 		ResultPath:     configPath,
 	})
+}
+
+func buildManagedSiteRootDirectory(users []system.LinuxUser, ownerLinuxUser string, siteName string) (string, error) {
+	ownerLinuxUser = strings.TrimSpace(ownerLinuxUser)
+	siteName = strings.TrimSpace(siteName)
+	if ownerLinuxUser == "" {
+		return "", errors.New("Select an owner Linux user to create the site root directory.")
+	}
+	if siteName == "" {
+		return "", errors.New("Site name is required to build the root directory.")
+	}
+
+	for _, user := range users {
+		if user.Username != ownerLinuxUser {
+			continue
+		}
+		homeDirectory := filepath.Clean(user.HomeDirectory)
+		if strings.HasPrefix(homeDirectory, "/var/www/") {
+			return filepath.Join(homeDirectory, siteName), nil
+		}
+		return filepath.Join(homeDirectory, "var", "www", siteName), nil
+	}
+
+	return "", errors.New("Selected Linux user home directory could not be resolved.")
 }
 
 func (a *App) handleSiteTLS(w http.ResponseWriter, r *http.Request, users []system.LinuxUser, sites []domain.ManagedSite, versions []string) {
