@@ -150,6 +150,31 @@ func (m *helperDatabaseManager) ProvisionDatabase(name string, username string, 
 	return err
 }
 
+func (m *helperDatabaseManager) ListDatabaseAccess() ([]DatabaseAccess, error) {
+	var entries []DatabaseAccess
+	_, err := m.client.Call(context.Background(), "mysql.list_access", map[string]any{}, &entries)
+	return entries, err
+}
+
+func (m *helperDatabaseManager) DeleteDatabaseAccess(name string, username string, host string, dropDatabase bool) error {
+	_, err := m.client.Call(context.Background(), "mysql.delete_access", map[string]any{
+		"database_name": name,
+		"database_user": username,
+		"database_host": host,
+		"drop_database": dropDatabase,
+	}, nil)
+	return err
+}
+
+func (m *helperDatabaseManager) RotateUserPassword(username string, host string, password string) error {
+	_, err := m.client.Call(context.Background(), "mysql.rotate_user_password", map[string]any{
+		"database_user": username,
+		"database_host": host,
+		"database_password": password,
+	}, nil)
+	return err
+}
+
 func (m *helperDatabaseManager) RotateAdminPassword(password string) error {
 	_, err := m.client.Call(context.Background(), "mysql.rotate_admin_password", map[string]any{
 		"password": password,

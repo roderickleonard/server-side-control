@@ -74,6 +74,34 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).ProvisionDatabase(input.DatabaseName, input.DatabaseUser, input.DatabasePassword)
 		writeSuccess(nil, "", err)
+	case "mysql.list_access":
+		entries, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).ListDatabaseAccess()
+		writeSuccess(entries, "", err)
+	case "mysql.delete_access":
+		var input struct {
+			DatabaseName string `json:"database_name"`
+			DatabaseUser string `json:"database_user"`
+			DatabaseHost string `json:"database_host"`
+			DropDatabase bool   `json:"drop_database"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).DeleteDatabaseAccess(input.DatabaseName, input.DatabaseUser, input.DatabaseHost, input.DropDatabase)
+		writeSuccess(nil, "", err)
+	case "mysql.rotate_user_password":
+		var input struct {
+			DatabaseUser     string `json:"database_user"`
+			DatabaseHost     string `json:"database_host"`
+			DatabasePassword string `json:"database_password"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).RotateUserPassword(input.DatabaseUser, input.DatabaseHost, input.DatabasePassword)
+		writeSuccess(nil, "", err)
 	case "mysql.rotate_admin_password":
 		var input struct {
 			Password string `json:"password"`

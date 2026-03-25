@@ -212,11 +212,17 @@ func (a *App) handleUserDelete(w http.ResponseWriter, r *http.Request, users []s
 }
 
 func (a *App) handleDatabases(w http.ResponseWriter, r *http.Request) {
+	entries, listErr := a.databases.ListDatabaseAccess()
+	if listErr != nil {
+		entries = nil
+	}
+
 	if r.Method == http.MethodGet {
 		a.render(r.Context(), w, r.URL.Path, "databases.html", TemplateData{
 			Title:          "Databases",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			DatabaseAccess: entries,
 		})
 		return
 	}
@@ -231,6 +237,7 @@ func (a *App) handleDatabases(w http.ResponseWriter, r *http.Request) {
 			Title:          "Databases",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			DatabaseAccess: entries,
 			RequestError:   "MySQL admin provisioning is not configured yet.",
 		})
 		return
@@ -241,13 +248,21 @@ func (a *App) handleDatabases(w http.ResponseWriter, r *http.Request) {
 			Title:          "Databases",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			DatabaseAccess: entries,
 			RequestError:   "The submitted database form could not be parsed.",
 		})
 		return
 	}
 
-	if r.FormValue("database_action") == "rotate_admin_password" {
-		a.handleDatabaseAdminPasswordRotation(w, r)
+	switch r.FormValue("database_action") {
+	case "rotate_admin_password":
+		a.handleDatabaseAdminPasswordRotation(w, r, entries)
+		return
+	case "delete_access":
+		a.handleDatabaseDelete(w, r, entries)
+		return
+	case "rotate_user_password":
+		a.handleDatabaseUserPasswordRotation(w, r, entries)
 		return
 	}
 
@@ -278,16 +293,19 @@ func (a *App) handleDatabases(w http.ResponseWriter, r *http.Request) {
 			Title:          "Databases",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			DatabaseAccess: entries,
 			RequestError:   message,
 		})
 		return
 	}
 
 	a.recordAudit(r.Context(), "database.provision", databaseName, "success", map[string]any{"database_user": databaseUser})
+	updatedEntries, _ := a.databases.ListDatabaseAccess()
 	data := TemplateData{
 		Title:          "Databases",
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
+		DatabaseAccess: updatedEntries,
 		SuccessMessage: "Database and MySQL user were provisioned successfully.",
 	}
 	if generated {
@@ -296,7 +314,7 @@ func (a *App) handleDatabases(w http.ResponseWriter, r *http.Request) {
 	a.render(r.Context(), w, r.URL.Path, "databases.html", data)
 }
 
-func (a *App) handleDatabaseAdminPasswordRotation(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleDatabaseAdminPasswordRotation(w http.ResponseWriter, r *http.Request, entries []system.DatabaseAccess) {
 	adminPassword := r.FormValue("admin_password")
 	generated := false
 	if adminPassword == "" {
@@ -319,6 +337,7 @@ func (a *App) handleDatabaseAdminPasswordRotation(w http.ResponseWriter, r *http
 			Title:          "Databases",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			DatabaseAccess: entries,
 			RequestError:   message,
 		})
 		return
@@ -329,11 +348,73 @@ func (a *App) handleDatabaseAdminPasswordRotation(w http.ResponseWriter, r *http
 		Title:          "Databases",
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
+		DatabaseAccess: entries,
 		SuccessMessage: "MySQL admin password was rotated successfully.",
 	}
 	if generated {
 		data.GeneratedSecret = adminPassword
 	}
+	a.render(r.Context(), w, r.URL.Path, "databases.html", data)
+}
+
+func (a *App) handleDatabaseDelete(w http.ResponseWriter, r *http.Request, entries []system.DatabaseAccess) {
+	databaseName := r.FormValue("delete_database_name")
+	databaseUser := r.FormValue("delete_database_user")
+	databaseHost := r.FormValue("delete_database_host")
+	dropDatabase := r.FormValue("drop_database") == "1"
+
+	if err := a.databases.DeleteDatabaseAccess(databaseName, databaseUser, databaseHost, dropDatabase); err != nil {
+		a.recordAudit(r.Context(), "database.delete", databaseName, "failure", map[string]any{"database_user": databaseUser, "database_host": databaseHost, "drop_database": dropDatabase, "error": err.Error()})
+		message := err.Error()
+		if errors.Is(err, system.ErrInvalidDatabaseName) {
+			message = "Database name format is invalid."
+		}
+		if errors.Is(err, system.ErrInvalidUserName) {
+			message = "MySQL username format is invalid."
+		}
+		a.render(r.Context(), w, r.URL.Path, "databases.html", TemplateData{Title: "Databases", DatabaseStatus: a.databaseStatus(r.Context()), Metrics: a.metrics.Snapshot(), DatabaseAccess: entries, RequestError: message})
+		return
+	}
+
+	updatedEntries, _ := a.databases.ListDatabaseAccess()
+	a.recordAudit(r.Context(), "database.delete", databaseName, "success", map[string]any{"database_user": databaseUser, "database_host": databaseHost, "drop_database": dropDatabase})
+	a.render(r.Context(), w, r.URL.Path, "databases.html", TemplateData{Title: "Databases", DatabaseStatus: a.databaseStatus(r.Context()), Metrics: a.metrics.Snapshot(), DatabaseAccess: updatedEntries, SuccessMessage: "Database access was deleted successfully."})
+}
+
+func (a *App) handleDatabaseUserPasswordRotation(w http.ResponseWriter, r *http.Request, entries []system.DatabaseAccess) {
+	databaseUser := r.FormValue("rotate_database_user")
+	databaseHost := r.FormValue("rotate_database_host")
+	databasePassword := r.FormValue("rotate_database_password")
+	generated := false
+	if databasePassword == "" {
+		secret, err := randomPassword(24)
+		if err != nil {
+			http.Error(w, "password generation failed", http.StatusInternalServerError)
+			return
+		}
+		databasePassword = secret
+		generated = true
+	}
+
+	if err := a.databases.RotateUserPassword(databaseUser, databaseHost, databasePassword); err != nil {
+		a.recordAudit(r.Context(), "database.rotate_user_password", databaseUser, "failure", map[string]any{"database_host": databaseHost, "error": err.Error()})
+		message := err.Error()
+		if errors.Is(err, system.ErrInvalidUserName) {
+			message = "MySQL username format is invalid."
+		}
+		if errors.Is(err, system.ErrInvalidPassword) {
+			message = "Database user password cannot be empty."
+		}
+		a.render(r.Context(), w, r.URL.Path, "databases.html", TemplateData{Title: "Databases", DatabaseStatus: a.databaseStatus(r.Context()), Metrics: a.metrics.Snapshot(), DatabaseAccess: entries, RequestError: message})
+		return
+	}
+
+	a.recordAudit(r.Context(), "database.rotate_user_password", databaseUser, "success", map[string]any{"database_host": databaseHost})
+	data := TemplateData{Title: "Databases", DatabaseStatus: a.databaseStatus(r.Context()), Metrics: a.metrics.Snapshot(), DatabaseAccess: entries, SuccessMessage: "Database user password was updated successfully."}
+	if generated {
+		data.GeneratedSecret = databasePassword
+	}
+	data.DatabaseAccess, _ = a.databases.ListDatabaseAccess()
 	a.render(r.Context(), w, r.URL.Path, "databases.html", data)
 }
 

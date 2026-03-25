@@ -52,6 +52,7 @@ type TemplateData struct {
 	RequestError   string
 	SuccessMessage string
 	LinuxUsers     []system.LinuxUser
+	DatabaseAccess []system.DatabaseAccess
 	GeneratedSecret string
 	ResultPath     string
 	CommandOutput  string
@@ -134,7 +135,7 @@ func (a *App) render(ctx context.Context, w http.ResponseWriter, currentPath str
 		}
 	}
 
-	tmpl, err := template.ParseFS(assets, "templates/layout.html", "templates/"+page)
+	tmpl, err := template.ParseFS(assets, templateFilesForPage(page)...)
 	if err != nil {
 		a.logger.Error("parse template", "page", page, "error", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
@@ -155,6 +156,19 @@ func (a *App) render(ctx context.Context, w http.ResponseWriter, currentPath str
 		a.logger.Error("render template", "page", page, "error", err)
 		http.Error(w, "render error", http.StatusInternalServerError)
 	}
+}
+
+func templateFilesForPage(page string) []string {
+	files := []string{"templates/layout.html", "templates/" + page}
+
+	switch page {
+	case "sites.html":
+		files = append(files, "templates/site_tls.html")
+	case "deploys.html":
+		files = append(files, "templates/deploy_history.html")
+	}
+
+	return files
 }
 
 func (a *App) databaseStatus(ctx context.Context) string {

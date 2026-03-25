@@ -64,4 +64,56 @@
         </ul>
     </article>
 </section>
+
+<section class="grid single">
+    <article class="panel">
+        <h3>Existing databases</h3>
+        {{if .DatabaseAccess}}
+        <div class="audit-table">
+            <div class="audit-row audit-head release-head">
+                <span>Database</span>
+                <span>User</span>
+                <span>Host</span>
+                <span>Password</span>
+                <span>Delete</span>
+            </div>
+            {{range .DatabaseAccess}}
+            <div class="audit-row release-row">
+                <span>{{.DatabaseName}}</span>
+                <span>{{if .Username}}{{.Username}}{{else}}-{{end}}</span>
+                <span>{{if .Host}}{{.Host}}{{else}}-{{end}}</span>
+                <span>
+                    {{if .Username}}
+                    <form method="post" class="inline-form">
+                        <input type="hidden" name="database_action" value="rotate_user_password">
+                        <input type="hidden" name="rotate_database_user" value="{{.Username}}">
+                        <input type="hidden" name="rotate_database_host" value="{{.Host}}">
+                        <input type="password" name="rotate_database_password" placeholder="Leave blank to generate">
+                        <button type="submit">Change password</button>
+                    </form>
+                    {{else}}
+                    <span class="muted">No user</span>
+                    {{end}}
+                </span>
+                <span>
+                    <form method="post" class="inline-form">
+                        <input type="hidden" name="database_action" value="delete_access">
+                        <input type="hidden" name="delete_database_name" value="{{.DatabaseName}}">
+                        <input type="hidden" name="delete_database_user" value="{{.Username}}">
+                        <input type="hidden" name="delete_database_host" value="{{.Host}}">
+                        <label class="checkbox-row">
+                            <input type="checkbox" name="drop_database" value="1">
+                            <span>Delete contents too</span>
+                        </label>
+                        <button type="submit">Delete</button>
+                    </form>
+                </span>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="muted">No databases found yet.</p>
+        {{end}}
+    </article>
+</section>
 {{end}}

@@ -15,7 +15,16 @@ type LinuxUser struct {
 
 type DatabaseManager interface {
 	ProvisionDatabase(name string, username string, password string) error
+	ListDatabaseAccess() ([]DatabaseAccess, error)
+	DeleteDatabaseAccess(name string, username string, host string, dropDatabase bool) error
+	RotateUserPassword(username string, host string, password string) error
 	RotateAdminPassword(password string) error
+}
+
+type DatabaseAccess struct {
+	DatabaseName string
+	Username     string
+	Host         string
 }
 
 type NginxManager interface {

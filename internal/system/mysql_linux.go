@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -69,6 +70,122 @@ func (m mysqlDatabaseManager) ProvisionDatabase(name string, username string, pa
 	}
 
 	return nil
+}
+
+func (m mysqlDatabaseManager) ListDatabaseAccess() ([]DatabaseAccess, error) {
+	if !filepath.IsAbs(m.adminDefaultsFile) {
+		return nil, fmt.Errorf("mysql admin defaults file path must be absolute")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	databasesOutput, err := m.runMySQL(ctx, `SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema','mysql','performance_schema','sys') ORDER BY schema_name`)
+	if err != nil {
+		return nil, err
+	}
+
+	grantsOutput, err := m.runMySQL(ctx, `SELECT Db, User, Host FROM mysql.db WHERE Db NOT IN ('information_schema','mysql','performance_schema','sys') ORDER BY Db, User, Host`)
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]DatabaseAccess, 0)
+	seen := make(map[string]struct{})
+
+	for _, line := range strings.Split(strings.TrimSpace(grantsOutput), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 3 {
+			continue
+		}
+		entry := DatabaseAccess{DatabaseName: strings.TrimSpace(parts[0]), Username: strings.TrimSpace(parts[1]), Host: strings.TrimSpace(parts[2])}
+		key := entry.DatabaseName + "|" + entry.Username + "|" + entry.Host
+		seen[key] = struct{}{}
+		entries = append(entries, entry)
+	}
+
+	for _, line := range strings.Split(strings.TrimSpace(databasesOutput), "\n") {
+		databaseName := strings.TrimSpace(line)
+		if databaseName == "" {
+			continue
+		}
+		if hasDatabaseEntry(entries, databaseName) {
+			continue
+		}
+		key := databaseName + "||"
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		entries = append(entries, DatabaseAccess{DatabaseName: databaseName})
+	}
+
+	sort.Slice(entries, func(i int, j int) bool {
+		if entries[i].DatabaseName == entries[j].DatabaseName {
+			if entries[i].Username == entries[j].Username {
+				return entries[i].Host < entries[j].Host
+			}
+			return entries[i].Username < entries[j].Username
+		}
+		return entries[i].DatabaseName < entries[j].DatabaseName
+	})
+
+	return entries, nil
+}
+
+func (m mysqlDatabaseManager) DeleteDatabaseAccess(name string, username string, host string, dropDatabase bool) error {
+	name = strings.TrimSpace(name)
+	username = strings.TrimSpace(username)
+	host = strings.TrimSpace(host)
+	if !mysqlProvisionNamePattern.MatchString(name) {
+		return ErrInvalidDatabaseName
+	}
+	if username != "" && !mysqlProvisionNamePattern.MatchString(username) {
+		return ErrInvalidUserName
+	}
+	if host == "" {
+		host = "%"
+	}
+
+	statements := make([]string, 0, 4)
+	if username != "" {
+		statements = append(statements,
+			fmt.Sprintf("REVOKE ALL PRIVILEGES, GRANT OPTION FROM %s", mysqlQuoteAccountParts(username, host)),
+			fmt.Sprintf("DROP USER IF EXISTS %s", mysqlQuoteAccountParts(username, host)),
+		)
+	}
+	if dropDatabase {
+		statements = append(statements, fmt.Sprintf("DROP DATABASE IF EXISTS %s", mysqlQuoteIdentifier(name)))
+	}
+	statements = append(statements, "FLUSH PRIVILEGES")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_, err := m.runMySQL(ctx, strings.Join(statements, "; "))
+	return err
+}
+
+func (m mysqlDatabaseManager) RotateUserPassword(username string, host string, password string) error {
+	username = strings.TrimSpace(username)
+	host = strings.TrimSpace(host)
+	password = strings.TrimSpace(password)
+	if !mysqlProvisionNamePattern.MatchString(username) {
+		return ErrInvalidUserName
+	}
+	if password == "" {
+		return ErrInvalidPassword
+	}
+	if host == "" {
+		host = "%"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_, err := m.runMySQL(ctx, fmt.Sprintf("ALTER USER %s IDENTIFIED BY %s", mysqlQuoteAccountParts(username, host), mysqlQuoteString(password)))
+	return err
 }
 
 func (m mysqlDatabaseManager) RotateAdminPassword(password string) error {
@@ -210,6 +327,19 @@ func mysqlQuoteAccount(value string) string {
 		return mysqlQuoteIdentifier(value) + "@'%'"
 	}
 	return mysqlQuoteIdentifier(parts[0]) + "@" + mysqlQuoteString(parts[1])
+}
+
+func mysqlQuoteAccountParts(username string, host string) string {
+	return mysqlQuoteIdentifier(username) + "@" + mysqlQuoteString(host)
+}
+
+func hasDatabaseEntry(entries []DatabaseAccess, databaseName string) bool {
+	for _, entry := range entries {
+		if entry.DatabaseName == databaseName {
+			return true
+		}
+	}
+	return false
 }
 
 func mysqlQuoteIdentifier(value string) string {
