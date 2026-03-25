@@ -1,0 +1,48 @@
+{{define "layout"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} | {{.AppName}}</title>
+    <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+    <div class="shell">
+        <aside class="sidebar">
+            <div>
+                <p class="eyebrow">Ubuntu Control</p>
+                <h1>{{.AppName}}</h1>
+                <p class="muted">Lean control plane for single-server operations.</p>
+            </div>
+            {{if ne .CurrentPath "/login"}}
+            <nav class="nav">
+                {{range .Nav}}
+                <a class="nav-link {{if eq $.CurrentPath .Path}}is-active{{end}}" href="{{.Path}}">{{.Label}}</a>
+                {{end}}
+            </nav>
+            {{else}}
+            <div class="login-note">
+                <p class="muted">The Ubuntu host should expose PAM so Linux users can authenticate directly.</p>
+            </div>
+            {{end}}
+            <div class="sidebar-footer">
+                {{if .CurrentUser}}
+                <p>Signed in as</p>
+                <strong>{{.CurrentUser}}</strong>
+                <p>Provider: {{.AuthProvider}}</p>
+                <p><a class="logout-link" href="/logout">Sign out</a></p>
+                {{else}}
+                <p>Bootstrap user</p>
+                <strong>{{.BootstrapUser}}</strong>
+                {{end}}
+                <p>DB status: {{.DatabaseStatus}}</p>
+            </div>
+        </aside>
+        <main class="content">
+            {{template "content" .}}
+        </main>
+    </div>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,67 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">MySQL provisioning</p>
+        <h2>Create a database and scoped application user</h2>
+        <p class="lead">This operation runs through the privileged helper and the saved MySQL admin defaults file, so the panel DSN does not need global MySQL privileges.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+    {{if .GeneratedSecret}}
+    <div class="alert success">Generated password: <strong>{{.GeneratedSecret}}</strong></div>
+    {{end}}
+</section>
+{{end}}
+
+<section class="grid">
+    <article class="panel">
+        <h3>Create database access</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="database_action" value="provision">
+            <label>
+                <span>Database name</span>
+                <input type="text" name="database_name" placeholder="app_prod" required>
+            </label>
+            <label>
+                <span>MySQL username</span>
+                <input type="text" name="database_user" placeholder="app_prod_user" required>
+            </label>
+            <label>
+                <span>Password</span>
+                <input type="password" name="database_password" placeholder="Leave blank to generate">
+            </label>
+            <button type="submit">Provision database</button>
+        </form>
+    </article>
+    <article class="panel">
+        <h3>Rotate MySQL admin password</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="database_action" value="rotate_admin_password">
+            <label>
+                <span>New admin password</span>
+                <input type="password" name="admin_password" placeholder="Leave blank to generate">
+            </label>
+            <button type="submit">Rotate admin password</button>
+        </form>
+        <p class="muted">This updates the password of the MySQL admin account currently stored in the root-only defaults file and immediately rewrites that file.</p>
+    </article>
+    <article class="panel">
+        <h3>Current rules</h3>
+        <ul>
+            <li>Names must start with a letter and contain only letters, numbers, and underscores.</li>
+            <li>The created user receives privileges only on the requested database.</li>
+            <li>If password is left blank, the panel generates a random secret and shows it once.</li>
+            <li>Admin password rotation updates only the saved MySQL admin credentials and does not change the panel application DSN.</li>
+        </ul>
+    </article>
+</section>
+{{end}}

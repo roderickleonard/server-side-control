@@ -1,0 +1,85 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">Nginx sites</p>
+        <h2>Create a site and validate before reload</h2>
+        <p class="lead">This first slice supports reverse proxy, static root, and PHP-FPM site generation. The panel writes the vhost, runs nginx syntax validation, and reloads only when the config passes.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+    {{if .ResultPath}}
+    <div class="alert success">Config path: <strong>{{.ResultPath}}</strong></div>
+    {{end}}
+</section>
+{{end}}
+
+{{if .CommandOutput}}
+<section class="grid single">
+    <article class="panel">
+        <h3>Site operation output</h3>
+        <pre class="command-output">{{.CommandOutput}}</pre>
+    </article>
+</section>
+{{end}}
+
+<section class="grid">
+    <article class="panel">
+        <h3>Create site</h3>
+        <form method="post" class="stack-form">
+            <label>
+                <span>Site name</span>
+                <input type="text" name="site_name" placeholder="app-main" required>
+            </label>
+            <label>
+                <span>Owner Linux user</span>
+                <input type="text" name="owner_linux_user" placeholder="deployapp">
+            </label>
+            <label>
+                <span>Domain</span>
+                <input type="text" name="domain" placeholder="example.com" required>
+            </label>
+            <label>
+                <span>Mode</span>
+                <select name="mode">
+                    <option value="reverse_proxy">Reverse proxy</option>
+                    <option value="static">Static site</option>
+                    <option value="php">PHP site</option>
+                </select>
+            </label>
+            <label>
+                <span>Root directory</span>
+                <input type="text" name="root_directory" placeholder="/var/www/example/current/public">
+            </label>
+            <label>
+                <span>Upstream URL</span>
+                <input type="text" name="upstream_url" placeholder="127.0.0.1:3000">
+            </label>
+            <label>
+                <span>PHP version</span>
+                <input type="text" name="php_version" placeholder="8.2">
+            </label>
+            <button type="submit">Apply Nginx site</button>
+        </form>
+    </article>
+    <article class="panel">
+        <h3>Mode rules</h3>
+        <ul>
+            <li>Reverse proxy requires a domain and upstream target.</li>
+            <li>Static site requires an absolute root directory.</li>
+            <li>PHP site requires an absolute root directory and a PHP-FPM version such as 8.2.</li>
+            <li>On failure, the manager rolls back the written file and leaves Nginx unchanged.</li>
+        </ul>
+    </article>
+</section>
+
+{{template "site_tls" .}}
+{{end}}

@@ -1,0 +1,1 @@
+server-side-control ALL=(root) NOPASSWD: /usr/local/bin/server-side-control-helper

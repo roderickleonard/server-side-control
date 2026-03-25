@@ -1,0 +1,106 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">Git deploys</p>
+        <h2>Deploy, inspect release history, and roll back by commit</h2>
+        <p class="lead">This flow performs branch-based clone or pull, records release metadata, and supports rollback to a previously recorded commit under the selected Linux account.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+    {{if .ResultPath}}
+    <div class="alert success">Deploy target: <strong>{{.ResultPath}}</strong></div>
+    {{end}}
+    {{if .CommitSHA}}
+    <div class="alert success">Current commit: <strong>{{.CommitSHA}}</strong></div>
+    {{end}}
+    {{if .PreviousCommitSHA}}
+    <div class="alert success">Previous commit: <strong>{{.PreviousCommitSHA}}</strong></div>
+    {{end}}
+</section>
+{{end}}
+
+{{if .CommandOutput}}
+<section class="grid single">
+    <article class="panel">
+        <h3>Command output</h3>
+        <pre class="command-output">{{.CommandOutput}}</pre>
+    </article>
+</section>
+{{end}}
+
+<section class="grid">
+    <article class="panel">
+        <h3>Run deploy</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="deploy_mode" value="deploy">
+            <label>
+                <span>Repository URL</span>
+                <input type="text" name="repository_url" placeholder="https://github.com/org/repo.git" required>
+            </label>
+            <label>
+                <span>Branch</span>
+                <input type="text" name="branch" placeholder="main">
+            </label>
+            <label>
+                <span>Target directory</span>
+                <input type="text" name="target_directory" placeholder="/var/www/app/current" required>
+            </label>
+            <label>
+                <span>Run as Linux user</span>
+                <input type="text" name="run_as_user" placeholder="deployapp" required>
+            </label>
+            <label>
+                <span>Post-deploy command</span>
+                <input type="text" name="post_deploy_command" placeholder="npm ci && pm2 restart app">
+            </label>
+            <button type="submit">Deploy repository</button>
+        </form>
+    </article>
+    <article class="panel">
+        <h3>Rollback release</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="deploy_mode" value="rollback">
+            <label>
+                <span>Target directory</span>
+                <input type="text" name="rollback_target_directory" placeholder="/var/www/app/current" required>
+            </label>
+            <label>
+                <span>Run as Linux user</span>
+                <input type="text" name="rollback_run_as_user" placeholder="deployapp" required>
+            </label>
+            <label>
+                <span>Release commit SHA</span>
+                <input type="text" name="release_commit_sha" placeholder="a1b2c3d4" required>
+            </label>
+            <label>
+                <span>Post-rollback command</span>
+                <input type="text" name="rollback_post_deploy_command" placeholder="pm2 restart app">
+            </label>
+            <button type="submit">Rollback to commit</button>
+        </form>
+    </article>
+</section>
+
+<section class="grid single">
+    <article class="panel">
+        <h3>Current behavior</h3>
+        <ul>
+            <li>If the target directory already contains a git repository, the panel fetches and fast-forward pulls the selected branch.</li>
+            <li>If the target directory is empty, the panel clones the repository directly into it.</li>
+            <li>The optional post-deploy command runs through `sh -lc` as the selected user.</li>
+            <li>Every successful deploy or rollback records the resulting commit SHA and previous commit in release history.</li>
+        </ul>
+    </article>
+</section>
+
+{{template "deploy_history" .}}
+{{end}}

@@ -1,0 +1,71 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">PM2 processes</p>
+        <h2>Inspect, control, and debug PM2 apps under a Linux user</h2>
+        <p class="lead">Choose the owning Linux user, inspect the PM2 table, then run start, stop, restart, reload, or log-tail operations against a named process.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+</section>
+{{end}}
+
+{{if .CommandOutput}}
+<section class="grid single">
+    <article class="panel">
+        <h3>PM2 output</h3>
+        <pre class="command-output">{{.CommandOutput}}</pre>
+    </article>
+</section>
+{{end}}
+
+<section class="grid">
+    <article class="panel">
+        <h3>Process action</h3>
+        <form method="post" class="stack-form">
+            <label>
+                <span>Linux user</span>
+                <input type="text" name="run_as_user" placeholder="deployapp" required>
+            </label>
+            <label>
+                <span>Action</span>
+                <select name="action">
+                    <option value="list">List processes</option>
+                    <option value="start">Start process</option>
+                    <option value="stop">Stop process</option>
+                    <option value="restart">Restart process</option>
+                    <option value="reload">Reload process</option>
+                    <option value="logs">Show logs</option>
+                </select>
+            </label>
+            <label>
+                <span>Process name</span>
+                <input type="text" name="process_name" placeholder="api-app">
+            </label>
+            <label>
+                <span>Log lines</span>
+                <input type="text" name="log_lines" placeholder="100">
+            </label>
+            <button type="submit">Run PM2 action</button>
+        </form>
+    </article>
+    <article class="panel">
+        <h3>Current behavior</h3>
+        <ul>
+            <li>The manager runs PM2 commands as the selected Linux user with `sudo -u`.</li>
+            <li>Listing shows the owning user's PM2 table only.</li>
+            <li>`start`, `stop`, `restart`, and `reload` require an explicit process name.</li>
+            <li>`logs` returns a bounded non-streaming tail to keep the panel responsive.</li>
+        </ul>
+    </article>
+</section>
+{{end}}

@@ -1,0 +1,29 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">Module scaffold</p>
+        <h2>{{.Title}}</h2>
+        <p class="lead">This area is reserved for the next implementation milestone. The navigation, auth, metrics, config, and storage layers are already in place.</p>
+    </div>
+</section>
+
+{{if .Alerts}}
+<section class="alerts">
+    {{range .Alerts}}
+    <div class="alert">{{.}}</div>
+    {{end}}
+</section>
+{{end}}
+
+<section class="grid single">
+    <article class="panel">
+        <h3>Planned actions</h3>
+        <ul>
+            <li>Wire real privileged operations behind audited service methods</li>
+            <li>Render form-driven workflows instead of placeholders</li>
+            <li>Persist execution history into audit logs</li>
+            <li>Attach validation and dry-run support before making system changes</li>
+        </ul>
+    </article>
+</section>
+{{end}}

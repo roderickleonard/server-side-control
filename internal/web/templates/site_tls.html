@@ -1,0 +1,31 @@
+{{define "site_tls"}}
+<section class="grid">
+    <article class="panel">
+        <h3>Enable TLS</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="site_action" value="tls">
+            <label>
+                <span>Domain</span>
+                <input type="text" name="tls_domain" placeholder="example.com" required>
+            </label>
+            <label>
+                <span>Email</span>
+                <input type="text" name="tls_email" placeholder="ops@example.com" required>
+            </label>
+            <label class="checkbox-row">
+                <input type="checkbox" name="tls_redirect" value="1" checked>
+                <span>Redirect HTTP to HTTPS</span>
+            </label>
+            <button type="submit">Request certificate</button>
+        </form>
+    </article>
+    <article class="panel">
+        <h3>TLS notes</h3>
+        <ul>
+            <li>DNS for the domain must already point to this server.</li>
+            <li>Port 80 must be reachable for the HTTP-01 challenge.</li>
+            <li>The host needs `certbot` and `python3-certbot-nginx` installed.</li>
+        </ul>
+    </article>
+</section>
+{{end}}

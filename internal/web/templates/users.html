@@ -1,0 +1,46 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">Linux users</p>
+        <h2>Create Ubuntu users and home directories</h2>
+        <p class="lead">This flow provisions a local Linux account on the target host. The service currently assumes it has the privileges required to run user management commands.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+</section>
+{{end}}
+
+<section class="grid">
+    <article class="panel">
+        <h3>Create user</h3>
+        <form method="post" class="stack-form">
+            <label>
+                <span>Linux username</span>
+                <input type="text" name="username" placeholder="deployapp" required>
+            </label>
+            <label class="checkbox-row">
+                <input type="checkbox" name="create_home" value="1" checked>
+                <span>Create home directory</span>
+            </label>
+            <button type="submit">Create user</button>
+        </form>
+    </article>
+    <article class="panel">
+        <h3>Validation rules</h3>
+        <ul>
+            <li>Usernames must begin with a lowercase letter or underscore.</li>
+            <li>Only lowercase letters, numbers, underscores, and hyphens are accepted.</li>
+            <li>The current implementation intentionally keeps the operation narrow and auditable.</li>
+        </ul>
+    </article>
+</section>
+{{end}}

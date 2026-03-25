@@ -1,0 +1,49 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">PHP-FPM switching</p>
+        <h2>Switch the active PHP version for a managed site</h2>
+        <p class="lead">Choose a managed site, update the PHP-FPM socket version in its Nginx config, validate the config, then reload Nginx safely.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+    {{if .ResultPath}}
+    <div class="alert success">Updated config: <strong>{{.ResultPath}}</strong></div>
+    {{end}}
+</section>
+{{end}}
+
+<section class="grid">
+    <article class="panel">
+        <h3>Switch version</h3>
+        <form method="post" class="stack-form">
+            <label>
+                <span>Managed site name</span>
+                <input type="text" name="site_name" placeholder="app-main" required>
+            </label>
+            <label>
+                <span>PHP version</span>
+                <input type="text" name="php_version" placeholder="8.2" required>
+            </label>
+            <button type="submit">Switch PHP-FPM version</button>
+        </form>
+    </article>
+    <article class="panel">
+        <h3>Current behavior</h3>
+        <ul>
+            <li>The panel uses the stored Nginx config path for the managed site.</li>
+            <li>The config is edited only when a PHP-FPM socket entry exists.</li>
+            <li>Nginx validation runs before reload and reverts on failure.</li>
+        </ul>
+    </article>
+</section>
+{{end}}

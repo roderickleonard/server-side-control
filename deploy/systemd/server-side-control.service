@@ -1,0 +1,15 @@
+[Unit]
+Description=Server Side Control Panel
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=server-side-control
+Group=server-side-control
+EnvironmentFile=/etc/server-side-control/panel.env
+ExecStart=/usr/local/bin/server-side-control
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
