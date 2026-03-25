@@ -283,6 +283,40 @@ func StreamNPMInstall(spec NPMInstallSpec, stdout io.Writer, stderr io.Writer) e
 	return runBashAsUserStream(ctx, spec.User, buildNVMCommand(homeDirectory, cmd), stdout, stderr)
 }
 
+func StreamCustomRuntimeCommand(spec CustomRuntimeCommandSpec, stdout io.Writer, stderr io.Writer) error {
+	spec.User = strings.TrimSpace(spec.User)
+	spec.WorkingDirectory = strings.TrimSpace(spec.WorkingDirectory)
+	spec.CommandBody = strings.TrimSpace(spec.CommandBody)
+	spec.NodeVersion = strings.TrimSpace(spec.NodeVersion)
+	if !usernamePattern.MatchString(spec.User) {
+		return ErrInvalidRunAsUser
+	}
+	if !filepath.IsAbs(spec.WorkingDirectory) {
+		return ErrInvalidTargetDirectory
+	}
+	if spec.CommandBody == "" {
+		return fmt.Errorf("custom command cannot be empty")
+	}
+	if len(spec.CommandBody) > 16000 {
+		return fmt.Errorf("custom command is too long")
+	}
+	if spec.NodeVersion != "" && !nodeVersionPattern.MatchString(spec.NodeVersion) {
+		return ErrInvalidNodeVersion
+	}
+	homeDirectory, err := lookupUserHome(spec.User)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	command := "cd " + shellQuote(spec.WorkingDirectory) + " && " + spec.CommandBody
+	if spec.NodeVersion != "" {
+		command = "nvm use " + shellQuote(spec.NodeVersion) + " && " + command
+		return runBashAsUserStream(ctx, spec.User, buildNVMCommand(homeDirectory, command), stdout, stderr)
+	}
+	return runBashAsUserStream(ctx, spec.User, buildShellWithOptionalNVM(homeDirectory, command), stdout, stderr)
+}
+
 func lookupUserHome(username string) (string, error) {
 	username = strings.TrimSpace(username)
 	if !usernamePattern.MatchString(username) {

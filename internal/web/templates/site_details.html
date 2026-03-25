@@ -211,6 +211,41 @@
                 <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_npm_script" data-runtime-script="build">npm run build</button>
             </div>
         </form>
+        <form method="post" class="stack-form compact-form" id="runtime-custom-form" style="margin-top:16px;">
+            <input type="hidden" name="details_action" id="runtime-custom-action" value="save_runtime_command">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="runtime_command_id" id="runtime-command-id" value="{{.RuntimeCommandID}}">
+            <hr style="border:none;border-top:1px solid var(--border);margin:16px 0 12px;">
+            <label>
+                <span>Custom script</span>
+                <select id="runtime-command-select">
+                    <option value="">New profile</option>
+                    {{range .SiteRuntimeCommands}}
+                    <option value="{{.ID}}">{{.Name}}</option>
+                    {{end}}
+                </select>
+            </label>
+            <div class="form-grid two-up" style="margin-top:12px;">
+                <label>
+                    <span>Profile name</span>
+                    <input type="text" name="runtime_command_name" id="runtime-command-name" value="{{.RuntimeCommandName}}" placeholder="e.g. Build and migrate">
+                </label>
+                <label>
+                    <span>Node version</span>
+                    <input type="text" name="runtime_command_node_version" id="runtime-command-node-version" value="{{.RuntimeCommandNodeVersion}}" placeholder="Use default if empty">
+                </label>
+            </div>
+            <label style="margin-top:12px;display:block;">
+                <span>Command</span>
+                <textarea name="runtime_command_body" id="runtime-command-body" rows="5" placeholder="npm run build && php artisan migrate --force">{{.RuntimeCommandBody}}</textarea>
+            </label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+                <button type="button" class="btn btn-sm btn-secondary" id="runtime-custom-run">Run custom script</button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('runtime-custom-action').value='save_runtime_command'">Save profile</button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('runtime-custom-action').value='delete_runtime_command'">Delete selected</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="runtime-command-clear">Clear</button>
+            </div>
+        </form>
     </article>
     <article class="panel">
         <h3><i class="bi bi-layers" style="color:var(--accent);margin-right:6px;"></i>Prepare runtime</h3>
@@ -479,16 +514,48 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
 
 {{template "deploy_history" .}}
 
+<script id="saved-runtime-commands-data" type="application/json">{{.SiteRuntimeCommandsJSON}}</script>
+
 <script>
 (function () {
     const runtimeForm = document.getElementById('runtime-npm-actions');
+    const customForm = document.getElementById('runtime-custom-form');
     const outputSection = document.getElementById('cmd-output-section');
     const outputBody = document.getElementById('cmd-output-body');
     const outputPre = document.getElementById('cmd-output-pre');
     const outputStatus = document.getElementById('cmd-output-status');
     const outputToggle = document.getElementById('cmd-output-toggle');
-    if (!runtimeForm || !outputSection || !outputBody || !outputPre || !outputStatus || !outputToggle) {
+    const commandSelect = document.getElementById('runtime-command-select');
+    const commandId = document.getElementById('runtime-command-id');
+    const commandName = document.getElementById('runtime-command-name');
+    const commandNodeVersion = document.getElementById('runtime-command-node-version');
+    const commandBody = document.getElementById('runtime-command-body');
+    const commandRun = document.getElementById('runtime-custom-run');
+    const commandClear = document.getElementById('runtime-command-clear');
+    const savedCommandsNode = document.getElementById('saved-runtime-commands-data');
+    if (!runtimeForm || !customForm || !outputSection || !outputBody || !outputPre || !outputStatus || !outputToggle || !commandSelect || !commandId || !commandName || !commandNodeVersion || !commandBody || !commandRun || !commandClear || !savedCommandsNode) {
         return;
+    }
+    const savedCommands = JSON.parse(savedCommandsNode.textContent || '[]');
+
+    function resetCustomCommandForm() {
+        commandSelect.value = '';
+        commandId.value = '0';
+        commandName.value = '';
+        commandNodeVersion.value = '{{.RuntimeCommandNodeVersion}}';
+        commandBody.value = '';
+    }
+
+    function applySavedCommand(commandRecord) {
+        if (!commandRecord) {
+            resetCustomCommandForm();
+            return;
+        }
+        commandSelect.value = String(commandRecord.id);
+        commandId.value = String(commandRecord.id);
+        commandName.value = commandRecord.name || '';
+        commandNodeVersion.value = commandRecord.node_version || '';
+        commandBody.value = commandRecord.command_body || '';
     }
 
     function setOutputVisibility(isVisible) {
@@ -557,13 +624,85 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
         }
     }
 
+    async function streamCustomCommand() {
+        const buttons = Array.from(customForm.querySelectorAll('button'));
+        buttons.forEach((button) => {
+            button.disabled = true;
+        });
+
+        document.getElementById('runtime-custom-action').value = 'run_custom_command';
+        setOutputVisibility(true);
+        outputPre.textContent = '';
+        outputStatus.textContent = 'Running...';
+        outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        try {
+            const payload = new URLSearchParams(new FormData(customForm));
+            const response = await fetch('/sites/details/runtime-stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                },
+                body: payload.toString()
+            });
+
+            if (!response.ok || !response.body) {
+                const text = await response.text();
+                outputStatus.textContent = 'Failed';
+                outputPre.textContent = text || 'Command could not be started.';
+                return;
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    break;
+                }
+                outputPre.textContent += decoder.decode(value, { stream: true });
+                outputPre.scrollTop = outputPre.scrollHeight;
+            }
+
+            if (outputPre.textContent.includes('[command failed]')) {
+                outputStatus.textContent = 'Failed';
+            } else {
+                outputStatus.textContent = 'Completed';
+            }
+        } catch (error) {
+            outputStatus.textContent = 'Failed';
+            outputPre.textContent += '\n' + String(error);
+        } finally {
+            buttons.forEach((button) => {
+                button.disabled = false;
+            });
+            document.getElementById('runtime-custom-action').value = 'save_runtime_command';
+        }
+    }
+
     runtimeForm.querySelectorAll('[data-runtime-action]').forEach((button) => {
         button.addEventListener('click', () => {
             streamRuntimeCommand(button.dataset.runtimeAction || '', button.dataset.runtimeScript || '');
         });
     });
 
+    commandSelect.addEventListener('change', () => {
+        const selectedCommand = savedCommands.find((entry) => String(entry.id) === commandSelect.value);
+        applySavedCommand(selectedCommand);
+    });
+
+    commandRun.addEventListener('click', () => {
+        streamCustomCommand();
+    });
+
+    commandClear.addEventListener('click', () => {
+        resetCustomCommandForm();
+    });
+
     setOutputVisibility(!outputBody.classList.contains('hidden'));
+    if (commandId.value && commandId.value !== '0') {
+        commandSelect.value = commandId.value;
+    }
 })();
 </script>
 

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -960,9 +961,15 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		PM2ProcessName:      firstNonEmpty(strings.TrimSpace(r.FormValue("process_name")), site.Name),
 		PM2ScriptPath:       strings.TrimSpace(r.FormValue("script_path")),
 		PM2Arguments:        strings.TrimSpace(r.FormValue("process_arguments")),
+		RuntimeCommandName:  strings.TrimSpace(r.FormValue("runtime_command_name")),
+		RuntimeCommandNodeVersion: strings.TrimSpace(r.FormValue("runtime_command_node_version")),
+		RuntimeCommandBody:  r.FormValue("runtime_command_body"),
 		GitCredentialProtocol: firstNonEmpty(strings.TrimSpace(r.FormValue("credential_protocol")), firstNonEmpty(gitAuthStatus.RepositoryProtocol, "https")),
 		GitCredentialHost:   firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
 		GitCredentialUsername: strings.TrimSpace(r.FormValue("credential_username")),
+	}
+	if commandID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("runtime_command_id")), 10, 64); err == nil {
+		data.RuntimeCommandID = commandID
 	}
 
 	var output string
@@ -1169,6 +1176,47 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		}
 		a.recordAudit(r.Context(), "runtime.npm_install", site.Name, "success", map[string]any{"cmd": installLabel})
 		successMessage = installLabel + " completed successfully."
+	case "save_runtime_command":
+		if strings.TrimSpace(data.RuntimeCommandName) == "" {
+			data.RequestError = "Profile name is required."
+			break
+		}
+		if strings.TrimSpace(data.RuntimeCommandBody) == "" {
+			data.RequestError = "Custom command cannot be empty."
+			break
+		}
+		if data.RuntimeCommandNodeVersion == "" {
+			data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
+		}
+		commandID, err := a.store.UpsertSiteRuntimeCommand(r.Context(), domain.SiteRuntimeCommand{
+			ID:          data.RuntimeCommandID,
+			SiteID:      site.ID,
+			Name:        data.RuntimeCommandName,
+			CommandBody: data.RuntimeCommandBody,
+			NodeVersion: data.RuntimeCommandNodeVersion,
+		})
+		if err != nil {
+			data.RequestError = "Could not save runtime command profile: " + err.Error()
+			break
+		}
+		data.RuntimeCommandID = commandID
+		a.recordAudit(r.Context(), "site.save_runtime_command", site.Name, "success", map[string]any{"profile": data.RuntimeCommandName, "command_id": commandID})
+		successMessage = fmt.Sprintf("Runtime command profile \"%s\" saved.", data.RuntimeCommandName)
+	case "delete_runtime_command":
+		if data.RuntimeCommandID <= 0 {
+			data.RequestError = "Select a saved profile to delete."
+			break
+		}
+		if err := a.store.DeleteSiteRuntimeCommand(r.Context(), site.ID, data.RuntimeCommandID); err != nil {
+			data.RequestError = "Could not delete runtime command profile: " + err.Error()
+			break
+		}
+		a.recordAudit(r.Context(), "site.delete_runtime_command", site.Name, "success", map[string]any{"command_id": data.RuntimeCommandID, "profile": data.RuntimeCommandName})
+		data.RuntimeCommandID = 0
+		data.RuntimeCommandName = ""
+		data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
+		data.RuntimeCommandBody = ""
+		successMessage = "Runtime command profile deleted."
 	case "restart_pm2":
 		processName := strings.TrimSpace(r.FormValue("process_name"))
 		output, actionErr = a.pm2.Restart(site.OwnerLinuxUser, processName)
@@ -1444,8 +1492,17 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.DeploymentReleases = releases
 	data.PackageScripts = readPackageJSONScripts(site.RootDirectory)
 	data.NpmScriptNodeVersion = runtimeStatus.DefaultNodeVersion
+	if data.RuntimeCommandNodeVersion == "" {
+		data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
+	}
 	data.DatabaseAccess, _ = a.databases.ListDatabaseAccess()
 	data.LinuxUsers = a.listLinuxUsers()
+	if commands, err := a.store.ListSiteRuntimeCommands(r.Context(), site.ID); err == nil {
+		data.SiteRuntimeCommands = commands
+		if payload, err := json.Marshal(commands); err == nil {
+			data.SiteRuntimeCommandsJSON = string(payload)
+		}
+	}
 	envPath := filepath.Join(site.RootDirectory, ".env")
 	var envContent string
 	if _, err := a.helper.Call(r.Context(), "files.read_env", map[string]string{"path": envPath}, &envContent); err == nil {

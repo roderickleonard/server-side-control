@@ -173,6 +173,13 @@ type NPMInstallSpec struct {
 	CI               bool   `json:"ci"`
 }
 
+type CustomRuntimeCommandSpec struct {
+	User             string `json:"user"`
+	WorkingDirectory string `json:"working_directory"`
+	CommandBody      string `json:"command_body"`
+	NodeVersion      string `json:"node_version"`
+}
+
 type RuntimeManager interface {
 	Inspect(spec RuntimeInspectSpec) (RuntimeStatus, error)
 	InstallNVM(user string) (string, error)

@@ -86,6 +86,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("ensure managed_sites.database_name column: %w", err)
 	}
 
+	if err := s.ensureSiteRuntimeCommandsTable(ctx); err != nil {
+		return fmt.Errorf("ensure site_runtime_commands table: %w", err)
+	}
+
 	return nil
 }
 
@@ -147,6 +151,25 @@ func (s *Store) ensureManagedSitesDatabaseColumn(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Store) ensureSiteRuntimeCommandsTable(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS site_runtime_commands (
+			id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			site_id BIGINT NOT NULL,
+			name VARCHAR(191) NOT NULL,
+			command_body TEXT NOT NULL,
+			node_version VARCHAR(64) NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			INDEX idx_site_runtime_commands_site_id (site_id),
+			CONSTRAINT fk_site_runtime_commands_site FOREIGN KEY (site_id) REFERENCES managed_sites(id) ON DELETE CASCADE
+		)`)
+	return err
 }
 
 func splitStatements(input string) []string {

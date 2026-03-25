@@ -32,6 +32,7 @@ var allowedHelperActions = map[string]struct{}{
 	"runtime.start_pm2": {},
 	"runtime.run_npm_script": {},
 	"runtime.run_npm_install": {},
+	"runtime.run_custom_command": {},
 	"files.write_env":  {},
 	"files.read_env":   {},
 	"files.read_text":  {},

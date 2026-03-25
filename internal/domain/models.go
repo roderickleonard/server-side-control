@@ -49,3 +49,13 @@ type AuditLog struct {
 	Metadata    string
 	CreatedAt   time.Time
 }
+
+type SiteRuntimeCommand struct {
+	ID          int64     `json:"id"`
+	SiteID      int64     `json:"site_id"`
+	Name        string    `json:"name"`
+	CommandBody string    `json:"command_body"`
+	NodeVersion string    `json:"node_version"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

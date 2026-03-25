@@ -49,6 +49,10 @@ func handleStreamMode() {
 		_, _ = fmt.Fprintf(os.Stderr, "decode request: %v\n", err)
 		os.Exit(1)
 	}
+	if err := system.ValidateHelperAction(request.Action); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "validate request: %v\n", err)
+		os.Exit(1)
+	}
 	switch request.Action {
 	case "runtime.run_npm_script":
 		var spec system.NPMScriptSpec
@@ -67,6 +71,16 @@ func handleStreamMode() {
 			os.Exit(1)
 		}
 		if err := system.StreamNPMInstall(spec, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "runtime.run_custom_command":
+		var spec system.CustomRuntimeCommandSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode custom runtime command spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamCustomRuntimeCommand(spec, os.Stdout, os.Stderr); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
 			os.Exit(1)
 		}

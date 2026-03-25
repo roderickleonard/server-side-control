@@ -87,6 +87,12 @@ type TemplateData struct {
 	DeploymentReleases []domain.DeploymentRelease
 	PackageScripts []string
 	NpmScriptNodeVersion string
+	SiteRuntimeCommands []domain.SiteRuntimeCommand
+	SiteRuntimeCommandsJSON string
+	RuntimeCommandID int64
+	RuntimeCommandName string
+	RuntimeCommandNodeVersion string
+	RuntimeCommandBody string
 	EnvFileContent string
 	EcosystemPort  string
 	Alerts         []string

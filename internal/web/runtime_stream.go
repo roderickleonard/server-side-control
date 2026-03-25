@@ -49,7 +49,6 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	action := strings.TrimSpace(r.FormValue("details_action"))
-	nodeVersion := strings.TrimSpace(r.FormValue("npm_script_node_version"))
 	var (
 		helperAction string
 		payload      any
@@ -58,6 +57,7 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 	)
 	switch action {
 	case "npm_install":
+		nodeVersion := strings.TrimSpace(r.FormValue("npm_script_node_version"))
 		ci := r.FormValue("npm_ci") == "1"
 		helperAction = "runtime.run_npm_install"
 		payload = system.NPMInstallSpec{
@@ -72,6 +72,7 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 			label = "npm ci"
 		}
 	case "run_npm_script":
+		nodeVersion := strings.TrimSpace(r.FormValue("npm_script_node_version"))
 		scriptName := strings.TrimSpace(r.FormValue("script_name"))
 		if scriptName == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "script name is required"})
@@ -86,6 +87,21 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 		}
 		auditAction = "runtime.run_npm_script"
 		label = "npm run " + scriptName
+	case "run_custom_command":
+		commandBody := strings.TrimSpace(r.FormValue("runtime_command_body"))
+		if commandBody == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "custom command is required"})
+			return
+		}
+		helperAction = "runtime.run_custom_command"
+		payload = system.CustomRuntimeCommandSpec{
+			User:             site.OwnerLinuxUser,
+			WorkingDirectory: site.RootDirectory,
+			CommandBody:      commandBody,
+			NodeVersion:      strings.TrimSpace(r.FormValue("runtime_command_node_version")),
+		}
+		auditAction = "runtime.run_custom_command"
+		label = firstNonEmpty(strings.TrimSpace(r.FormValue("runtime_command_name")), "custom script")
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported runtime action"})
 		return
