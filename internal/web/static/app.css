@@ -2,6 +2,8 @@
    Server Side Control — Plesk-inspired UI
    ========================================================================== */
 
+.hidden { display: none !important; }
+
 :root {
     /* Sidebar */
     --sb-bg:           #1b2130;

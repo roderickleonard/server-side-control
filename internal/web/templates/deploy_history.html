@@ -16,29 +16,28 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {{range .DeploymentReleases}}
-                    <tr>
-                        <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
-                        <td>{{.Action}}</td>
-                        <td><span class="badge subtle-badge">{{.Status}}</span></td>
-                        <td class="text-break">{{.TargetDirectory}}</td>
-                        <td class="text-break">{{.CommitSHA}}</td>
-                        <td>{{.RunAsUser}}</td>
+                    {{range $i, $r := .DeploymentReleases}}
+                    <tr style="cursor:pointer;" onclick="var d=document.getElementById('rel-out-{{$i}}');if(d){d.classList.toggle('hidden')}">
+                        <td>{{$r.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                        <td>{{$r.Action}}</td>
+                        <td><span class="badge subtle-badge">{{$r.Status}}</span></td>
+                        <td class="text-break">{{$r.TargetDirectory}}</td>
+                        <td class="text-break">{{$r.CommitSHA}}</td>
+                        <td>{{$r.RunAsUser}}</td>
                     </tr>
-                    {{if .PreviousCommitSHA}}
-                    <tr class="table-note-row">
-                        <td colspan="6" class="small text-secondary">Previous: {{.PreviousCommitSHA}}</td>
-                    </tr>
-                    {{end}}
-                    {{if .Output}}
-                    <tr class="table-note-row">
-                        <td colspan="6"><pre class="command-output mt-0">{{.Output}}</pre></td>
+                    {{if or $r.PreviousCommitSHA $r.Output}}
+                    <tr id="rel-out-{{$i}}" class="table-note-row hidden">
+                        <td colspan="6">
+                            {{if $r.PreviousCommitSHA}}<p class="small text-secondary" style="margin:4px 0;">Previous: {{$r.PreviousCommitSHA}}</p>{{end}}
+                            {{if $r.Output}}<pre class="command-output mt-0">{{$r.Output}}</pre>{{end}}
+                        </td>
                     </tr>
                     {{end}}
                     {{end}}
                 </tbody>
             </table>
         </div>
+        <p class="muted details-note" style="margin-top:8px;">Click a row to expand its output.</p>
     </article>
 </section>
 {{end}}

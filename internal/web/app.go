@@ -85,6 +85,7 @@ type TemplateData struct {
 	DeploymentReleases []domain.DeploymentRelease
 	PackageScripts []string
 	NpmScriptNodeVersion string
+	EnvFileContent string
 	Alerts         []string
 	Nav            []NavItem
 	Now            time.Time

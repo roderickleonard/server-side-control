@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -1101,6 +1102,83 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		a.recordAudit(r.Context(), "runtime.run_npm_script", site.Name, "success", map[string]any{"script": scriptName, "node_version": nodeVersion})
 		data.CommandOutput = output
 		successMessage = "npm run " + scriptName + " completed successfully."
+	case "enable_tls":
+		tlsRequest := system.TLSRequest{
+			Domain:   strings.TrimSpace(r.FormValue("tls_domain")),
+			Email:    strings.TrimSpace(r.FormValue("tls_email")),
+			Redirect: r.FormValue("tls_redirect") == "1",
+		}
+		output, actionErr = a.nginx.EnableTLS(tlsRequest)
+		if actionErr != nil {
+			message := actionErr.Error()
+			if errors.Is(actionErr, system.ErrInvalidDomain) {
+				message = "Domain format is invalid for TLS issuance."
+			}
+			if errors.Is(actionErr, system.ErrInvalidEmail) {
+				message = "Email format is invalid for Certbot."
+			}
+			data.RequestError = message
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "nginx.enable_tls", tlsRequest.Domain, "failure", map[string]any{"email": tlsRequest.Email, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "nginx.enable_tls", tlsRequest.Domain, "success", map[string]any{"email": tlsRequest.Email, "redirect": tlsRequest.Redirect})
+		data.CommandOutput = output
+		successMessage = "TLS certificate was issued and Nginx reloaded successfully."
+	case "edit_env":
+		envPath := filepath.Join(site.RootDirectory, ".env")
+		if filepath.Clean(envPath) != filepath.Clean(site.RootDirectory)+"/.env" {
+			data.RequestError = "Invalid .env file path."
+			break
+		}
+		content := r.FormValue("env_content")
+		if err := os.WriteFile(envPath, []byte(content), 0o600); err != nil {
+			data.RequestError = "Could not write .env file: " + err.Error()
+			break
+		}
+		if u, err := user.Lookup(site.OwnerLinuxUser); err == nil {
+			uid, _ := strconv.Atoi(u.Uid)
+			gid, _ := strconv.Atoi(u.Gid)
+			_ = os.Chown(envPath, uid, gid)
+		}
+		a.recordAudit(r.Context(), "site.edit_env", site.Name, "success", nil)
+		successMessage = ".env file saved successfully."
+	case "restart_pm2":
+		processName := strings.TrimSpace(r.FormValue("process_name"))
+		output, actionErr = a.pm2.Restart(site.OwnerLinuxUser, processName)
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "pm2.restart", site.Name, "failure", map[string]any{"process": processName, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "pm2.restart", site.Name, "success", map[string]any{"process": processName})
+		data.CommandOutput = output
+		successMessage = "PM2 process restarted successfully."
+	case "reload_pm2":
+		processName := strings.TrimSpace(r.FormValue("process_name"))
+		output, actionErr = a.pm2.Reload(site.OwnerLinuxUser, processName)
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "pm2.reload", site.Name, "failure", map[string]any{"process": processName, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "pm2.reload", site.Name, "success", map[string]any{"process": processName})
+		data.CommandOutput = output
+		successMessage = "PM2 process reloaded successfully."
+	case "stop_pm2":
+		processName := strings.TrimSpace(r.FormValue("process_name"))
+		output, actionErr = a.pm2.Stop(site.OwnerLinuxUser, processName)
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "pm2.stop", site.Name, "failure", map[string]any{"process": processName, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "pm2.stop", site.Name, "success", map[string]any{"process": processName})
+		data.CommandOutput = output
+		successMessage = "PM2 process stopped successfully."
 	default:
 		data.RequestError = "Invalid site details action."
 	}
@@ -1313,6 +1391,9 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.GitAuthStatus = gitAuthStatus
 	data.DeploymentReleases = releases
 	data.PackageScripts = readPackageJSONScripts(site.RootDirectory)
+	if content, err := os.ReadFile(filepath.Join(site.RootDirectory, ".env")); err == nil {
+		data.EnvFileContent = string(content)
+	}
 	if data.GitRepositoryURL == "" {
 		data.GitRepositoryURL = repositoryStatus.RemoteURL
 	}

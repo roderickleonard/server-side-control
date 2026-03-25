@@ -110,6 +110,8 @@
     </article>
 </section>
 
+<div style="margin-top:24px;"></div>
+
 <section class="grid">
     <article class="panel">
         <div class="section-head">
@@ -177,7 +179,9 @@
     </article>
 </section>
 
-<section class="grid single">
+<div style="margin-top:24px;"></div>
+
+<section class="grid">
     <article class="panel">
         <h3><i class="bi bi-play-circle" style="color:var(--accent);margin-right:6px;"></i>Start site with PM2</h3>
         <form method="post" class="stack-form">
@@ -210,24 +214,58 @@
             </div>
         </form>
     </article>
+    <article class="panel">
+        <h3><i class="bi bi-arrow-repeat" style="color:var(--accent);margin-right:6px;"></i>PM2 process control</h3>
+        <p class="muted details-note" style="margin-bottom:16px;">Enter the PM2 process name and restart, reload (zero-downtime), or stop it.</p>
+        <div class="stack-cluster">
+            <form method="post" class="stack-form compact-form">
+                <input type="hidden" name="details_action" value="restart_pm2">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <div class="form-grid two-up">
+                    <label class="span-2">
+                        <span>Process name</span>
+                        <input type="text" name="process_name" value="{{.PM2ProcessName}}" placeholder="{{.SelectedSite.Name}}" required>
+                    </label>
+                </div>
+                <div class="form-actions" style="gap:8px;">
+                    <button type="submit">Restart</button>
+                </div>
+            </form>
+            <form method="post" class="inline-form details-inline-form" style="margin-top:8px;">
+                <input type="hidden" name="details_action" value="reload_pm2">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="process_name" value="{{.PM2ProcessName}}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Reload (zero-downtime)</button>
+            </form>
+            <form method="post" class="inline-form details-inline-form" style="margin-top:4px;">
+                <input type="hidden" name="details_action" value="stop_pm2">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="process_name" value="{{.PM2ProcessName}}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Stop</button>
+            </form>
+        </div>
+    </article>
 </section>
+
+<div style="margin-top:24px;"></div>
 
 <section class="grid">
     <article class="panel">
-        <div class="section-head">
+        <div class="section-head" style="cursor:pointer;" onclick="this.closest('article').querySelectorAll('.ssh-body').forEach(el=>el.classList.toggle('hidden'))">
             <div>
                 <span class="eyebrow">SSH deploy key</span>
                 <h3>{{if .GitAuthStatus.DeployKeyReady}}Deploy key ready{{else}}No deploy key yet{{end}}</h3>
             </div>
             <span class="badge subtle-badge">{{if .GitAuthStatus.KnownHostTrusted}}Host trusted{{else}}Host not trusted{{end}}</span>
         </div>
-        <div class="site-delete-summary details-summary">
+        <div class="ssh-body site-delete-summary details-summary">
             <div><strong>Repository host</strong><span>{{if .GitAuthStatus.RepositoryHost}}{{.GitAuthStatus.RepositoryHost}}{{else}}-{{end}}</span></div>
             <div><strong>Protocol</strong><span>{{if .GitAuthStatus.RepositoryProtocol}}{{.GitAuthStatus.RepositoryProtocol}}{{else}}-{{end}}</span></div>
             <div><strong>Key path</strong><span>{{if .GitAuthStatus.SSHKeyPath}}{{.GitAuthStatus.SSHKeyPath}}{{else}}-{{end}}</span></div>
         </div>
+        <div class="ssh-body">
         {{if .GitAuthStatus.PublicKey}}
-        <pre class="command-output details-pre">{{.GitAuthStatus.PublicKey}}</pre>
+        <pre class="command-output details-pre" style="margin-top:12px;">{{.GitAuthStatus.PublicKey}}</pre>
         {{else}}
         <p class="muted details-note">Generate a deploy key, add the public key to GitHub/GitLab, then clone the repository using the SSH URL.</p>
         {{end}}
@@ -251,6 +289,7 @@
                     <button type="submit">Trust SSH host</button>
                 </div>
             </form>
+        </div>
         </div>
     </article>
     <article class="panel">
@@ -296,6 +335,71 @@
         </form>
     </article>
 </section>
+
+<div style="margin-top:24px;"></div>
+
+<section class="grid single">
+    <article class="panel">
+        <h3><i class="bi bi-file-earmark-lock" style="color:var(--accent);margin-right:6px;"></i>.env file</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="details_action" value="edit_env">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <label>
+                <span>Content — <code>{{.SelectedSite.RootDirectory}}/.env</code></span>
+                <textarea name="env_content" rows="14" style="font-family:monospace;font-size:13px;" placeholder="DATABASE_URL=mysql://user:pass@localhost/db
+APP_SECRET=...
+NODE_ENV=production">{{.EnvFileContent}}</textarea>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Save .env</button>
+            </div>
+        </form>
+        <p class="muted details-note">File is saved as the site owner user (mode 0600). Never commit secrets to version control.</p>
+    </article>
+</section>
+
+<section class="grid">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">SSL / TLS</span>
+                <h3>Enable HTTPS</h3>
+            </div>
+        </div>
+        <p class="muted details-note">DNS for the domain must already point to this server. Port 80 must be reachable for the HTTP-01 challenge.</p>
+        <form method="post" class="stack-form compact-form">
+            <input type="hidden" name="details_action" value="enable_tls">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Domain</span>
+                    <input type="text" name="tls_domain" value="{{.SelectedSite.DomainName}}" placeholder="example.com" required>
+                </label>
+                <label>
+                    <span>Email</span>
+                    <input type="text" name="tls_email" placeholder="ops@example.com" required>
+                </label>
+            </div>
+            <label class="checkbox-row">
+                <input type="checkbox" name="tls_redirect" value="1" checked>
+                <span>Redirect HTTP to HTTPS</span>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Request certificate</button>
+            </div>
+        </form>
+    </article>
+    <article class="panel">
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>TLS notes</h3>
+        <ul style="padding-left:18px;line-height:2;">
+            <li>Certbot and python3-certbot-nginx must be installed on the server.</li>
+            <li>The domain must resolve to this server's IP before issuing.</li>
+            <li>Certificate auto-renews via the system certbot timer.</li>
+        </ul>
+    </article>
+</section>
+
+<div style="margin-top:24px;"></div>
 
 {{template "deploy_history" .}}
 
