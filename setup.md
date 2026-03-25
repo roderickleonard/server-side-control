@@ -50,6 +50,7 @@ git
 curl
 ca-certificates
 build-essential
+libpam0g-dev
 nginx
 mysql-server
 certbot
@@ -271,6 +272,11 @@ Script paket kurmuyorsa:
 - `apt-get update` çalışıyor mu kontrol et
 - sunucunun internete çıkabildiğini kontrol et
 - apt source list bozuk mu kontrol et
+
+PAM header hatasi aliyorsan:
+- `libpam0g-dev` paketinin kuruldugunu kontrol et
+- `dpkg -s libpam0g-dev` ile paketi dogrula
+- sonra `sudo ./scripts/install.sh` komutunu tekrar calistir
 
 Update script calismiyorsa:
 - `/etc/server-side-control/install-state.env` dosyasi var mi kontrol et

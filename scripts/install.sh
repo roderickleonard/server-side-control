@@ -123,6 +123,7 @@ ensure_base_dependencies() {
         curl
         ca-certificates
         build-essential
+        libpam0g-dev
         nginx
         mysql-server
         certbot

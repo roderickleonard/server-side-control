@@ -80,6 +80,7 @@ The installer writes these values to `panel.env`:
 
 - The panel systemd unit now runs as the dedicated `server-side-control` user. Privileged operations are delegated to `/usr/local/bin/server-side-control-helper` through `/etc/sudoers.d/server-side-control-helper`.
 - The install script is idempotent for dependency bootstrap: it skips apt packages, Go, and PM2 when they are already installed.
+- Ubuntu build dependencies include `libpam0g-dev` so the PAM-backed login package can compile on the target host.
 - The install script writes `/etc/server-side-control/install-state.env` so the updater knows which repository path and branch to pull from later.
 - The installer now asks for MySQL root/admin access, creates the panel database and panel MySQL user automatically, writes the panel DSN into `panel.env`, and stores the MySQL admin credentials in a root-only defaults file.
 - PAM support depends on the Ubuntu target host exposing libpam and a working PAM service such as `login`.
