@@ -33,7 +33,7 @@ func main() {
 	mysqlAdminHost := prompt(reader, "MySQL root host", "127.0.0.1", "MySQL servisinin calistigi host. Ayni sunucudaysa genelde 127.0.0.1")
 	mysqlAdminPort := prompt(reader, "MySQL root port", "3306", "MySQL TCP portu. Varsayilan genelde 3306")
 	mysqlAdminUser := prompt(reader, "MySQL root user", "root", "Panel veritabani ve MySQL kullanicilarini olusturmak icin kullanilacak admin hesap")
-	mysqlAdminPassword := promptPassword(reader, "MySQL root password", "", "Yukaridaki MySQL admin kullanicisinin parolasi. Ekranda gizli girilir.")
+	mysqlAdminPassword := promptPassword(reader, "MySQL root password", "", "Yukaridaki MySQL admin kullanicisinin parolasi. Ubuntu'da root auth_socket kullaniyorsa bunu bos birakabilirsin.")
 	mysqlAdminDefaultsFile := prompt(reader, "MySQL admin defaults file", "/etc/server-side-control/mysql-admin.cnf", "MySQL admin erisiminin root-only olarak saklanacagi dosya. Panel veritabani islemleri icin helper bunu kullanir.")
 	panelDatabaseName := prompt(reader, "Panel MySQL database", "server_side_control", "Panelin kendi tablolarini tutacagi veritabani adi")
 	panelDatabaseUser := prompt(reader, "Panel MySQL user", "server_side_control", "Panel uygulamasinin kendi veritabanina baglanirken kullanacagi MySQL kullanicisi")
@@ -49,7 +49,13 @@ func main() {
 		generatedDatabasePassword = true
 	}
 
-	adminDSN := buildMySQLDSN(mysqlAdminUser, mysqlAdminPassword, mysqlAdminHost, mysqlAdminPort, "mysql")
+	adminConnection := mysqlAdminConnection{
+		User:     mysqlAdminUser,
+		Password: mysqlAdminPassword,
+		Host:     mysqlAdminHost,
+		Port:     mysqlAdminPort,
+	}
+	adminDSN := adminConnection.DSN("mysql")
 	databaseDSN := buildMySQLDSN(panelDatabaseUser, panelDatabasePassword, mysqlAdminHost, mysqlAdminPort, panelDatabaseName)
 	bootstrapUser := prompt(reader, "Bootstrap panel user", "admin", "PAM disinda panel icine ilk giris icin kullanacagin gecici veya kalici yonetici kullanici adi")
 	bootstrapPassword := promptPassword(reader, "Bootstrap panel password", "change-me", "Bootstrap panel kullanicisinin parolasi. Bunu guclu bir degerle degistirmen daha dogru olur.")
@@ -61,11 +67,21 @@ func main() {
 	helperBinary := prompt(reader, "Privileged helper binary", "/usr/local/bin/server-side-control-helper", "Root gerektiren islemleri yapan helper binary'nin tam yolu")
 
 	if err := provisionPanelDatabase(adminDSN, mysqlAdminHost, mysqlAdminPort, panelDatabaseName, panelDatabaseUser, panelDatabasePassword); err != nil {
-		fmt.Fprintf(os.Stderr, "prepare panel MySQL database: %v\n", err)
-		os.Exit(1)
+		if fallback, fallbackErr := fallbackToSocketAuth(adminConnection, err); fallbackErr == nil {
+			adminConnection = fallback
+			adminDSN = adminConnection.DSN("mysql")
+			fmt.Printf("\nMySQL admin login switched to local socket auth: %s\n", adminConnection.Socket)
+			if retryErr := provisionPanelDatabase(adminDSN, mysqlAdminHost, mysqlAdminPort, panelDatabaseName, panelDatabaseUser, panelDatabasePassword); retryErr != nil {
+				fmt.Fprintf(os.Stderr, "prepare panel MySQL database: %v\n", retryErr)
+				os.Exit(1)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "prepare panel MySQL database: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
-	if err := writeMySQLAdminDefaults(mysqlAdminDefaultsFile, mysqlAdminUser, mysqlAdminPassword, mysqlAdminHost, mysqlAdminPort); err != nil {
+	if err := writeMySQLAdminDefaults(mysqlAdminDefaultsFile, adminConnection); err != nil {
 		fmt.Fprintf(os.Stderr, "write MySQL admin defaults file: %v\n", err)
 		os.Exit(1)
 	}
@@ -176,6 +192,32 @@ func buildMySQLDSN(user string, password string, host string, port string, datab
 	return cfg.FormatDSN()
 }
 
+type mysqlAdminConnection struct {
+	User     string
+	Password string
+	Host     string
+	Port     string
+	Socket   string
+}
+
+func (c mysqlAdminConnection) DSN(database string) string {
+	cfg := mysql.Config{
+		User:                 c.User,
+		Passwd:               c.Password,
+		DBName:               database,
+		ParseTime:            true,
+		AllowNativePasswords: true,
+	}
+	if strings.TrimSpace(c.Socket) != "" {
+		cfg.Net = "unix"
+		cfg.Addr = c.Socket
+	} else {
+		cfg.Net = "tcp"
+		cfg.Addr = net.JoinHostPort(c.Host, c.Port)
+	}
+	return cfg.FormatDSN()
+}
+
 func provisionPanelDatabase(adminDSN string, host string, port string, databaseName string, username string, password string) error {
 	dataStore, err := store.Open(adminDSN)
 	if err != nil {
@@ -199,22 +241,52 @@ func provisionPanelDatabase(adminDSN string, host string, port string, databaseN
 	return appStore.Migrate(ctx)
 }
 
-func writeMySQLAdminDefaults(path string, user string, password string, host string, port string) error {
+func writeMySQLAdminDefaults(path string, connection mysqlAdminConnection) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 
-	content := strings.Join([]string{
+	lines := []string{
 		"[client]",
-		fmt.Sprintf("user=%s", user),
-		fmt.Sprintf("password=%s", password),
-		fmt.Sprintf("host=%s", host),
-		fmt.Sprintf("port=%s", port),
-		"protocol=tcp",
-		"",
-	}, "\n")
+		fmt.Sprintf("user=%s", connection.User),
+	}
+	if strings.TrimSpace(connection.Password) != "" {
+		lines = append(lines, fmt.Sprintf("password=%s", connection.Password))
+	}
+	if strings.TrimSpace(connection.Socket) != "" {
+		lines = append(lines, fmt.Sprintf("socket=%s", connection.Socket))
+	} else {
+		lines = append(lines,
+			fmt.Sprintf("host=%s", connection.Host),
+			fmt.Sprintf("port=%s", connection.Port),
+			"protocol=tcp",
+		)
+	}
+	lines = append(lines, "")
+
+	content := strings.Join(lines, "\n")
 
 	return os.WriteFile(path, []byte(content), 0o600)
+}
+
+func fallbackToSocketAuth(connection mysqlAdminConnection, originalErr error) (mysqlAdminConnection, error) {
+	if !isLocalMySQLHost(connection.Host) {
+		return mysqlAdminConnection{}, originalErr
+	}
+
+	for _, socketPath := range []string{"/var/run/mysqld/mysqld.sock", "/run/mysqld/mysqld.sock"} {
+		if _, err := os.Stat(socketPath); err == nil {
+			connection.Socket = socketPath
+			return connection, nil
+		}
+	}
+
+	return mysqlAdminConnection{}, originalErr
+}
+
+func isLocalMySQLHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	return host == "" || host == "127.0.0.1" || host == "localhost"
 }
 
 func randomPassword(length int) (string, error) {

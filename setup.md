@@ -96,6 +96,11 @@ Installer sonra şunları otomatik yapar:
 6. Panel DSN bilgisini env dosyasına yazar
 7. MySQL admin erişimini root-only dosyada saklar
 
+Not:
+- Ubuntu sunucularda `root` kullanicisi bazen password yerine `auth_socket` ile calisir
+- Bu durumda MySQL root password alanini bos birakman yeterli olabilir
+- Installer local MySQL socket dosyasini bulursa otomatik olarak onunla tekrar dener
+
 İstersen daha sonra panel içindeki `Databases` ekranından bu MySQL admin parolasını yeniden üretebilir veya yeni bir parola ile değiştirebilirsin.
 
 Saklanan dosya:
@@ -133,7 +138,7 @@ Installer şu bilgileri ister ve her sorunun altında kısa bir açıklama göst
 - MySQL root host: MySQL servisinin host bilgisi
 - MySQL root port: MySQL port bilgisi
 - MySQL root user: veritabani ve kullanici olusturmak icin admin hesap
-- MySQL root password: bu admin hesabin parolasi
+- MySQL root password: bu admin hesabin parolasi, Ubuntu `auth_socket` kullaniyorsa bos birakilabilir
 - MySQL admin defaults file yolu: root-only MySQL admin bilgi dosyasi
 - panel MySQL database adı: panelin kendi tablolarinin tutulacagi veritabani
 - panel MySQL user adı: panel uygulamasinin kullanacagi MySQL kullanicisi

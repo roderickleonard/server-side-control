@@ -83,6 +83,7 @@ The installer writes these values to `panel.env`:
 - Ubuntu build dependencies include `libpam0g-dev` so the PAM-backed login package can compile on the target host.
 - The install script writes `/etc/server-side-control/install-state.env` so the updater knows which repository path and branch to pull from later.
 - The installer now asks for MySQL root/admin access, creates the panel database and panel MySQL user automatically, writes the panel DSN into `panel.env`, and stores the MySQL admin credentials in a root-only defaults file.
+- On Ubuntu hosts where MySQL `root` uses `auth_socket`, leaving the MySQL root password blank allows the installer to fall back to the local MySQL socket automatically.
 - PAM support depends on the Ubuntu target host exposing libpam and a working PAM service such as `login`.
 - MySQL tables are created automatically during startup if the DSN is reachable.
 - Database provisioning from the panel runs through the privileged helper and the saved MySQL admin defaults file instead of assuming the panel DSN has global MySQL privileges.

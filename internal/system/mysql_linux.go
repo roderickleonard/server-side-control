@@ -26,6 +26,7 @@ type mysqlAdminDefaults struct {
 	Host     string
 	Port     string
 	Protocol string
+	Socket   string
 }
 
 type mysqlDatabaseManager struct {
@@ -160,19 +161,21 @@ func readMySQLAdminDefaults(path string) (mysqlAdminDefaults, error) {
 			defaults.Port = value
 		case "protocol":
 			defaults.Protocol = value
+		case "socket":
+			defaults.Socket = value
 		}
 	}
 
 	if defaults.User == "" {
 		return mysqlAdminDefaults{}, fmt.Errorf("mysql admin defaults file is missing user")
 	}
-	if defaults.Host == "" {
+	if defaults.Socket == "" && defaults.Host == "" {
 		defaults.Host = "127.0.0.1"
 	}
-	if defaults.Port == "" {
+	if defaults.Socket == "" && defaults.Port == "" {
 		defaults.Port = "3306"
 	}
-	if defaults.Protocol == "" {
+	if defaults.Socket == "" && defaults.Protocol == "" {
 		defaults.Protocol = "tcp"
 	}
 
@@ -183,14 +186,22 @@ func writeMySQLAdminDefaults(path string, defaults mysqlAdminDefaults) error {
 	content := strings.Join([]string{
 		"[client]",
 		fmt.Sprintf("user=%s", defaults.User),
-		fmt.Sprintf("password=%s", defaults.Password),
-		fmt.Sprintf("host=%s", defaults.Host),
-		fmt.Sprintf("port=%s", defaults.Port),
-		fmt.Sprintf("protocol=%s", defaults.Protocol),
+		mysqlDefaultsLine("password", defaults.Password),
+		mysqlDefaultsLine("host", defaults.Host),
+		mysqlDefaultsLine("port", defaults.Port),
+		mysqlDefaultsLine("protocol", defaults.Protocol),
+		mysqlDefaultsLine("socket", defaults.Socket),
 		"",
 	}, "\n")
 
 	return os.WriteFile(path, []byte(content), 0o600)
+}
+
+func mysqlDefaultsLine(key string, value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s=%s", key, value)
 }
 
 func mysqlQuoteAccount(value string) string {
