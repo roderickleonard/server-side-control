@@ -1,0 +1,2 @@
+ALTER TABLE managed_sites
+    ADD COLUMN IF NOT EXISTS upstream_url VARCHAR(255) NOT NULL DEFAULT '' AFTER runtime;

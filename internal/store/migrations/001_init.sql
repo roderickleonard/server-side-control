@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS managed_sites (
     domain_name VARCHAR(191) NOT NULL,
     root_directory VARCHAR(255) NOT NULL,
     runtime VARCHAR(64) NOT NULL,
+    upstream_url VARCHAR(255) NOT NULL DEFAULT '',
     php_version VARCHAR(32) NOT NULL DEFAULT '',
     nginx_config_path VARCHAR(255) NOT NULL DEFAULT '',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -29,6 +29,7 @@ type DatabaseAccess struct {
 
 type NginxManager interface {
 	ApplySite(spec SiteSpec) (string, error)
+	DeleteSite(site SiteRemoval) error
 	EnableTLS(request TLSRequest) (string, error)
 	ValidateConfig(path string) error
 	Reload() error

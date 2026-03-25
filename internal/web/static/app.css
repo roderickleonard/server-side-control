@@ -342,6 +342,12 @@ body {
     height: 18px;
 }
 
+.checkbox-row.compact {
+    padding: 10px 12px;
+    border-radius: 14px;
+    font-size: 0.88rem;
+}
+
 .command-output {
     margin: 16px 0 0;
     padding: 16px;
@@ -352,6 +358,60 @@ body {
     white-space: pre-wrap;
     font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
     font-size: 0.92rem;
+}
+
+.table-card {
+    margin-top: 14px;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid rgba(24, 33, 38, 0.08);
+    background: rgba(255, 255, 255, 0.65);
+}
+
+.table-theme {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--ink);
+    --bs-table-border-color: rgba(24, 33, 38, 0.08);
+    --bs-table-hover-bg: rgba(15, 118, 110, 0.06);
+    margin-bottom: 0;
+}
+
+.table-theme thead th {
+    border-bottom-width: 1px;
+    background: linear-gradient(90deg, rgba(15, 118, 110, 0.12), rgba(15, 118, 110, 0.04));
+    color: var(--accent-strong);
+    font-family: "Space Grotesk", "Segoe UI", sans-serif;
+    font-size: 0.88rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.table-theme tbody td {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    vertical-align: top;
+}
+
+.table-note-row td {
+    background: rgba(15, 118, 110, 0.03);
+}
+
+.table-action-form {
+    min-width: 220px;
+}
+
+.subtle-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.45rem 0.75rem;
+    border-radius: 999px;
+    background: rgba(15, 118, 110, 0.12);
+    color: var(--accent-strong);
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: capitalize;
 }
 
 .audit-table {
@@ -419,6 +479,13 @@ body {
     color: #f8faf8;
     background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
     cursor: pointer;
+}
+
+.inline-form input[type="password"]::placeholder,
+.inline-form input[type="text"]::placeholder,
+.stack-form input[type="password"]::placeholder,
+.stack-form input[type="text"]::placeholder {
+    color: rgba(94, 107, 114, 0.88);
 }
 
 .section-head {
@@ -494,6 +561,14 @@ li + li {
     .cols-6,
     .audit-row {
         grid-template-columns: 1fr;
+    }
+
+    .table-theme thead th {
+        white-space: normal;
+    }
+
+    .table-action-form {
+        min-width: 0;
     }
 
     .span-2 {

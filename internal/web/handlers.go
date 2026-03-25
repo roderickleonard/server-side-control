@@ -457,6 +457,10 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 		a.handleSiteTLS(w, r, users, sites, versions)
 		return
 	}
+	if r.FormValue("site_action") == "delete" {
+		a.handleSiteDelete(w, r, users, sites, versions)
+		return
+	}
 
 	spec := system.SiteSpec{
 		Name:           r.FormValue("site_name"),
@@ -520,6 +524,7 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 			DomainName:      spec.Domain,
 			RootDirectory:   spec.RootDirectory,
 			Runtime:         spec.Mode,
+			UpstreamURL:     spec.UpstreamURL,
 			PHPVersion:      spec.PHPVersion,
 			NginxConfigPath: configPath,
 		})
@@ -579,6 +584,89 @@ func (a *App) handleSiteTLS(w http.ResponseWriter, r *http.Request, users []syst
 		PHPVersions:    versions,
 		SuccessMessage: "TLS certificate was issued and Nginx was reloaded successfully.",
 		CommandOutput:  output,
+	})
+}
+
+func (a *App) handleSiteDelete(w http.ResponseWriter, r *http.Request, users []system.LinuxUser, sites []domain.ManagedSite, versions []string) {
+	if a.store == nil {
+		a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+			Title:          "Sites",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
+			ManagedSites:   sites,
+			PHPVersions:    versions,
+			RequestError:   "Managed site storage is not configured yet. Set PANEL_DATABASE_DSN first.",
+		})
+		return
+	}
+
+	siteName := r.FormValue("delete_site_name")
+	site, err := a.store.GetManagedSiteByName(r.Context(), siteName)
+	if err != nil {
+		a.recordAudit(r.Context(), "nginx.delete_site", siteName, "failure", map[string]any{"error": err.Error()})
+		a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+			Title:          "Sites",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
+			ManagedSites:   sites,
+			PHPVersions:    versions,
+			RequestError:   "Managed site could not be found by that name.",
+		})
+		return
+	}
+
+	if err := a.nginx.DeleteSite(system.SiteRemoval{Name: site.Name, Domain: site.DomainName, RootDirectory: site.RootDirectory, ConfigPath: site.NginxConfigPath}); err != nil {
+		a.recordAudit(r.Context(), "nginx.delete_site", site.Name, "failure", map[string]any{"config_path": site.NginxConfigPath, "root_directory": site.RootDirectory, "error": err.Error()})
+		message := err.Error()
+		switch {
+		case errors.Is(err, system.ErrInvalidSiteName):
+			message = "Site name format is invalid."
+		case errors.Is(err, system.ErrUnsafeDeletePath):
+			message = "Site root path is outside the allowed delete locations."
+		case errors.Is(err, system.ErrInvalidRootDirectory):
+			message = "Stored site directory or config path is invalid."
+		}
+		if refreshedSites := a.listManagedSites(r); refreshedSites != nil {
+			sites = refreshedSites
+		}
+		a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+			Title:          "Sites",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
+			ManagedSites:   sites,
+			PHPVersions:    versions,
+			RequestError:   message,
+		})
+		return
+	}
+
+	if err := a.store.DeleteManagedSite(r.Context(), site.Name); err != nil {
+		a.recordAudit(r.Context(), "nginx.delete_site", site.Name, "failure", map[string]any{"config_path": site.NginxConfigPath, "root_directory": site.RootDirectory, "error": err.Error(), "cleanup": "store"})
+		a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+			Title:          "Sites",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
+			ManagedSites:   a.listManagedSites(r),
+			PHPVersions:    versions,
+			RequestError:   "Nginx site was deleted but the panel record could not be removed.",
+		})
+		return
+	}
+
+	a.recordAudit(r.Context(), "nginx.delete_site", site.Name, "success", map[string]any{"config_path": site.NginxConfigPath, "root_directory": site.RootDirectory})
+	sites = a.listManagedSites(r)
+	a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+		Title:          "Sites",
+		DatabaseStatus: a.databaseStatus(r.Context()),
+		Metrics:        a.metrics.Snapshot(),
+		LinuxUsers:     users,
+		ManagedSites:   sites,
+		PHPVersions:    versions,
+		SuccessMessage: "Site, Nginx configuration, and related directory were deleted successfully.",
 	})
 }
 

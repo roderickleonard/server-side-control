@@ -196,6 +196,11 @@ func (m *helperNginxManager) ApplySite(spec SiteSpec) (string, error) {
 	return data.ConfigPath, nil
 }
 
+func (m *helperNginxManager) DeleteSite(site SiteRemoval) error {
+	_, err := m.client.Call(context.Background(), "nginx.delete_site", site, nil)
+	return err
+}
+
 func (m *helperNginxManager) ValidateConfig(path string) error {
 	_, err := m.client.Call(context.Background(), "nginx.validate", map[string]any{"path": path}, nil)
 	return err

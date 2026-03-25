@@ -26,6 +26,7 @@ var ErrInvalidUpstream = errors.New("invalid reverse proxy upstream")
 var ErrInvalidRootDirectory = errors.New("invalid root directory")
 var ErrInvalidPHPVersion = errors.New("invalid php version")
 var ErrInvalidEmail = errors.New("invalid email")
+var ErrUnsafeDeletePath = errors.New("unsafe site delete path")
 
 type SiteSpec struct {
 	Name          string
@@ -35,6 +36,13 @@ type SiteSpec struct {
 	RootDirectory string
 	UpstreamURL   string
 	PHPVersion    string
+}
+
+type SiteRemoval struct {
+	Name          string
+	Domain        string
+	RootDirectory string
+	ConfigPath    string
 }
 
 type TLSRequest struct {
@@ -151,6 +159,70 @@ func (m linuxNginxManager) ApplySite(spec SiteSpec) (string, error) {
 	return configPath, nil
 }
 
+func (m linuxNginxManager) DeleteSite(site SiteRemoval) error {
+	site.Name = strings.TrimSpace(site.Name)
+	site.Domain = strings.TrimSpace(site.Domain)
+	site.RootDirectory = strings.TrimSpace(site.RootDirectory)
+	site.ConfigPath = strings.TrimSpace(site.ConfigPath)
+
+	if !siteNamePattern.MatchString(site.Name) {
+		return ErrInvalidSiteName
+	}
+
+	configPath := site.ConfigPath
+	if configPath == "" {
+		configPath = filepath.Join(m.availableDir, site.Name+".conf")
+	}
+	if !filepath.IsAbs(configPath) {
+		return ErrInvalidRootDirectory
+	}
+	if filepath.Dir(configPath) != m.availableDir {
+		return ErrInvalidRootDirectory
+	}
+
+	enabledPath := filepath.Join(m.enabledDir, filepath.Base(configPath))
+	previousConfig, hadPreviousConfig := readIfExists(configPath)
+	previousLinkTarget, hadPreviousLink := readLinkIfExists(enabledPath)
+
+	_ = os.Remove(enabledPath)
+	_ = os.Remove(configPath)
+
+	if err := m.ValidateConfig(""); err != nil {
+		rollbackSiteDeletion(configPath, enabledPath, previousConfig, hadPreviousConfig, previousLinkTarget, hadPreviousLink)
+		return err
+	}
+	if err := m.Reload(); err != nil {
+		rollbackSiteDeletion(configPath, enabledPath, previousConfig, hadPreviousConfig, previousLinkTarget, hadPreviousLink)
+		return err
+	}
+
+	if site.RootDirectory != "" {
+		if err := removeSiteRootDirectory(site.RootDirectory); err != nil {
+			return err
+		}
+	}
+	if site.Domain != "" {
+		if err := m.deleteTLSCertificate(site.Domain); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m linuxNginxManager) deleteTLSCertificate(domain string) error {
+	cmd := exec.Command(m.certbot, "delete", "--cert-name", domain, "--non-interactive")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		trimmed := strings.TrimSpace(string(output))
+		if strings.Contains(trimmed, "No certificate found") || strings.Contains(trimmed, "No certificate lineage found") {
+			return nil
+		}
+		return fmt.Errorf("delete tls certificate: %w: %s", err, trimmed)
+	}
+	return nil
+}
+
 func ensureSiteRootDirectory(rootDirectory string, ownerLinuxUser string) error {
 	if err := os.MkdirAll(rootDirectory, 0o755); err != nil {
 		return fmt.Errorf("create site root directory: %w", err)
@@ -172,6 +244,41 @@ func ensureSiteRootDirectory(rootDirectory string, ownerLinuxUser string) error 
 		return fmt.Errorf("chown site root directory: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+func removeSiteRootDirectory(rootDirectory string) error {
+	if !filepath.IsAbs(rootDirectory) {
+		return ErrInvalidRootDirectory
+	}
+	cleanPath := filepath.Clean(rootDirectory)
+	if !isSafeDeletePath(cleanPath) {
+		return ErrUnsafeDeletePath
+	}
+	if err := os.RemoveAll(cleanPath); err != nil {
+		return fmt.Errorf("delete site root directory: %w", err)
+	}
+	return nil
+}
+
+func isSafeDeletePath(path string) bool {
+	protected := map[string]struct{}{
+		"/": {},
+		"/home": {},
+		"/opt": {},
+		"/srv": {},
+		"/var": {},
+		"/var/www": {},
+	}
+	if _, ok := protected[path]; ok {
+		return false
+	}
+	allowedPrefixes := []string{"/home/", "/opt/", "/srv/", "/var/www/"}
+	for _, prefix := range allowedPrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m linuxNginxManager) ValidateConfig(_ string) error {
@@ -287,6 +394,16 @@ func rollbackSite(configPath string, enabledPath string, hadPreviousConfig bool,
 	}
 }
 
+func rollbackSiteDeletion(configPath string, enabledPath string, previousConfig []byte, hadPreviousConfig bool, previousLinkTarget string, hadPreviousLink bool) {
+	if hadPreviousConfig {
+		_ = os.WriteFile(configPath, previousConfig, 0o644)
+	}
+	if hadPreviousLink {
+		_ = os.Remove(enabledPath)
+		_ = os.Symlink(previousLinkTarget, enabledPath)
+	}
+}
+
 func readIfExists(path string) ([]byte, bool) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -298,6 +415,14 @@ func readIfExists(path string) ([]byte, bool) {
 func fileExists(path string) bool {
 	_, err := os.Lstat(path)
 	return err == nil
+}
+
+func readLinkIfExists(path string) (string, bool) {
+	target, err := os.Readlink(path)
+	if err != nil {
+		return "", false
+	}
+	return target, true
 }
 
 func renderTLSServerBlock(domain string) string {

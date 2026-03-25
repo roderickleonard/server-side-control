@@ -53,33 +53,39 @@
     <article class="panel">
         <h3>Existing users</h3>
         {{if .LinuxUsers}}
-        <div class="table-grid cols-5">
-            <div class="table-row table-head cols-5">
-                <span>Username</span>
-                <span>UID</span>
-                <span>Home</span>
-                <span>Shell</span>
-                <span>Delete</span>
-            </div>
-            {{range .LinuxUsers}}
-            <div class="table-row cols-5">
-                <span>{{.Username}}</span>
-                <span>{{.UID}}</span>
-                <span>{{.HomeDirectory}}</span>
-                <span>{{.Shell}}</span>
-                <span>
-                    <form method="post" class="inline-form">
-                        <input type="hidden" name="user_action" value="delete">
-                        <input type="hidden" name="delete_username" value="{{.Username}}">
-                        <label class="checkbox-row">
-                            <input type="checkbox" name="remove_home" value="1">
-                            <span>Delete home files too</span>
-                        </label>
-                        <button type="submit">Delete</button>
-                    </form>
-                </span>
-            </div>
-            {{end}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>UID</th>
+                        <th>Home</th>
+                        <th>Shell</th>
+                        <th class="text-end">Delete</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .LinuxUsers}}
+                    <tr>
+                        <td class="fw-semibold">{{.Username}}</td>
+                        <td>{{.UID}}</td>
+                        <td class="text-break">{{.HomeDirectory}}</td>
+                        <td>{{.Shell}}</td>
+                        <td>
+                            <form method="post" class="inline-form table-action-form">
+                                <input type="hidden" name="user_action" value="delete">
+                                <input type="hidden" name="delete_username" value="{{.Username}}">
+                                <label class="checkbox-row compact">
+                                    <input type="checkbox" name="remove_home" value="1">
+                                    <span>Delete home files too</span>
+                                </label>
+                                <button type="submit">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
         </div>
         {{else}}
         <p class="muted">No managed Linux users found yet.</p>

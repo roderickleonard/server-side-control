@@ -3,31 +3,41 @@
 <section class="grid single">
     <article class="panel">
         <h3>Recent releases</h3>
-        <div class="audit-table">
-            <div class="audit-row audit-head release-head">
-                <span>Time</span>
-                <span>Action</span>
-                <span>Status</span>
-                <span>Target</span>
-                <span>Commit</span>
-                <span>User</span>
-            </div>
-            {{range .DeploymentReleases}}
-            <div class="audit-row release-row">
-                <span>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</span>
-                <span>{{.Action}}</span>
-                <span>{{.Status}}</span>
-                <span>{{.TargetDirectory}}</span>
-                <span>{{.CommitSHA}}</span>
-                <span>{{.RunAsUser}}</span>
-            </div>
-            {{if .PreviousCommitSHA}}
-            <p class="muted">Previous: {{.PreviousCommitSHA}}</p>
-            {{end}}
-            {{if .Output}}
-            <pre class="command-output">{{.Output}}</pre>
-            {{end}}
-            {{end}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Action</th>
+                        <th>Status</th>
+                        <th>Target</th>
+                        <th>Commit</th>
+                        <th>User</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .DeploymentReleases}}
+                    <tr>
+                        <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                        <td>{{.Action}}</td>
+                        <td><span class="badge subtle-badge">{{.Status}}</span></td>
+                        <td class="text-break">{{.TargetDirectory}}</td>
+                        <td class="text-break">{{.CommitSHA}}</td>
+                        <td>{{.RunAsUser}}</td>
+                    </tr>
+                    {{if .PreviousCommitSHA}}
+                    <tr class="table-note-row">
+                        <td colspan="6" class="small text-secondary">Previous: {{.PreviousCommitSHA}}</td>
+                    </tr>
+                    {{end}}
+                    {{if .Output}}
+                    <tr class="table-note-row">
+                        <td colspan="6"><pre class="command-output mt-0">{{.Output}}</pre></td>
+                    </tr>
+                    {{end}}
+                    {{end}}
+                </tbody>
+            </table>
         </div>
     </article>
 </section>

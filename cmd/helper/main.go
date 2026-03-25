@@ -120,6 +120,14 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		configPath, err := system.NewNginxManager(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, cfg.CertbotBinary).ApplySite(spec)
 		writeSuccess(map[string]string{"config_path": configPath}, "", err)
+	case "nginx.delete_site":
+		var site system.SiteRemoval
+		if err := json.Unmarshal(request.Input, &site); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := system.NewNginxManager(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, cfg.CertbotBinary).DeleteSite(site)
+		writeSuccess(nil, "", err)
 	case "nginx.validate":
 		var input struct{ Path string `json:"path"` }
 		if err := json.Unmarshal(request.Input, &input); err != nil {

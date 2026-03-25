@@ -14,6 +14,10 @@ func (stubNginxManager) ApplySite(spec SiteSpec) (string, error) {
 	return "", fmt.Errorf("nginx management is only supported on Ubuntu target hosts")
 }
 
+func (stubNginxManager) DeleteSite(site SiteRemoval) error {
+	return fmt.Errorf("nginx management is only supported on Ubuntu target hosts")
+}
+
 func (stubNginxManager) EnableTLS(request TLSRequest) (string, error) {
 	return "", fmt.Errorf("nginx management is only supported on Ubuntu target hosts")
 }

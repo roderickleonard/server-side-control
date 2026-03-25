@@ -73,23 +73,29 @@
     <article class="panel">
         <h3>Managed PHP sites</h3>
         {{if .ManagedSites}}
-        <div class="table-grid cols-5">
-            <div class="table-row table-head cols-5">
-                <span>Site</span>
-                <span>Domain</span>
-                <span>Current PHP</span>
-                <span>Config</span>
-                <span>Root</span>
-            </div>
-            {{range .ManagedSites}}
-            <div class="table-row cols-5">
-                <span>{{.Name}}</span>
-                <span>{{.DomainName}}</span>
-                <span>{{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}</span>
-                <span>{{.NginxConfigPath}}</span>
-                <span>{{.RootDirectory}}</span>
-            </div>
-            {{end}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Site</th>
+                        <th>Domain</th>
+                        <th>Current PHP</th>
+                        <th>Config</th>
+                        <th>Root</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .ManagedSites}}
+                    <tr>
+                        <td class="fw-semibold">{{.Name}}</td>
+                        <td>{{.DomainName}}</td>
+                        <td>{{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}</td>
+                        <td class="text-break">{{.NginxConfigPath}}</td>
+                        <td class="text-break">{{.RootDirectory}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
         </div>
         {{else}}
         <p class="muted">No managed sites are available for PHP switching yet.</p>

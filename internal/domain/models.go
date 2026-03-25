@@ -19,6 +19,7 @@ type ManagedSite struct {
 	DomainName      string
 	RootDirectory   string
 	Runtime         string
+	UpstreamURL     string
 	PHPVersion      string
 	NginxConfigPath string
 	CreatedAt       time.Time

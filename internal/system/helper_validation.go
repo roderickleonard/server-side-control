@@ -16,6 +16,7 @@ var allowedHelperActions = map[string]struct{}{
 	"mysql.rotate_user_password": {},
 	"mysql.rotate_admin_password": {},
 	"nginx.apply_site": {},
+	"nginx.delete_site": {},
 	"nginx.validate":   {},
 	"nginx.reload":     {},
 	"nginx.enable_tls": {},

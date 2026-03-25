@@ -105,25 +105,43 @@
             <span class="badge">{{len .ManagedSites}} site</span>
         </div>
         {{if .ManagedSites}}
-        <div class="table-grid cols-6">
-            <div class="table-row table-head cols-6">
-                <span>Name</span>
-                <span>Domain</span>
-                <span>Owner</span>
-                <span>Mode</span>
-                <span>PHP</span>
-                <span>Root</span>
-            </div>
-            {{range .ManagedSites}}
-            <div class="table-row cols-6">
-                <span>{{.Name}}</span>
-                <span>{{.DomainName}}</span>
-                <span>{{if .OwnerLinuxUser}}{{.OwnerLinuxUser}}{{else}}-{{end}}</span>
-                <span>{{.Runtime}}</span>
-                <span>{{if eq .Runtime "php"}}{{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}{{else}}-{{end}}</span>
-                <span>{{if eq .Runtime "reverse_proxy"}}-{{else}}{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}{{end}}</span>
-            </div>
-            {{end}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Domain</th>
+                        <th>Owner</th>
+                        <th>Mode</th>
+                        <th>Upstream</th>
+                        <th>PHP</th>
+                        <th>Root</th>
+                        <th>Config path</th>
+                        <th>Delete</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .ManagedSites}}
+                    <tr>
+                        <td class="fw-semibold">{{.Name}}</td>
+                        <td>{{.DomainName}}</td>
+                        <td>{{if .OwnerLinuxUser}}{{.OwnerLinuxUser}}{{else}}-{{end}}</td>
+                        <td><span class="badge subtle-badge">{{.Runtime}}</span></td>
+                        <td class="text-break">{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}-{{end}}</td>
+                        <td>{{if eq .Runtime "php"}}{{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}{{else}}-{{end}}</td>
+                        <td class="text-break">{{if eq .Runtime "reverse_proxy"}}-{{else}}{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}{{end}}</td>
+                        <td class="text-break">{{if .NginxConfigPath}}{{.NginxConfigPath}}{{else}}-{{end}}</td>
+                        <td>
+                            <form method="post" class="inline-form table-action-form" onsubmit="return confirm('Are you sure? This will delete the Nginx site, TLS certificate, panel record, and related directory contents if present.');">
+                                <input type="hidden" name="site_action" value="delete">
+                                <input type="hidden" name="delete_site_name" value="{{.Name}}">
+                                <button type="submit">Delete site</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
         </div>
         {{else}}
         <p class="muted">No managed sites recorded yet.</p>

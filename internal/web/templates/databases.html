@@ -77,47 +77,53 @@
     <article class="panel">
         <h3>Existing databases</h3>
         {{if .DatabaseAccess}}
-        <div class="table-grid cols-5">
-            <div class="table-row table-head cols-5">
-                <span>Database</span>
-                <span>User</span>
-                <span>Host</span>
-                <span>Password</span>
-                <span>Delete</span>
-            </div>
-            {{range .DatabaseAccess}}
-            <div class="table-row cols-5">
-                <span>{{.DatabaseName}}</span>
-                <span>{{if .Username}}{{.Username}}{{else}}-{{end}}</span>
-                <span>{{if .Host}}{{.Host}}{{else}}-{{end}}</span>
-                <span>
-                    {{if .Username}}
-                    <form method="post" class="inline-form">
-                        <input type="hidden" name="database_action" value="rotate_user_password">
-                        <input type="hidden" name="rotate_database_user" value="{{.Username}}">
-                        <input type="hidden" name="rotate_database_host" value="{{.Host}}">
-                        <input type="password" name="rotate_database_password" placeholder="Leave blank to generate">
-                        <button type="submit">Change password</button>
-                    </form>
-                    {{else}}
-                    <span class="muted">No user</span>
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Database</th>
+                        <th>User</th>
+                        <th>Host</th>
+                        <th>Password</th>
+                        <th>Delete</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .DatabaseAccess}}
+                    <tr>
+                        <td class="fw-semibold">{{.DatabaseName}}</td>
+                        <td>{{if .Username}}{{.Username}}{{else}}-{{end}}</td>
+                        <td>{{if .Host}}{{.Host}}{{else}}-{{end}}</td>
+                        <td>
+                            {{if .Username}}
+                            <form method="post" class="inline-form table-action-form">
+                                <input type="hidden" name="database_action" value="rotate_user_password">
+                                <input type="hidden" name="rotate_database_user" value="{{.Username}}">
+                                <input type="hidden" name="rotate_database_host" value="{{.Host}}">
+                                <input type="password" name="rotate_database_password" placeholder="Leave blank to generate">
+                                <button type="submit">Change password</button>
+                            </form>
+                            {{else}}
+                            <span class="muted">No user</span>
+                            {{end}}
+                        </td>
+                        <td>
+                            <form method="post" class="inline-form table-action-form">
+                                <input type="hidden" name="database_action" value="delete_access">
+                                <input type="hidden" name="delete_database_name" value="{{.DatabaseName}}">
+                                <input type="hidden" name="delete_database_user" value="{{.Username}}">
+                                <input type="hidden" name="delete_database_host" value="{{.Host}}">
+                                <label class="checkbox-row compact">
+                                    <input type="checkbox" name="drop_database" value="1">
+                                    <span>Delete contents too</span>
+                                </label>
+                                <button type="submit">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
                     {{end}}
-                </span>
-                <span>
-                    <form method="post" class="inline-form">
-                        <input type="hidden" name="database_action" value="delete_access">
-                        <input type="hidden" name="delete_database_name" value="{{.DatabaseName}}">
-                        <input type="hidden" name="delete_database_user" value="{{.Username}}">
-                        <input type="hidden" name="delete_database_host" value="{{.Host}}">
-                        <label class="checkbox-row">
-                            <input type="checkbox" name="drop_database" value="1">
-                            <span>Delete contents too</span>
-                        </label>
-                        <button type="submit">Delete</button>
-                    </form>
-                </span>
-            </div>
-            {{end}}
+                </tbody>
+            </table>
         </div>
         {{else}}
         <p class="muted">No databases found yet.</p>
