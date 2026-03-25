@@ -769,6 +769,8 @@ li + li {
     border-radius: var(--r);
     background: #1a2230;
     color: #b8cfe8;
+    max-height: 420px;
+    overflow-y: auto;
     overflow-x: auto;
     white-space: pre-wrap;
     font-family: "SFMono-Regular", "Consolas", "Courier New", monospace;
