@@ -108,11 +108,17 @@ func (a *App) handlePlaceholder(title string) http.HandlerFunc {
 }
 
 func (a *App) handleUsers(w http.ResponseWriter, r *http.Request) {
+	users, listErr := a.users.ListLinuxUsers()
+	if listErr != nil {
+		users = nil
+	}
+
 	if r.Method == http.MethodGet {
 		a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{
 			Title:          "Users",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
 		})
 		return
 	}
@@ -127,8 +133,14 @@ func (a *App) handleUsers(w http.ResponseWriter, r *http.Request) {
 			Title:          "Users",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
 			RequestError:   "The submitted user form could not be parsed.",
 		})
+		return
+	}
+
+	if r.FormValue("user_action") == "delete" {
+		a.handleUserDelete(w, r, users)
 		return
 	}
 
@@ -147,17 +159,55 @@ func (a *App) handleUsers(w http.ResponseWriter, r *http.Request) {
 			Title:          "Users",
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
 			RequestError:   message,
 		})
 		return
 	}
 
+	updatedUsers, _ := a.users.ListLinuxUsers()
 	a.recordAudit(r.Context(), "user.create", username, "success", map[string]any{"create_home": createHome})
 	a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{
 		Title:          "Users",
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
+		LinuxUsers:     updatedUsers,
 		SuccessMessage: "Linux user was created successfully.",
+	})
+}
+
+func (a *App) handleUserDelete(w http.ResponseWriter, r *http.Request, users []system.LinuxUser) {
+	username := r.FormValue("delete_username")
+	removeHome := r.FormValue("remove_home") == "1"
+	if err := a.users.DeleteLinuxUser(username, removeHome); err != nil {
+		a.recordAudit(r.Context(), "user.delete", username, "failure", map[string]any{"remove_home": removeHome, "error": err.Error()})
+		message := err.Error()
+		switch {
+		case errors.Is(err, system.ErrInvalidUsername):
+			message = "Linux username format is invalid."
+		case errors.Is(err, system.ErrUserNotFound):
+			message = "Linux user could not be found."
+		case errors.Is(err, system.ErrProtectedUser):
+			message = "This Linux user is protected and cannot be deleted from the panel."
+		}
+		a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{
+			Title:          "Users",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     users,
+			RequestError:   message,
+		})
+		return
+	}
+
+	updatedUsers, _ := a.users.ListLinuxUsers()
+	a.recordAudit(r.Context(), "user.delete", username, "success", map[string]any{"remove_home": removeHome})
+	a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{
+		Title:          "Users",
+		DatabaseStatus: a.databaseStatus(r.Context()),
+		Metrics:        a.metrics.Snapshot(),
+		LinuxUsers:     updatedUsers,
+		SuccessMessage: "Linux user was deleted successfully.",
 	})
 }
 

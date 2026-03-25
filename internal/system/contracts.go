@@ -2,6 +2,15 @@ package system
 
 type UserManager interface {
 	CreateLinuxUser(username string, createHome bool) error
+	ListLinuxUsers() ([]LinuxUser, error)
+	DeleteLinuxUser(username string, removeHome bool) error
+}
+
+type LinuxUser struct {
+	Username      string
+	UID           int
+	HomeDirectory string
+	Shell         string
 }
 
 type DatabaseManager interface {

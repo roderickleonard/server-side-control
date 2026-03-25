@@ -8,6 +8,8 @@ var ErrHelperActionNotAllowed = errors.New("helper action not allowed")
 
 var allowedHelperActions = map[string]struct{}{
 	"user.create":      {},
+	"user.list":        {},
+	"user.delete":      {},
 	"mysql.provision_database": {},
 	"mysql.rotate_admin_password": {},
 	"nginx.apply_site": {},

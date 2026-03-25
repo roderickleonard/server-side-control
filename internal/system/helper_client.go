@@ -127,6 +127,20 @@ func (m *helperUserManager) CreateLinuxUser(username string, createHome bool) er
 	return err
 }
 
+func (m *helperUserManager) ListLinuxUsers() ([]LinuxUser, error) {
+	var users []LinuxUser
+	_, err := m.client.Call(context.Background(), "user.list", map[string]any{}, &users)
+	return users, err
+}
+
+func (m *helperUserManager) DeleteLinuxUser(username string, removeHome bool) error {
+	_, err := m.client.Call(context.Background(), "user.delete", map[string]any{
+		"username":    username,
+		"remove_home": removeHome,
+	}, nil)
+	return err
+}
+
 func (m *helperDatabaseManager) ProvisionDatabase(name string, username string, password string) error {
 	_, err := m.client.Call(context.Background(), "mysql.provision_database", map[string]any{
 		"database_name": name,

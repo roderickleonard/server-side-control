@@ -23,6 +23,7 @@
     <article class="panel">
         <h3>Create user</h3>
         <form method="post" class="stack-form">
+            <input type="hidden" name="user_action" value="create">
             <label>
                 <span>Linux username</span>
                 <input type="text" name="username" placeholder="deployapp" required>
@@ -41,6 +42,44 @@
             <li>Only lowercase letters, numbers, underscores, and hyphens are accepted.</li>
             <li>The current implementation intentionally keeps the operation narrow and auditable.</li>
         </ul>
+    </article>
+</section>
+
+<section class="grid single">
+    <article class="panel">
+        <h3>Existing users</h3>
+        {{if .LinuxUsers}}
+        <div class="audit-table">
+            <div class="audit-row audit-head release-head">
+                <span>Username</span>
+                <span>UID</span>
+                <span>Home</span>
+                <span>Shell</span>
+                <span>Delete</span>
+            </div>
+            {{range .LinuxUsers}}
+            <div class="audit-row release-row">
+                <span>{{.Username}}</span>
+                <span>{{.UID}}</span>
+                <span>{{.HomeDirectory}}</span>
+                <span>{{.Shell}}</span>
+                <span>
+                    <form method="post" class="inline-form">
+                        <input type="hidden" name="user_action" value="delete">
+                        <input type="hidden" name="delete_username" value="{{.Username}}">
+                        <label class="checkbox-row">
+                            <input type="checkbox" name="remove_home" value="1">
+                            <span>Delete home files too</span>
+                        </label>
+                        <button type="submit">Delete</button>
+                    </form>
+                </span>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="muted">No managed Linux users found yet.</p>
+        {{end}}
     </article>
 </section>
 {{end}}

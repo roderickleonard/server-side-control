@@ -51,6 +51,7 @@ type TemplateData struct {
 	AuthProvider   string
 	RequestError   string
 	SuccessMessage string
+	LinuxUsers     []system.LinuxUser
 	GeneratedSecret string
 	ResultPath     string
 	CommandOutput  string

@@ -48,6 +48,20 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		err := system.NewUserManager().CreateLinuxUser(input.Username, input.CreateHome)
 		writeSuccess(nil, "", err)
+	case "user.list":
+		users, err := system.NewUserManager().ListLinuxUsers()
+		writeSuccess(users, "", err)
+	case "user.delete":
+		var input struct {
+			Username   string `json:"username"`
+			RemoveHome bool   `json:"remove_home"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := system.NewUserManager().DeleteLinuxUser(input.Username, input.RemoveHome)
+		writeSuccess(nil, "", err)
 	case "mysql.provision_database":
 		var input struct {
 			DatabaseName     string `json:"database_name"`
