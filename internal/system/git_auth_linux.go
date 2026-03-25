@@ -54,14 +54,37 @@ func (m linuxGitAuthManager) EnsureDeployKey(spec GitDeployKeySpec) (GitAuthStat
 		return GitAuthStatus{}, "", err
 	}
 	basePath := deployKeyBasePath(homeDirectory, spec.SiteName)
+	sshDir := filepath.Join(homeDirectory, ".ssh")
+	sshConfigPath := filepath.Join(sshDir, "config")
+	// marker lets us replace/skip duplicate config blocks per site
+	marker := "# server-side-control:" + spec.SiteName
+	_, repoHost := parseRepositoryEndpoint(spec.RepositoryURL)
+	if repoHost == "" {
+		repoHost = "github.com"
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	script := fmt.Sprintf("set -e; mkdir -p %s; chmod 700 %s; if [ ! -f %s ]; then ssh-keygen -t ed25519 -N '' -C %s -f %s; else echo 'Deploy key already exists'; fi; cat %s",
-		shellQuote(filepath.Join(homeDirectory, ".ssh")),
-		shellQuote(filepath.Join(homeDirectory, ".ssh")),
+	// Generate key and update ~/.ssh/config so git uses the right key automatically.
+	script := fmt.Sprintf(`set -e
+mkdir -p %s; chmod 700 %s
+if [ ! -f %s ]; then
+  ssh-keygen -t ed25519 -N '' -C %s -f %s
+else
+  echo 'Deploy key already exists'
+fi
+touch %s; chmod 600 %s
+if ! grep -qF %s %s; then
+  printf '\n%s\nHost %s\n  IdentityFile %s\n  IdentitiesOnly no\n' >> %s
+fi
+cat %s`,
+		shellQuote(sshDir), shellQuote(sshDir),
 		shellQuote(basePath),
 		shellQuote(spec.SiteName+" deploy key"),
 		shellQuote(basePath),
+		shellQuote(sshConfigPath), shellQuote(sshConfigPath),
+		shellQuote(marker), shellQuote(sshConfigPath),
+		marker, repoHost, basePath,
+		shellQuote(sshConfigPath),
 		shellQuote(basePath+".pub"),
 	)
 	output, err := runBashAsUser(ctx, spec.User, script)
