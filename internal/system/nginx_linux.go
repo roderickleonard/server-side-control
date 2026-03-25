@@ -3,6 +3,7 @@
 package system
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var siteNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,62}$`)
@@ -68,14 +70,29 @@ func NewNginxManager(availableDir string, enabledDir string, binary string, cert
 
 func (m linuxNginxManager) ApplySite(spec SiteSpec) (string, error) {
 	spec.Name = strings.TrimSpace(spec.Name)
+	spec.OwnerLinuxUser = strings.TrimSpace(spec.OwnerLinuxUser)
 	spec.Domain = strings.TrimSpace(spec.Domain)
 	spec.Mode = strings.TrimSpace(spec.Mode)
 	spec.RootDirectory = strings.TrimSpace(spec.RootDirectory)
 	spec.UpstreamURL = strings.TrimSpace(spec.UpstreamURL)
 	spec.PHPVersion = strings.TrimSpace(spec.PHPVersion)
 
+	switch spec.Mode {
+	case "reverse_proxy":
+		spec.RootDirectory = ""
+		spec.PHPVersion = ""
+	case "static":
+		spec.UpstreamURL = ""
+		spec.PHPVersion = ""
+	case "php":
+		spec.UpstreamURL = ""
+	}
+
 	if !siteNamePattern.MatchString(spec.Name) {
 		return "", ErrInvalidSiteName
+	}
+	if spec.OwnerLinuxUser != "" && !usernamePattern.MatchString(spec.OwnerLinuxUser) {
+		return "", ErrInvalidUsername
 	}
 	if !domainPattern.MatchString(spec.Domain) {
 		return "", ErrInvalidDomain
@@ -91,6 +108,11 @@ func (m linuxNginxManager) ApplySite(spec SiteSpec) (string, error) {
 	}
 	if spec.Mode == "php" && !phpVersionPattern.MatchString(spec.PHPVersion) {
 		return "", ErrInvalidPHPVersion
+	}
+	if spec.Mode == "static" || spec.Mode == "php" {
+		if err := ensureSiteRootDirectory(spec.RootDirectory, spec.OwnerLinuxUser); err != nil {
+			return "", err
+		}
 	}
 
 	if err := os.MkdirAll(m.availableDir, 0o755); err != nil {
@@ -127,6 +149,29 @@ func (m linuxNginxManager) ApplySite(spec SiteSpec) (string, error) {
 	}
 
 	return configPath, nil
+}
+
+func ensureSiteRootDirectory(rootDirectory string, ownerLinuxUser string) error {
+	if err := os.MkdirAll(rootDirectory, 0o755); err != nil {
+		return fmt.Errorf("create site root directory: %w", err)
+	}
+	if ownerLinuxUser == "" {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := exec.CommandContext(ctx, "id", "-u", ownerLinuxUser).Run(); err != nil {
+		return ErrUserNotFound
+	}
+
+	cmd := exec.CommandContext(ctx, "chown", "-R", ownerLinuxUser+":"+ownerLinuxUser, rootDirectory)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("chown site root directory: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }
 
 func (m linuxNginxManager) ValidateConfig(_ string) error {

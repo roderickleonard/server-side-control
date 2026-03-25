@@ -468,6 +468,17 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 		PHPVersion:     r.FormValue("php_version"),
 	}
 
+	switch spec.Mode {
+	case "reverse_proxy":
+		spec.RootDirectory = ""
+		spec.PHPVersion = ""
+	case "static":
+		spec.UpstreamURL = ""
+		spec.PHPVersion = ""
+	case "php":
+		spec.UpstreamURL = ""
+	}
+
 	configPath, err := a.nginx.ApplySite(spec)
 	if err != nil {
 		a.recordAudit(r.Context(), "nginx.apply_site", spec.Name, "failure", map[string]any{"domain": spec.Domain, "mode": spec.Mode, "error": err.Error()})
@@ -475,6 +486,10 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, system.ErrInvalidSiteName):
 			message = "Site name format is invalid. Use lowercase letters, numbers, and hyphens."
+		case errors.Is(err, system.ErrInvalidUsername):
+			message = "Owner Linux user format is invalid."
+		case errors.Is(err, system.ErrUserNotFound):
+			message = "Selected Linux user could not be found on the host."
 		case errors.Is(err, system.ErrInvalidDomain):
 			message = "Domain format is invalid."
 		case errors.Is(err, system.ErrInvalidMode):

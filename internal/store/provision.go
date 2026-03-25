@@ -60,6 +60,22 @@ func (s *Store) CreateManagedSite(ctx context.Context, site domain.ManagedSite) 
 		return errors.New("store is not configured")
 	}
 
+	result, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET owner_linux_user = ?, domain_name = ?, root_directory = ?, runtime = ?, php_version = ?, nginx_config_path = ? WHERE name = ?`,
+		site.OwnerLinuxUser,
+		site.DomainName,
+		site.RootDirectory,
+		site.Runtime,
+		site.PHPVersion,
+		site.NginxConfigPath,
+		site.Name,
+	)
+	if err != nil {
+		return fmt.Errorf("update managed site: %w", err)
+	}
+	if rowsAffected, rowsErr := result.RowsAffected(); rowsErr == nil && rowsAffected > 0 {
+		return nil
+	}
+
 	query := `INSERT INTO managed_sites (
 		name,
 		owner_linux_user,
@@ -70,7 +86,7 @@ func (s *Store) CreateManagedSite(ctx context.Context, site domain.ManagedSite) 
 		nginx_config_path
 	) VALUES (?, ?, ?, ?, ?, ?, ?)`
 
-	_, err := s.db.ExecContext(ctx, query,
+	_, err = s.db.ExecContext(ctx, query,
 		site.Name,
 		site.OwnerLinuxUser,
 		site.DomainName,

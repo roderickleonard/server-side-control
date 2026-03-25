@@ -120,8 +120,8 @@
                 <span>{{.DomainName}}</span>
                 <span>{{if .OwnerLinuxUser}}{{.OwnerLinuxUser}}{{else}}-{{end}}</span>
                 <span>{{.Runtime}}</span>
-                <span>{{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}</span>
-                <span>{{.RootDirectory}}</span>
+                <span>{{if eq .Runtime "php"}}{{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}{{else}}-{{end}}</span>
+                <span>{{if eq .Runtime "reverse_proxy"}}-{{else}}{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}{{end}}</span>
             </div>
             {{end}}
         </div>
