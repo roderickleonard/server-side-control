@@ -250,6 +250,26 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			return
 		}
 		writeSuccess(nil, "", nil)
+	case "files.read_env":
+		var input struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		cleanPath := filepath.Clean(input.Path)
+		if !filepath.IsAbs(cleanPath) || filepath.Base(cleanPath) != ".env" {
+			writeFailure(errors.New("invalid env file path"), "")
+			return
+		}
+		content, err := os.ReadFile(cleanPath)
+		if err != nil {
+			// file doesn't exist yet — return empty, not an error
+			writeSuccess("", "", nil)
+			return
+		}
+		writeSuccess(string(content), "", nil)
 	default:
 		writeFailure(fmt.Errorf("unknown helper action: %s", request.Action), "")
 	}

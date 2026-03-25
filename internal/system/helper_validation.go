@@ -33,6 +33,7 @@ var allowedHelperActions = map[string]struct{}{
 	"runtime.run_npm_script": {},
 	"runtime.run_npm_install": {},
 	"files.write_env": {},
+	"files.read_env":  {},
 	"git_auth.inspect": {},
 	"git_auth.ensure_deploy_key": {},
 	"git_auth.trust_host": {},

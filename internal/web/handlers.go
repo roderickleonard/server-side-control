@@ -1416,8 +1416,11 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.GitAuthStatus = gitAuthStatus
 	data.DeploymentReleases = releases
 	data.PackageScripts = readPackageJSONScripts(site.RootDirectory)
-	if content, err := os.ReadFile(filepath.Join(site.RootDirectory, ".env")); err == nil {
-		data.EnvFileContent = string(content)
+	data.NpmScriptNodeVersion = runtimeStatus.DefaultNodeVersion
+	envPath := filepath.Join(site.RootDirectory, ".env")
+	var envContent string
+	if _, err := a.helper.Call(r.Context(), "files.read_env", map[string]string{"path": envPath}, &envContent); err == nil {
+		data.EnvFileContent = envContent
 	}
 	if data.GitRepositoryURL == "" {
 		data.GitRepositoryURL = repositoryStatus.RemoteURL
