@@ -99,6 +99,9 @@ ensure_go() {
 }
 
 ensure_go_modules() {
+    echo "Tidying Go modules"
+    GOTOOLCHAIN=local GOFLAGS=-mod=mod go mod tidy
+
     echo "Downloading Go module dependencies"
     GOTOOLCHAIN=local GOFLAGS=-mod=mod go mod download all
 }
