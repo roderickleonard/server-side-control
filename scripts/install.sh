@@ -184,6 +184,11 @@ chown root:"$SERVICE_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"
 
 systemctl daemon-reload
-systemctl enable --now server-side-control
+systemctl enable server-side-control
+if systemctl is-active --quiet server-side-control; then
+    systemctl restart server-side-control
+else
+    systemctl start server-side-control
+fi
 
 printf '\nInstalled. Open the panel at the configured base URL.\n'
