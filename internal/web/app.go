@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"path"
 	"time"
 
 	"github.com/kaganyegin/server-side-control/internal/auth"

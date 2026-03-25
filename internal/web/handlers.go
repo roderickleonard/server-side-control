@@ -9,7 +9,6 @@ import (
 
 	"github.com/kaganyegin/server-side-control/internal/auth"
 	"github.com/kaganyegin/server-side-control/internal/domain"
-	"github.com/kaganyegin/server-side-control/internal/store"
 	"github.com/kaganyegin/server-side-control/internal/system"
 )
 
