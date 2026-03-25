@@ -125,6 +125,14 @@ func (a *App) nav() []NavItem {
 }
 
 func (a *App) render(ctx context.Context, w http.ResponseWriter, currentPath string, page string, data TemplateData) {
+	if currentPath != "/login" {
+		if _, ok := auth.IdentityFromContext(ctx); !ok {
+			w.Header().Set("Location", "/login")
+			w.WriteHeader(http.StatusSeeOther)
+			return
+		}
+	}
+
 	tmpl, err := template.ParseFS(assets, "templates/*.html")
 	if err != nil {
 		a.logger.Error("parse template", "page", page, "error", err)
