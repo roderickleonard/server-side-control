@@ -129,6 +129,11 @@ sudo ./scripts/install.sh
 
 Bu komut eksik olanları kurar, kurulu olanları atlar.
 
+Ek davranis:
+- `/etc/server-side-control/panel.env` dosyasi zaten varsa ayni bilgileri tekrar sormaz
+- Var olan config'i kullanip kurulumu/guncellemeyi devam ettirir
+- Sorulari tekrar acmak istersen `SSC_FORCE_INSTALLER=1 sudo ./scripts/install.sh` kullan
+
 ## 8. Installer sana ne soracak?
 
 Installer şu bilgileri ister ve her sorunun altında kısa bir açıklama gösterir:

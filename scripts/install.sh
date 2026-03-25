@@ -17,6 +17,7 @@ GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
 GO_URL="https://go.dev/dl/${GO_TARBALL}"
 APT_UPDATED=0
 SKIP_INSTALLER="${SSC_SKIP_INSTALLER:-0}"
+FORCE_INSTALLER="${SSC_FORCE_INSTALLER:-0}"
 
 if [[ "${EUID}" -ne 0 ]]; then
     echo "Run this installer as root on the Ubuntu target host."
@@ -171,6 +172,10 @@ if [[ "$SKIP_INSTALLER" == "1" ]]; then
         exit 1
     fi
     echo "Skipping installer questions and reusing existing configuration from $ENV_FILE"
+elif [[ "$FORCE_INSTALLER" != "1" && -f "$ENV_FILE" ]]; then
+    echo "Existing configuration detected at $ENV_FILE"
+    echo "Reusing saved configuration and skipping installer questions"
+    echo "Set SSC_FORCE_INSTALLER=1 to answer the installer questions again"
 else
     PANEL_ENV_FILE="$ENV_FILE" "$INSTALLER_PATH"
 fi

@@ -49,6 +49,8 @@ Planned next:
 4. Answer the installer questions.
 5. Open the configured base URL and log in with the bootstrap credentials.
 
+If `/etc/server-side-control/panel.env` already exists on the server, rerunning `sudo ./scripts/install.sh` reuses the saved configuration and skips the installer questions automatically. Use `SSC_FORCE_INSTALLER=1 sudo ./scripts/install.sh` if you need to answer them again.
+
 ## Updating on Ubuntu
 
 After the first install, you can update the panel directly from the cloned repository source:
