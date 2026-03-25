@@ -15,6 +15,8 @@ var ErrInvalidGitHost = errors.New("invalid git host")
 var ErrInvalidCredentialProtocol = errors.New("invalid credential protocol")
 var ErrInvalidCredentialUsername = errors.New("invalid credential username")
 var ErrInvalidCredentialPassword = errors.New("invalid credential password")
+var ErrInvalidTableName = errors.New("invalid mysql table name")
+var ErrInvalidRestorePath = errors.New("invalid mysql restore file path")
 
 type UserManager interface {
 	CreateLinuxUser(username string, createHome bool) error
@@ -35,12 +37,42 @@ type DatabaseManager interface {
 	DeleteDatabaseAccess(name string, username string, host string, dropDatabase bool) error
 	RotateUserPassword(username string, host string, password string) error
 	RotateAdminPassword(password string) error
+	InspectDatabase(spec DatabaseInspectSpec) (DatabaseDetails, error)
+	RestoreDatabase(name string, filePath string) (string, error)
 }
 
 type DatabaseAccess struct {
 	DatabaseName string
 	Username     string
 	Host         string
+}
+
+type DatabaseInspectSpec struct {
+	DatabaseName string
+	TableName    string
+	Limit        int
+}
+
+type DatabaseTableSummary struct {
+	Name      string
+	Engine    string
+	RowCount  int64
+	DataSize  int64
+	IndexSize int64
+}
+
+type DatabaseTablePreview struct {
+	Name    string
+	Columns []string
+	Rows    [][]string
+}
+
+type DatabaseDetails struct {
+	DatabaseName   string
+	SelectedTable  string
+	Tables         []DatabaseTableSummary
+	Preview        DatabaseTablePreview
+	ApproximateSize int64
 }
 
 type NginxManager interface {

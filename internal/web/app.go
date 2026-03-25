@@ -55,6 +55,8 @@ type TemplateData struct {
 	SuccessMessage string
 	LinuxUsers     []system.LinuxUser
 	DatabaseAccess []system.DatabaseAccess
+	DatabaseDetails system.DatabaseDetails
+	SelectedDatabaseEntries []system.DatabaseAccess
 	ManagedSites   []domain.ManagedSite
 	SelectedSite   domain.ManagedSite
 	PHPVersions    []string
@@ -72,6 +74,7 @@ type TemplateData struct {
 	GitCredentialProtocol string
 	GitCredentialHost string
 	GitCredentialUsername string
+	DatabaseRestoreSQL string
 	GeneratedSecret string
 	ResultPath     string
 	CommandOutput  string
@@ -127,6 +130,7 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/", a.handleDashboard)
 	a.router.HandleFunc("/users", a.handleUsers)
 	a.router.HandleFunc("/databases", a.handleDatabases)
+	a.router.HandleFunc("/databases/details", a.handleDatabaseDetails)
 	a.router.HandleFunc("/sites", a.handleSites)
 	a.router.HandleFunc("/sites/details", a.handleSiteDetails)
 	a.router.HandleFunc("/php", a.handlePHP)

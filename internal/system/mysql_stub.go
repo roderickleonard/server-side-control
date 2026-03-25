@@ -29,3 +29,11 @@ func (stubDatabaseManager) RotateUserPassword(username string, host string, pass
 func (stubDatabaseManager) RotateAdminPassword(password string) error {
 	return fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
 }
+
+func (stubDatabaseManager) InspectDatabase(spec DatabaseInspectSpec) (DatabaseDetails, error) {
+	return DatabaseDetails{}, fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}
+
+func (stubDatabaseManager) RestoreDatabase(name string, filePath string) (string, error) {
+	return "", fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}

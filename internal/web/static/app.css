@@ -288,6 +288,10 @@ body.login-page {
     margin-top: 16px;
 }
 
+.bottom-gap {
+    margin-bottom: 16px;
+}
+
 .grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -386,6 +390,8 @@ body.login-page {
 
 .stack-form input[type="text"],
 .stack-form input[type="password"],
+.stack-form input[type="file"],
+.stack-form textarea,
 .stack-form select {
     width: 100%;
     border-radius: 16px;
@@ -401,12 +407,19 @@ body.login-page {
 
 .stack-form input[type="text"]:focus,
 .stack-form input[type="password"]:focus,
+.stack-form input[type="file"]:focus,
+.stack-form textarea:focus,
 .stack-form select:focus,
 .login-form input:focus {
     outline: none;
     border-color: rgba(15, 118, 110, 0.42);
     box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
     transform: translateY(-1px);
+}
+
+.stack-form textarea {
+    min-height: 220px;
+    resize: vertical;
 }
 
 .stack-form button {

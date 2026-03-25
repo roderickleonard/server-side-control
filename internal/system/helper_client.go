@@ -194,6 +194,19 @@ func (m *helperDatabaseManager) RotateAdminPassword(password string) error {
 	return err
 }
 
+func (m *helperDatabaseManager) InspectDatabase(spec DatabaseInspectSpec) (DatabaseDetails, error) {
+	var details DatabaseDetails
+	_, err := m.client.Call(context.Background(), "mysql.inspect_database", spec, &details)
+	return details, err
+}
+
+func (m *helperDatabaseManager) RestoreDatabase(name string, filePath string) (string, error) {
+	return m.client.Call(context.Background(), "mysql.restore_database", map[string]any{
+		"database_name": name,
+		"file_path":     filePath,
+	}, nil)
+}
+
 func (m *helperNginxManager) ApplySite(spec SiteSpec) (string, error) {
 	var data struct {
 		ConfigPath string `json:"config_path"`

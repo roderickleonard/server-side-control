@@ -85,6 +85,7 @@
                         <th>User</th>
                         <th>Host</th>
                         <th>Password</th>
+                        <th>Actions</th>
                         <th>Delete</th>
                     </tr>
                 </thead>
@@ -106,6 +107,11 @@
                             {{else}}
                             <span class="muted">No user</span>
                             {{end}}
+                        </td>
+                        <td>
+                            <div class="table-actions">
+                                <a class="btn btn-sm btn-outline-secondary" href="/databases/details?name={{.DatabaseName}}">Details</a>
+                            </div>
                         </td>
                         <td>
                             <form method="post" class="inline-form table-action-form">

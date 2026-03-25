@@ -112,6 +112,25 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).RotateAdminPassword(input.Password)
 		writeSuccess(nil, "", err)
+	case "mysql.inspect_database":
+		var spec system.DatabaseInspectSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		result, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).InspectDatabase(spec)
+		writeSuccess(result, "", err)
+	case "mysql.restore_database":
+		var input struct {
+			DatabaseName string `json:"database_name"`
+			FilePath     string `json:"file_path"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).RestoreDatabase(input.DatabaseName, input.FilePath)
+		writeSuccess(nil, output, err)
 	case "nginx.apply_site":
 		var spec system.SiteSpec
 		if err := json.Unmarshal(request.Input, &spec); err != nil {

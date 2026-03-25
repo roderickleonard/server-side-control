@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -418,6 +420,154 @@ func (a *App) handleDatabaseUserPasswordRotation(w http.ResponseWriter, r *http.
 	}
 	data.DatabaseAccess, _ = a.databases.ListDatabaseAccess()
 	a.render(r.Context(), w, r.URL.Path, "databases.html", data)
+}
+
+func (a *App) handleDatabaseDetails(w http.ResponseWriter, r *http.Request) {
+	entries, listErr := a.databases.ListDatabaseAccess()
+	if listErr != nil {
+		entries = nil
+	}
+	if a.databases == nil {
+		a.render(r.Context(), w, r.URL.Path, "databases.html", TemplateData{
+			Title:          "Databases",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			DatabaseAccess: entries,
+			RequestError:   "MySQL admin provisioning is not configured yet.",
+		})
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	databaseName := strings.TrimSpace(r.URL.Query().Get("name"))
+	selectedTable := strings.TrimSpace(r.URL.Query().Get("table"))
+	if r.Method == http.MethodPost {
+		if err := r.ParseMultipartForm(8 << 20); err != nil {
+			http.Error(w, "invalid form", http.StatusBadRequest)
+			return
+		}
+		databaseName = strings.TrimSpace(r.FormValue("database_name"))
+		selectedTable = strings.TrimSpace(r.FormValue("selected_table"))
+	}
+	if databaseName == "" {
+		http.Redirect(w, r, "/databases", http.StatusSeeOther)
+		return
+	}
+
+	details, detailErr := a.databases.InspectDatabase(system.DatabaseInspectSpec{DatabaseName: databaseName, TableName: selectedTable, Limit: 25})
+	if detailErr != nil && r.Method == http.MethodGet {
+		a.render(r.Context(), w, r.URL.Path, "databases.html", TemplateData{
+			Title:          "Databases",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			DatabaseAccess: entries,
+			RequestError:   databaseDetailErrorMessage(detailErr),
+		})
+		return
+	}
+
+	data := TemplateData{}
+	if r.Method == http.MethodPost {
+		action := r.FormValue("database_details_action")
+		switch action {
+		case "restore":
+			tempPath, restoreSQL, err := writeDatabaseRestoreTempFile(r)
+			data.DatabaseRestoreSQL = restoreSQL
+			if err != nil {
+				data.RequestError = err.Error()
+				break
+			}
+			defer os.Remove(tempPath)
+			output, restoreErr := a.databases.RestoreDatabase(databaseName, tempPath)
+			data.CommandOutput = output
+			if restoreErr != nil {
+				data.RequestError = databaseDetailErrorMessage(restoreErr)
+				a.recordAudit(r.Context(), "database.restore", databaseName, "failure", map[string]any{"error": restoreErr.Error()})
+				break
+			}
+			a.recordAudit(r.Context(), "database.restore", databaseName, "success", nil)
+			data.SuccessMessage = "Database restore completed successfully."
+			data.ResultPath = tempPath
+		case "preview":
+			selectedTable = strings.TrimSpace(r.FormValue("selected_table"))
+		default:
+			data.RequestError = "Invalid database details action."
+		}
+	}
+
+	details, detailErr = a.databases.InspectDatabase(system.DatabaseInspectSpec{DatabaseName: databaseName, TableName: selectedTable, Limit: 25})
+	if data.RequestError == "" && detailErr != nil {
+		data.RequestError = databaseDetailErrorMessage(detailErr)
+	}
+	data.Title = databaseName + " details"
+	data.DatabaseStatus = a.databaseStatus(r.Context())
+	data.Metrics = a.metrics.Snapshot()
+	data.DatabaseAccess = entries
+	data.DatabaseDetails = details
+	data.SelectedDatabaseEntries = filterDatabaseEntries(entries, databaseName)
+	a.render(r.Context(), w, r.URL.Path, "database_details.html", data)
+}
+
+func writeDatabaseRestoreTempFile(r *http.Request) (string, string, error) {
+	const maxRestoreBytes = 8 << 20
+	sqlContent := r.FormValue("restore_sql")
+	if strings.TrimSpace(sqlContent) == "" {
+		file, _, err := r.FormFile("restore_file")
+		if err != nil {
+			return "", "", errors.New("Provide SQL content or upload a .sql file to restore.")
+		}
+		defer file.Close()
+		content, err := io.ReadAll(io.LimitReader(file, maxRestoreBytes+1))
+		if err != nil {
+			return "", "", err
+		}
+		if len(content) > maxRestoreBytes {
+			return "", "", errors.New("Restore file is too large. Maximum supported size is 8 MB.")
+		}
+		sqlContent = string(content)
+	}
+	if strings.TrimSpace(sqlContent) == "" {
+		return "", "", errors.New("Restore content cannot be empty.")
+	}
+	if len(sqlContent) > maxRestoreBytes {
+		return "", sqlContent, errors.New("Restore SQL is too large. Maximum supported size is 8 MB.")
+	}
+	tempFile, err := os.CreateTemp("", "ssc-db-restore-*.sql")
+	if err != nil {
+		return "", sqlContent, err
+	}
+	defer tempFile.Close()
+	if _, err := tempFile.WriteString(sqlContent); err != nil {
+		return "", sqlContent, err
+	}
+	return tempFile.Name(), sqlContent, nil
+}
+
+func filterDatabaseEntries(entries []system.DatabaseAccess, databaseName string) []system.DatabaseAccess {
+	filtered := make([]system.DatabaseAccess, 0)
+	for _, entry := range entries {
+		if entry.DatabaseName != databaseName {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func databaseDetailErrorMessage(err error) string {
+	message := err.Error()
+	switch {
+	case errors.Is(err, system.ErrInvalidDatabaseName):
+		message = "Database name format is invalid."
+	case errors.Is(err, system.ErrInvalidTableName):
+		message = "Selected table name is invalid."
+	case errors.Is(err, system.ErrInvalidRestorePath):
+		message = "Restore file path is invalid."
+	}
+	return message
 }
 
 func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {

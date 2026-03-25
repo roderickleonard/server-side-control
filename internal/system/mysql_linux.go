@@ -3,6 +3,7 @@
 package system
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -11,11 +12,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
 var mysqlProvisionNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,63}$`)
+var mysqlTableNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,63}$`)
 
 var ErrInvalidDatabaseName = errors.New("invalid mysql database name")
 var ErrInvalidUserName = errors.New("invalid mysql user name")
@@ -219,6 +222,96 @@ func (m mysqlDatabaseManager) RotateAdminPassword(password string) error {
 	return writeMySQLAdminDefaults(m.adminDefaultsFile, defaults)
 }
 
+func (m mysqlDatabaseManager) InspectDatabase(spec DatabaseInspectSpec) (DatabaseDetails, error) {
+	databaseName := strings.TrimSpace(spec.DatabaseName)
+	if !mysqlProvisionNamePattern.MatchString(databaseName) {
+		return DatabaseDetails{}, ErrInvalidDatabaseName
+	}
+	selectedTable := strings.TrimSpace(spec.TableName)
+	if selectedTable != "" && !mysqlTableNamePattern.MatchString(selectedTable) {
+		return DatabaseDetails{}, ErrInvalidTableName
+	}
+	if spec.Limit <= 0 || spec.Limit > 100 {
+		spec.Limit = 25
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	query := fmt.Sprintf("SELECT table_name, COALESCE(engine,''), COALESCE(table_rows,0), COALESCE(data_length,0), COALESCE(index_length,0) FROM information_schema.tables WHERE table_schema = %s ORDER BY table_name", mysqlQuoteString(databaseName))
+	output, err := m.runMySQL(ctx, query)
+	if err != nil {
+		return DatabaseDetails{}, err
+	}
+
+	details := DatabaseDetails{DatabaseName: databaseName}
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 5 {
+			continue
+		}
+		rowCount, _ := strconv.ParseInt(strings.TrimSpace(parts[2]), 10, 64)
+		dataSize, _ := strconv.ParseInt(strings.TrimSpace(parts[3]), 10, 64)
+		indexSize, _ := strconv.ParseInt(strings.TrimSpace(parts[4]), 10, 64)
+		details.Tables = append(details.Tables, DatabaseTableSummary{
+			Name:      strings.TrimSpace(parts[0]),
+			Engine:    strings.TrimSpace(parts[1]),
+			RowCount:  rowCount,
+			DataSize:  dataSize,
+			IndexSize: indexSize,
+		})
+		details.ApproximateSize += dataSize + indexSize
+	}
+
+	if len(details.Tables) == 0 {
+		return details, nil
+	}
+	if selectedTable == "" {
+		selectedTable = details.Tables[0].Name
+	}
+	details.SelectedTable = selectedTable
+	preview, err := m.previewTable(ctx, databaseName, selectedTable, spec.Limit)
+	if err != nil {
+		return details, err
+	}
+	details.Preview = preview
+	return details, nil
+}
+
+func (m mysqlDatabaseManager) RestoreDatabase(name string, filePath string) (string, error) {
+	name = strings.TrimSpace(name)
+	filePath = strings.TrimSpace(filePath)
+	if !mysqlProvisionNamePattern.MatchString(name) {
+		return "", ErrInvalidDatabaseName
+	}
+	if !filepath.IsAbs(filePath) {
+		return "", ErrInvalidRestorePath
+	}
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	args := []string{
+		"--defaults-extra-file=" + m.adminDefaultsFile,
+		"--database=" + name,
+	}
+	cmd := exec.CommandContext(ctx, "mysql", args...)
+	cmd.Stdin = file
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return strings.TrimSpace(string(output)), fmt.Errorf("mysql restore failed: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 func (m mysqlDatabaseManager) currentAccount(ctx context.Context) (string, error) {
 	output, err := m.runMySQL(ctx, "SELECT CURRENT_USER()")
 	if err != nil {
@@ -230,6 +323,42 @@ func (m mysqlDatabaseManager) currentAccount(ctx context.Context) (string, error
 		return "", fmt.Errorf("mysql current user query returned no account")
 	}
 	return strings.TrimSpace(lines[len(lines)-1]), nil
+}
+
+func (m mysqlDatabaseManager) previewTable(ctx context.Context, databaseName string, tableName string, limit int) (DatabaseTablePreview, error) {
+	if !mysqlTableNamePattern.MatchString(tableName) {
+		return DatabaseTablePreview{}, ErrInvalidTableName
+	}
+	columnsQuery := fmt.Sprintf("SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s ORDER BY ordinal_position", mysqlQuoteString(databaseName), mysqlQuoteString(tableName))
+	columnsOutput, err := m.runMySQL(ctx, columnsQuery)
+	if err != nil {
+		return DatabaseTablePreview{}, err
+	}
+	preview := DatabaseTablePreview{Name: tableName}
+	for _, line := range strings.Split(strings.TrimSpace(columnsOutput), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		preview.Columns = append(preview.Columns, line)
+	}
+	if len(preview.Columns) == 0 {
+		return preview, nil
+	}
+	rowsQuery := fmt.Sprintf("SELECT * FROM %s.%s LIMIT %d", mysqlQuoteIdentifier(databaseName), mysqlQuoteIdentifier(tableName), limit)
+	rowsOutput, err := m.runMySQL(ctx, rowsQuery)
+	if err != nil {
+		return preview, err
+	}
+	scanner := bufio.NewScanner(strings.NewReader(rowsOutput))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		preview.Rows = append(preview.Rows, strings.Split(line, "\t"))
+	}
+	return preview, scanner.Err()
 }
 
 func (m mysqlDatabaseManager) runMySQL(ctx context.Context, statement string) (string, error) {

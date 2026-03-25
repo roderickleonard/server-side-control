@@ -1,0 +1,170 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <p class="eyebrow">Database details</p>
+        <h2>{{.DatabaseDetails.DatabaseName}}</h2>
+        <p class="lead">Inspect table structure, preview sample rows, and restore SQL content into this database.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+</section>
+{{end}}
+
+{{if .CommandOutput}}
+<section class="grid single">
+    <article class="panel">
+        <h3>MySQL output</h3>
+        <pre class="command-output">{{.CommandOutput}}</pre>
+    </article>
+</section>
+{{end}}
+
+<section class="grid">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <p class="eyebrow">Summary</p>
+                <h3>Database overview</h3>
+            </div>
+            <a class="btn btn-sm btn-outline-secondary" href="/databases">Back to databases</a>
+        </div>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Database</strong><span>{{.DatabaseDetails.DatabaseName}}</span></div>
+            <div><strong>Tables</strong><span>{{len .DatabaseDetails.Tables}}</span></div>
+            <div><strong>Approx size</strong><span>{{.DatabaseDetails.ApproximateSize}} bytes</span></div>
+            <div><strong>Selected table</strong><span>{{if .DatabaseDetails.SelectedTable}}{{.DatabaseDetails.SelectedTable}}{{else}}-{{end}}</span></div>
+        </div>
+        {{if .SelectedDatabaseEntries}}
+        <div class="table-card table-responsive top-gap">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Host</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .SelectedDatabaseEntries}}
+                    <tr>
+                        <td>{{if .Username}}{{.Username}}{{else}}-{{end}}</td>
+                        <td>{{if .Host}}{{.Host}}{{else}}-{{end}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{end}}
+    </article>
+    <article class="panel">
+        <h3>Restore database</h3>
+        <form method="post" enctype="multipart/form-data" class="stack-form">
+            <input type="hidden" name="database_details_action" value="restore">
+            <input type="hidden" name="database_name" value="{{.DatabaseDetails.DatabaseName}}">
+            <input type="hidden" name="selected_table" value="{{.DatabaseDetails.SelectedTable}}">
+            <div class="form-grid">
+                <label>
+                    <span>Upload SQL file</span>
+                    <input type="file" name="restore_file" accept=".sql,text/sql">
+                </label>
+                <label>
+                    <span>Or paste SQL content</span>
+                    <textarea name="restore_sql" rows="10" placeholder="DROP TABLE IF EXISTS ...;\nCREATE TABLE ...;\nINSERT INTO ...;">{{.DatabaseRestoreSQL}}</textarea>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Run restore</button>
+            </div>
+        </form>
+        <p class="muted details-note">The restore runs through the saved MySQL admin defaults file against this database only.</p>
+    </article>
+</section>
+
+<section class="grid">
+    <article class="panel">
+        <h3>Tables</h3>
+        {{if .DatabaseDetails.Tables}}
+        <form method="get" class="inline-form details-inline-form bottom-gap">
+            <input type="hidden" name="name" value="{{.DatabaseDetails.DatabaseName}}">
+            <label>
+                <span>Preview table</span>
+                <select name="table">
+                    {{range .DatabaseDetails.Tables}}
+                    <option value="{{.Name}}" {{if eq $.DatabaseDetails.SelectedTable .Name}}selected{{end}}>{{.Name}}</option>
+                    {{end}}
+                </select>
+            </label>
+            <button type="submit">Load preview</button>
+        </form>
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Table</th>
+                        <th>Engine</th>
+                        <th>Rows</th>
+                        <th>Data size</th>
+                        <th>Index size</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .DatabaseDetails.Tables}}
+                    <tr>
+                        <td class="fw-semibold">{{.Name}}</td>
+                        <td>{{if .Engine}}{{.Engine}}{{else}}-{{end}}</td>
+                        <td>{{.RowCount}}</td>
+                        <td>{{.DataSize}}</td>
+                        <td>{{.IndexSize}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted">No tables found in this database yet.</p>
+        {{end}}
+    </article>
+    <article class="panel">
+        <h3>Table preview</h3>
+        {{if .DatabaseDetails.Preview.Columns}}
+        <p class="muted">Showing up to 25 rows from {{.DatabaseDetails.Preview.Name}}.</p>
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        {{range .DatabaseDetails.Preview.Columns}}
+                        <th>{{.}}</th>
+                        {{end}}
+                    </tr>
+                </thead>
+                <tbody>
+                    {{if .DatabaseDetails.Preview.Rows}}
+                    {{range .DatabaseDetails.Preview.Rows}}
+                    <tr>
+                        {{range .}}
+                        <td class="text-break">{{.}}</td>
+                        {{end}}
+                    </tr>
+                    {{end}}
+                    {{else}}
+                    <tr>
+                        <td colspan="{{len .DatabaseDetails.Preview.Columns}}" class="text-secondary">No rows found in this table.</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted">Select a table to load a preview.</p>
+        {{end}}
+    </article>
+</section>
+{{end}}
