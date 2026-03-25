@@ -100,7 +100,7 @@ ensure_go() {
 
 ensure_go_modules() {
     echo "Downloading Go module dependencies"
-    GOFLAGS=-mod=mod go mod download
+    GOTOOLCHAIN=local GOFLAGS=-mod=mod go mod download all
 }
 
 ensure_pm2() {
