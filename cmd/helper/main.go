@@ -270,6 +270,25 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			return
 		}
 		writeSuccess(string(content), "", nil)
+	case "files.read_text":
+		var input struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		cleanPath := filepath.Clean(input.Path)
+		if !filepath.IsAbs(cleanPath) {
+			writeFailure(errors.New("path must be absolute"), "")
+			return
+		}
+		content, err := os.ReadFile(cleanPath)
+		if err != nil {
+			writeSuccess("", "", nil)
+			return
+		}
+		writeSuccess(string(content), "", nil)
 	default:
 		writeFailure(fmt.Errorf("unknown helper action: %s", request.Action), "")
 	}

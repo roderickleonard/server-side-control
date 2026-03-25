@@ -87,6 +87,7 @@ type TemplateData struct {
 	PackageScripts []string
 	NpmScriptNodeVersion string
 	EnvFileContent string
+	EcosystemPort  string
 	Alerts         []string
 	Nav            []NavItem
 	Now            time.Time

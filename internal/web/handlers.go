@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -1470,7 +1471,15 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		data.PM2ProcessName = site.Name
 	}
 	if data.PM2ScriptPath == "" {
-		data.PM2ScriptPath = "server.js"
+		data.PM2ScriptPath = "ecosystem.config.cjs"
+	}
+	// Read ecosystem.config.cjs to detect port
+	ecosystemPath := filepath.Join(site.RootDirectory, "ecosystem.config.cjs")
+	var ecosystemContent string
+	if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]string{"path": ecosystemPath}, &ecosystemContent); err == nil && ecosystemContent != "" {
+		if port := extractEcosystemPort(ecosystemContent); port != "" {
+			data.EcosystemPort = port
+		}
 	}
 	if data.GitCredentialProtocol == "" {
 		data.GitCredentialProtocol = firstNonEmpty(gitAuthStatus.RepositoryProtocol, "https")
@@ -1479,6 +1488,20 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		data.GitCredentialHost = gitAuthStatus.RepositoryHost
 	}
 	a.render(r.Context(), w, r.URL.Path, "site_details.html", data)
+}
+
+func extractEcosystemPort(content string) string {
+	// Match port: 3000 or PORT: 3000 or "port": 3000 or args: "--port 3000" etc.
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\bport["'\s]*[:=]["'\s]*(\d{2,5})`),
+		regexp.MustCompile(`(?i)--port\s+(\d{2,5})`),
+	}
+	for _, pat := range patterns {
+		if m := pat.FindStringSubmatch(content); len(m) > 1 {
+			return m[1]
+		}
+	}
+	return ""
 }
 
 func readPackageJSONScripts(rootDir string) []string {
