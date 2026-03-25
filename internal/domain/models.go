@@ -22,6 +22,7 @@ type ManagedSite struct {
 	UpstreamURL     string
 	PHPVersion      string
 	NginxConfigPath string
+	DatabaseName    string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }

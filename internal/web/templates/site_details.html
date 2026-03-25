@@ -54,6 +54,7 @@
             <div><strong>Root</strong><span>{{if .SelectedSite.RootDirectory}}{{.SelectedSite.RootDirectory}}{{else}}-{{end}}</span></div>
             <div><strong>Nginx config</strong><span>{{if .SelectedSite.NginxConfigPath}}{{.SelectedSite.NginxConfigPath}}{{else}}-{{end}}</span></div>
             <div><strong>Upstream</strong><span>{{if .SelectedSite.UpstreamURL}}{{.SelectedSite.UpstreamURL}}{{else}}-{{end}}</span></div>
+            <div><strong>Database</strong><span>{{if .SelectedSite.DatabaseName}}<a href="/databases/details?name={{.SelectedSite.DatabaseName}}">{{.SelectedSite.DatabaseName}}</a>{{else}}-{{end}}</span></div>
             <div><strong>Updated</strong><span>{{.SelectedSite.UpdatedAt.Format "2006-01-02 15:04:05"}}</span></div>
         </div>
     </article>
@@ -105,6 +106,61 @@
             </div>
             <div class="form-actions">
                 <button type="submit">{{if .RepositoryStatus.IsGitRepo}}Pull latest{{else}}Clone into site root{{end}}</button>
+            </div>
+        </form>
+    </article>
+</section>
+
+<div style="margin-top:24px;"></div>
+
+<section class="grid">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Database</span>
+                <h3>{{if .SelectedSite.DatabaseName}}Assigned: {{.SelectedSite.DatabaseName}}{{else}}No database assigned{{end}}</h3>
+            </div>
+            {{if .SelectedSite.DatabaseName}}
+            <a class="btn btn-sm btn-outline-secondary" href="/databases/details?name={{.SelectedSite.DatabaseName}}">Open database →</a>
+            {{end}}
+        </div>
+        <form method="post" class="stack-form compact-form">
+            <input type="hidden" name="details_action" value="assign_database">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <label>
+                <span>Assign database</span>
+                <select name="assigned_database">
+                    <option value="">— none —</option>
+                    {{range .DatabaseAccess}}
+                    <option value="{{.DatabaseName}}" {{if eq .DatabaseName $.SelectedSite.DatabaseName}}selected{{end}}>{{.DatabaseName}} ({{.Username}}@{{.Host}})</option>
+                    {{end}}
+                </select>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Save</button>
+            </div>
+        </form>
+    </article>
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Linux user</span>
+                <h3>Owner: {{.SelectedSite.OwnerLinuxUser}}</h3>
+            </div>
+        </div>
+        <form method="post" class="stack-form compact-form">
+            <input type="hidden" name="details_action" value="assign_linux_user">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <label>
+                <span>Assign Linux user</span>
+                <select name="assigned_linux_user">
+                    {{range .LinuxUsers}}
+                    <option value="{{.Username}}" {{if eq .Username $.SelectedSite.OwnerLinuxUser}}selected{{end}}>{{.Username}} · {{.HomeDirectory}}</option>
+                    {{end}}
+                </select>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Save</button>
             </div>
         </form>
     </article>

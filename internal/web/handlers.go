@@ -1204,6 +1204,32 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		a.recordAudit(r.Context(), "pm2.stop", site.Name, "success", map[string]any{"process": processName})
 		data.CommandOutput = output
 		successMessage = "PM2 process stopped successfully."
+	case "assign_database":
+		dbName := strings.TrimSpace(r.FormValue("assigned_database"))
+		if err := a.store.UpdateManagedSiteDatabaseName(r.Context(), site.Name, dbName); err != nil {
+			data.RequestError = "Could not assign database: " + err.Error()
+			break
+		}
+		site.DatabaseName = dbName
+		if dbName == "" {
+			successMessage = "Database assignment cleared."
+		} else {
+			successMessage = "Database \"" + dbName + "\" assigned to site."
+		}
+		a.recordAudit(r.Context(), "site.assign_database", site.Name, "success", map[string]any{"database": dbName})
+	case "assign_linux_user":
+		newOwner := strings.TrimSpace(r.FormValue("assigned_linux_user"))
+		if newOwner == "" {
+			data.RequestError = "Linux user cannot be empty."
+			break
+		}
+		if err := a.store.UpdateManagedSiteOwnerLinuxUser(r.Context(), site.Name, newOwner); err != nil {
+			data.RequestError = "Could not assign Linux user: " + err.Error()
+			break
+		}
+		site.OwnerLinuxUser = newOwner
+		successMessage = "Linux user reassigned to \"" + newOwner + "\"."
+		a.recordAudit(r.Context(), "site.assign_linux_user", site.Name, "success", map[string]any{"owner": newOwner})
 	default:
 		data.RequestError = "Invalid site details action."
 	}
@@ -1417,6 +1443,8 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.DeploymentReleases = releases
 	data.PackageScripts = readPackageJSONScripts(site.RootDirectory)
 	data.NpmScriptNodeVersion = runtimeStatus.DefaultNodeVersion
+	data.DatabaseAccess, _ = a.databases.ListDatabaseAccess()
+	data.LinuxUsers = a.listLinuxUsers()
 	envPath := filepath.Join(site.RootDirectory, ".env")
 	var envContent string
 	if _, err := a.helper.Call(r.Context(), "files.read_env", map[string]string{"path": envPath}, &envContent); err == nil {

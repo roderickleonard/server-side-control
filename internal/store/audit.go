@@ -62,7 +62,7 @@ func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.M
 	}
 
 	var site domain.ManagedSite
-	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, nginx_config_path, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
+	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, database_name, nginx_config_path, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
 	if err := s.db.QueryRowContext(ctx, query, name).Scan(
 		&site.ID,
 		&site.Name,
@@ -72,6 +72,7 @@ func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.M
 		&site.Runtime,
 		&site.UpstreamURL,
 		&site.PHPVersion,
+		&site.DatabaseName,
 		&site.NginxConfigPath,
 		&site.CreatedAt,
 		&site.UpdatedAt,
@@ -86,7 +87,7 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 		return nil, errors.New("store is not configured")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, nginx_config_path, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, database_name, nginx_config_path, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list managed sites: %w", err)
 	}
@@ -104,6 +105,7 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 			&site.Runtime,
 			&site.UpstreamURL,
 			&site.PHPVersion,
+			&site.DatabaseName,
 			&site.NginxConfigPath,
 			&site.CreatedAt,
 			&site.UpdatedAt,
@@ -134,6 +136,28 @@ func (s *Store) UpdateManagedSitePHPVersion(ctx context.Context, name string, ve
 	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET php_version = ? WHERE name = ?`, version, name)
 	if err != nil {
 		return fmt.Errorf("update managed site php version: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) UpdateManagedSiteDatabaseName(ctx context.Context, name string, databaseName string) error {
+	if s == nil {
+		return errors.New("store is not configured")
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET database_name = ? WHERE name = ?`, databaseName, name)
+	if err != nil {
+		return fmt.Errorf("update managed site database name: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) UpdateManagedSiteOwnerLinuxUser(ctx context.Context, name string, ownerLinuxUser string) error {
+	if s == nil {
+		return errors.New("store is not configured")
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET owner_linux_user = ? WHERE name = ?`, ownerLinuxUser, name)
+	if err != nil {
+		return fmt.Errorf("update managed site owner linux user: %w", err)
 	}
 	return nil
 }

@@ -82,6 +82,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("ensure managed_sites.upstream_url column: %w", err)
 	}
 
+	if err := s.ensureManagedSitesDatabaseColumn(ctx); err != nil {
+		return fmt.Errorf("ensure managed_sites.database_name column: %w", err)
+	}
+
 	return nil
 }
 
@@ -106,6 +110,36 @@ func (s *Store) ensureManagedSitesUpstreamColumn(ctx context.Context) error {
 	}
 
 	_, err = s.db.ExecContext(ctx, `ALTER TABLE managed_sites ADD COLUMN upstream_url VARCHAR(255) NOT NULL DEFAULT '' AFTER runtime`)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *Store) ensureManagedSitesDatabaseColumn(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = DATABASE()
+		  AND table_name = 'managed_sites'
+		  AND column_name = 'database_name'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE managed_sites ADD COLUMN database_name VARCHAR(191) NOT NULL DEFAULT '' AFTER php_version`)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
 			return nil
