@@ -1,17 +1,23 @@
 package main
 
 import (
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/kaganyegin/server-side-control/internal/config"
+	"github.com/kaganyegin/server-side-control/internal/domain"
 	"github.com/kaganyegin/server-side-control/internal/system"
 )
 
@@ -186,6 +192,81 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		output, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).RestoreDatabase(input.DatabaseName, input.FilePath)
 		writeSuccess(nil, output, err)
+	case "panel.write_env":
+		var input struct {
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		if cfg.EnvPath == "" || !filepath.IsAbs(filepath.Clean(cfg.EnvPath)) {
+			writeFailure(errors.New("invalid panel env path"), "")
+			return
+		}
+		if err := os.MkdirAll(filepath.Dir(cfg.EnvPath), 0o755); err != nil {
+			writeFailure(fmt.Errorf("create panel env directory: %w", err), "")
+			return
+		}
+		if err := os.WriteFile(cfg.EnvPath, []byte(input.Content), 0o600); err != nil {
+			writeFailure(fmt.Errorf("write panel env: %w", err), "")
+			return
+		}
+		writeSuccess(nil, cfg.EnvPath, nil)
+	case "panel.apply_proxy":
+		var input system.PanelProxySpec
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		configPath, err := system.ApplyPanelProxy(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, input)
+		writeSuccess(nil, configPath, err)
+	case "panel.restart_service":
+		serviceName := strings.TrimSpace(cfg.ServiceName)
+		if serviceName == "" {
+			serviceName = "server-side-control"
+		}
+		cmd := exec.Command("bash", "-lc", fmt.Sprintf("nohup sh -c 'sleep 1; systemctl restart %s' >/dev/null 2>&1 &", serviceName))
+		if output, err := cmd.CombinedOutput(); err != nil {
+			writeFailure(fmt.Errorf("restart panel service: %w: %s", err, strings.TrimSpace(string(output))), "")
+			return
+		}
+		writeSuccess(nil, serviceName, nil)
+	case "panel.inspect_tls":
+		var input struct {
+			Domain string `json:"domain"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		status := domain.PanelTLSStatus{Domain: strings.TrimSpace(input.Domain)}
+		if status.Domain == "" {
+			writeSuccess(status, "", nil)
+			return
+		}
+		certPath := filepath.Join("/etc/letsencrypt/live", status.Domain, "fullchain.pem")
+		content, err := os.ReadFile(certPath)
+		if err != nil {
+			writeSuccess(status, "", nil)
+			return
+		}
+		block, _ := pem.Decode(content)
+		if block == nil {
+			writeSuccess(status, "", nil)
+			return
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			writeSuccess(status, "", nil)
+			return
+		}
+		expiresAt := cert.NotAfter
+		status.CertificateOK = true
+		status.ExpiresAt = &expiresAt
+		status.DaysRemaining = int(time.Until(expiresAt).Hours() / 24)
+		status.Issuer = cert.Issuer.CommonName
+		writeSuccess(status, "", nil)
 	case "nginx.apply_site":
 		var spec system.SiteSpec
 		if err := json.Unmarshal(request.Input, &spec); err != nil {

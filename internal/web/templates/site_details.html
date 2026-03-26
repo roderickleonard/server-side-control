@@ -28,6 +28,18 @@
 </section>
 {{end}}
 
+<section class="grid single">
+    <article class="panel">
+        <div class="site-tab-nav" id="site-tab-nav" data-active-tab="{{.SiteDetailTab}}">
+            <button type="button" class="site-tab-btn" data-tab="overview">Overview</button>
+            <button type="button" class="site-tab-btn" data-tab="deploy">Deploy</button>
+            <button type="button" class="site-tab-btn" data-tab="runtime">Runtime</button>
+            <button type="button" class="site-tab-btn" data-tab="domains">Domains</button>
+            <button type="button" class="site-tab-btn" data-tab="settings">Settings</button>
+        </div>
+    </article>
+</section>
+
 <section class="grid single" id="cmd-output-section">
     <article class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
@@ -44,7 +56,7 @@
 <script>document.getElementById('cmd-output-section').scrollIntoView({behavior:'smooth',block:'start'});</script>
 {{end}}
 
-<section class="grid">
+<section class="grid" data-site-tab="overview">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -83,7 +95,7 @@
     </article>
 </section>
 
-<section class="grid single">
+<section class="grid single" data-site-tab="deploy">
     <article class="panel">
         <h3><i class="bi bi-git" style="color:var(--accent);margin-right:6px;"></i>{{if .RepositoryStatus.IsGitRepo}}Pull latest code{{else}}Clone repository{{end}}</h3>
         <form method="post" class="stack-form">
@@ -118,9 +130,75 @@
     </article>
 </section>
 
+<section class="grid single" data-site-tab="deploy">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Auto deploy</span>
+                <h3>{{if .AutoDeployEnabled}}Webhook enabled{{else}}Manual only{{end}}</h3>
+            </div>
+            <span class="badge subtle-badge">Branch: {{.AutoDeployBranch}}</span>
+        </div>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="details_action" value="save_auto_deploy">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <label class="checkbox-row">
+                <input type="checkbox" name="auto_deploy_enabled" value="1" {{if .AutoDeployEnabled}}checked{{end}}>
+                <span>Enable auto deploy webhook for this site</span>
+            </label>
+            <div class="form-grid two-up">
+                <label>
+                    <span>Tracked branch</span>
+                    <input type="text" name="auto_deploy_branch" value="{{.AutoDeployBranch}}" placeholder="main">
+                </label>
+                <label>
+                    <span>Webhook secret</span>
+                    <input type="text" name="auto_deploy_secret" value="{{.AutoDeploySecret}}" placeholder="Generated on save when empty">
+                </label>
+                <label class="span-2">
+                    <span>Post-deploy command</span>
+                    <input type="text" name="auto_deploy_command" value="{{.AutoDeployCommand}}" placeholder="npm ci && npm run build && pm2 reload {{.SelectedSite.Name}}">
+                </label>
+                <label class="span-2">
+                    <span>Notification email override</span>
+                    <input type="text" name="auto_deploy_notify_email" value="{{.AutoDeployNotifyEmail}}" placeholder="Leave empty to use global SMTP recipient">
+                </label>
+            </div>
+            <p class="muted details-note">This command runs after the repository sync finishes for this site. Each site can use a different command.</p>
+            <div class="form-actions">
+                <button type="submit">Save auto deploy</button>
+            </div>
+        </form>
+        <form method="post" class="inline-form details-inline-form" style="margin-top:10px;">
+            <input type="hidden" name="details_action" value="rotate_auto_deploy_secret">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="auto_deploy_enabled" value="{{if .AutoDeployEnabled}}1{{else}}0{{end}}">
+            <input type="hidden" name="auto_deploy_branch" value="{{.AutoDeployBranch}}">
+            <input type="hidden" name="auto_deploy_command" value="{{.AutoDeployCommand}}">
+            <input type="hidden" name="auto_deploy_notify_email" value="{{.AutoDeployNotifyEmail}}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Rotate webhook secret</button>
+        </form>
+        <div class="site-delete-summary details-summary" style="margin-top:14px;">
+            <div><strong>Webhook auth</strong><span>{{.AutoDeployWebhookAuthHint}}</span></div>
+            <div><strong>Notify email</strong><span>{{if .AutoDeployNotifyEmail}}{{.AutoDeployNotifyEmail}}{{else}}Global SMTP recipient{{end}}</span></div>
+            <div><strong>Last webhook</strong><span>{{if .LatestWebhookAudit.Action}}{{.LatestWebhookAudit.Outcome}} at {{.LatestWebhookAudit.CreatedAt.Format "2006-01-02 15:04:05"}}{{else}}-{{end}}</span></div>
+            <div><strong>Last webhook details</strong><span>{{if .LatestWebhookAudit.Metadata}}{{.LatestWebhookAudit.Metadata}}{{else}}-{{end}}</span></div>
+            <div><strong>Last release</strong><span>{{if .LatestDeploymentRelease.Action}}{{.LatestDeploymentRelease.Status}} / {{.LatestDeploymentRelease.Action}} / {{if .LatestDeploymentRelease.CommitSHA}}{{.LatestDeploymentRelease.CommitSHA}}{{else}}-{{end}}{{else}}-{{end}}</span></div>
+        </div>
+        {{if .AutoDeployWebhookURL}}
+        <div class="generated-path-card" style="margin-top:14px;">
+            <small>Webhook URL</small>
+            <strong>{{.AutoDeployWebhookURL}}</strong>
+        </div>
+        {{else}}
+        <p class="muted details-note">Save a secret first to generate the webhook URL.</p>
+        {{end}}
+    </article>
+</section>
+
 <div style="margin-top:24px;"></div>
 
-<section class="grid">
+<section class="grid" data-site-tab="settings">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -175,7 +253,7 @@
 
 <div style="margin-top:24px;"></div>
 
-<section class="grid">
+<section class="grid" data-site-tab="runtime">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -221,7 +299,7 @@
                 <select id="runtime-command-select">
                     <option value="">New profile</option>
                     {{range .SiteRuntimeCommands}}
-                    <option value="{{.ID}}">{{.Name}}</option>
+                    <option value="{{.ID}}" data-name="{{.Name}}" data-node-version="{{.NodeVersion}}" data-command-body="{{.CommandBody}}">{{.Name}}</option>
                     {{end}}
                 </select>
             </label>
@@ -291,7 +369,7 @@
 
 <div style="margin-top:24px;"></div>
 
-<section class="grid">
+<section class="grid" data-site-tab="runtime">
     <article class="panel">
         <h3><i class="bi bi-play-circle" style="color:var(--accent);margin-right:6px;"></i>Start site with PM2</h3>
         <form method="post" class="stack-form">
@@ -360,7 +438,7 @@
 
 <div style="margin-top:24px;"></div>
 
-<section class="grid">
+<section class="grid" data-site-tab="deploy">
     <article class="panel">
         <div class="section-head" style="cursor:pointer;" onclick="this.closest('article').querySelectorAll('.ssh-body').forEach(el=>el.classList.toggle('hidden'))">
             <div>
@@ -449,7 +527,7 @@
 
 <div style="margin-top:24px;"></div>
 
-<section class="grid single">
+<section class="grid single" data-site-tab="settings">
     <article class="panel">
         <h3><i class="bi bi-file-earmark-lock" style="color:var(--accent);margin-right:6px;"></i>.env file</h3>
         <form method="post" class="stack-form">
@@ -469,7 +547,7 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     </article>
 </section>
 
-<section class="grid">
+<section class="grid" data-site-tab="domains">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -510,14 +588,113 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     </article>
 </section>
 
+<section class="grid single" data-site-tab="domains">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Subdomains</span>
+                <h3>Site-specific subdomain routing</h3>
+            </div>
+        </div>
+        <p class="muted details-note">Create subdomains like service.{{.SelectedSite.DomainName}} with their own runtime mode, upstream, PHP version, and root path.</p>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="details_action" value="add_subdomain">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Subdomain label</span>
+                    <input type="text" name="subdomain_label" value="{{.SubdomainLabel}}" placeholder="service" required>
+                </label>
+                <label>
+                    <span>Mode</span>
+                    <select name="subdomain_mode">
+                        <option value="reverse_proxy" {{if eq .SubdomainMode "reverse_proxy"}}selected{{end}}>reverse proxy</option>
+                        <option value="static" {{if eq .SubdomainMode "static"}}selected{{end}}>static</option>
+                        <option value="php" {{if eq .SubdomainMode "php"}}selected{{end}}>php</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Upstream URL</span>
+                    <input type="text" name="subdomain_upstream_url" value="{{.SubdomainUpstreamURL}}" placeholder="http://127.0.0.1:4000">
+                </label>
+                <label>
+                    <span>PHP version</span>
+                    <input type="text" name="subdomain_php_version" value="{{.SubdomainPHPVersion}}" placeholder="8.3">
+                </label>
+                <label class="span-2">
+                    <span>Root directory</span>
+                    <input type="text" name="subdomain_root_directory" value="{{.SubdomainRootDirectory}}" placeholder="Defaults to {{.SelectedSite.RootDirectory}}/subdomains/name">
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Add subdomain</button>
+            </div>
+        </form>
+        {{if .SiteSubdomains}}
+        <div class="table-card" style="margin-top:18px;">
+            <table class="table table-theme">
+                <thead>
+                    <tr>
+                        <th>Domain</th>
+                        <th>Mode</th>
+                        <th>Root / Upstream</th>
+                        <th>Config</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .SiteSubdomains}}
+                    <tr>
+                        <td>{{.FullDomain}}</td>
+                        <td>{{.Runtime}}</td>
+                        <td>{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}{{.RootDirectory}}{{end}}</td>
+                        <td>{{.NginxConfigPath}}</td>
+                        <td>
+                            <div class="stack-cluster">
+                                <form method="post" class="stack-form compact-form" style="margin-top:0;gap:8px;">
+                                    <input type="hidden" name="details_action" value="enable_subdomain_tls">
+                                    <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                    <input type="hidden" name="subdomain_id" value="{{.ID}}">
+                                    <label>
+                                        <span>TLS email</span>
+                                        <input type="text" name="subdomain_tls_email" value="{{$.SubdomainTLSEmail}}" placeholder="ops@example.com" required>
+                                    </label>
+                                    <label class="checkbox-row compact">
+                                        <input type="checkbox" name="subdomain_tls_redirect" value="1" checked>
+                                        <span>Redirect HTTP to HTTPS</span>
+                                    </label>
+                                    <div class="form-actions">
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary">Enable TLS</button>
+                                    </div>
+                                </form>
+                                <form method="post" class="inline-form">
+                                    <input type="hidden" name="details_action" value="delete_subdomain">
+                                    <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                    <input type="hidden" name="subdomain_id" value="{{.ID}}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted details-note">No custom subdomains configured yet.</p>
+        {{end}}
+    </article>
+</section>
+
 <div style="margin-top:24px;"></div>
 
+<div data-site-tab="deploy">
 {{template "deploy_history" .}}
-
-<script id="saved-runtime-commands-data" type="application/json">{{.SiteRuntimeCommandsJSON}}</script>
+</div>
 
 <script>
 (function () {
+    const tabNav = document.getElementById('site-tab-nav');
     const runtimeForm = document.getElementById('runtime-npm-actions');
     const customForm = document.getElementById('runtime-custom-form');
     const outputSection = document.getElementById('cmd-output-section');
@@ -532,11 +709,25 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     const commandBody = document.getElementById('runtime-command-body');
     const commandRun = document.getElementById('runtime-custom-run');
     const commandClear = document.getElementById('runtime-command-clear');
-    const savedCommandsNode = document.getElementById('saved-runtime-commands-data');
-    if (!runtimeForm || !customForm || !outputSection || !outputBody || !outputPre || !outputStatus || !outputToggle || !commandSelect || !commandId || !commandName || !commandNodeVersion || !commandBody || !commandRun || !commandClear || !savedCommandsNode) {
+    if (!tabNav || !runtimeForm || !customForm || !outputSection || !outputBody || !outputPre || !outputStatus || !outputToggle || !commandSelect || !commandId || !commandName || !commandNodeVersion || !commandBody || !commandRun || !commandClear) {
         return;
     }
-    const savedCommands = JSON.parse(savedCommandsNode.textContent || '[]');
+
+    const tabButtons = Array.from(tabNav.querySelectorAll('[data-tab]'));
+    const tabPanels = Array.from(document.querySelectorAll('[data-site-tab]'));
+
+    function activateTab(tabName) {
+        tabButtons.forEach((button) => {
+            button.classList.toggle('active', button.dataset.tab === tabName);
+        });
+        tabPanels.forEach((panel) => {
+            panel.classList.toggle('hidden', panel.dataset.siteTab !== tabName);
+        });
+        const url = new URL(window.location.href);
+        url.searchParams.set('name', '{{.SelectedSite.Name}}');
+        url.searchParams.set('tab', tabName);
+        window.history.replaceState({}, '', url);
+    }
 
     function resetCustomCommandForm() {
         commandSelect.value = '';
@@ -546,16 +737,15 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
         commandBody.value = '';
     }
 
-    function applySavedCommand(commandRecord) {
-        if (!commandRecord) {
+    function applySavedCommand(optionElement) {
+        if (!optionElement || !optionElement.value) {
             resetCustomCommandForm();
             return;
         }
-        commandSelect.value = String(commandRecord.id);
-        commandId.value = String(commandRecord.id);
-        commandName.value = commandRecord.name || '';
-        commandNodeVersion.value = commandRecord.node_version || '';
-        commandBody.value = commandRecord.command_body || '';
+        commandId.value = optionElement.value;
+        commandName.value = optionElement.dataset.name || '';
+        commandNodeVersion.value = optionElement.dataset.nodeVersion || '';
+        commandBody.value = optionElement.dataset.commandBody || '';
     }
 
     function setOutputVisibility(isVisible) {
@@ -565,6 +755,12 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
 
     outputToggle.addEventListener('click', () => {
         setOutputVisibility(outputBody.classList.contains('hidden'));
+    });
+
+    tabButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            activateTab(button.dataset.tab || 'overview');
+        });
     });
 
     async function streamRuntimeCommand(action, scriptName) {
@@ -687,8 +883,7 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     });
 
     commandSelect.addEventListener('change', () => {
-        const selectedCommand = savedCommands.find((entry) => String(entry.id) === commandSelect.value);
-        applySavedCommand(selectedCommand);
+        applySavedCommand(commandSelect.options[commandSelect.selectedIndex]);
     });
 
     commandRun.addEventListener('click', () => {
@@ -700,8 +895,10 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     });
 
     setOutputVisibility(!outputBody.classList.contains('hidden'));
+    activateTab(tabNav.dataset.activeTab || 'overview');
     if (commandId.value && commandId.value !== '0') {
         commandSelect.value = commandId.value;
+        applySavedCommand(commandSelect.options[commandSelect.selectedIndex]);
     }
 })();
 </script>

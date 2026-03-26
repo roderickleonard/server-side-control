@@ -1,0 +1,191 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <span class="eyebrow">Settings</span>
+        <h2>Panel Settings</h2>
+        <p class="lead">Configure how the panel is exposed, assign a domain, and enable TLS for the panel itself.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+    {{if .ResultPath}}
+    <div class="alert success">Updated path: <strong>{{.ResultPath}}</strong></div>
+    {{end}}
+</section>
+{{end}}
+
+{{if .CommandOutput}}
+<section class="grid single">
+    <article class="panel">
+        <h3><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Command output</h3>
+        <pre class="command-output">{{.CommandOutput}}</pre>
+    </article>
+</section>
+{{end}}
+
+<section class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-sliders" style="color:var(--accent);margin-right:6px;"></i>Panel access</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="settings_action" value="save_panel_settings">
+            <input type="hidden" name="smtp_host" value="{{.SMTPHost}}">
+            <input type="hidden" name="smtp_port" value="{{.SMTPPort}}">
+            <input type="hidden" name="smtp_username" value="{{.SMTPUsername}}">
+            <input type="hidden" name="smtp_password" value="{{.SMTPPassword}}">
+            <input type="hidden" name="smtp_from" value="{{.SMTPFrom}}">
+            <input type="hidden" name="smtp_to" value="{{.SMTPTo}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Panel listen address</span>
+                    <input type="text" name="panel_listen_addr" value="{{.PanelListenAddr}}" placeholder="127.0.0.1:8080" required>
+                </label>
+                <label>
+                    <span>Panel base URL</span>
+                    <input type="text" name="panel_base_url" value="{{.PanelBaseURL}}" placeholder="https://panel.example.com" required>
+                </label>
+                <label class="span-2">
+                    <span>Panel service name</span>
+                    <input type="text" name="panel_service_name" value="{{.PanelServiceName}}" placeholder="server-side-control" required>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Save panel settings</button>
+            </div>
+        </form>
+        <ul>
+            <li>Use `127.0.0.1:8080` when Nginx will proxy requests to the panel.</li>
+            <li>Changing the listen address requires restarting the panel service.</li>
+            <li>Cookies switch to secure mode automatically when the base URL uses `https://`.</li>
+        </ul>
+    </article>
+    <article class="panel">
+        <h3><i class="bi bi-globe2" style="color:var(--accent);margin-right:6px;"></i>Panel domain and TLS</h3>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Domain</strong><span>{{if .PanelTLSStatus.Domain}}{{.PanelTLSStatus.Domain}}{{else}}-{{end}}</span></div>
+            <div><strong>Certificate</strong><span>{{if .PanelTLSStatus.CertificateOK}}Installed{{else}}Not detected{{end}}</span></div>
+            <div><strong>Issuer</strong><span>{{if .PanelTLSStatus.Issuer}}{{.PanelTLSStatus.Issuer}}{{else}}-{{end}}</span></div>
+            <div><strong>Expires</strong><span>{{if .PanelTLSStatus.ExpiresAt}}{{.PanelTLSStatus.ExpiresAt.Format "2006-01-02 15:04:05"}}{{else}}-{{end}}</span></div>
+            <div><strong>Days remaining</strong><span>{{if .PanelTLSStatus.CertificateOK}}{{.PanelTLSStatus.DaysRemaining}}{{else}}-{{end}}</span></div>
+        </div>
+        <form method="post" class="stack-form compact-form">
+            <input type="hidden" name="settings_action" value="apply_panel_proxy">
+            <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
+            <input type="hidden" name="panel_base_url" value="{{.PanelBaseURL}}">
+            <input type="hidden" name="panel_service_name" value="{{.PanelServiceName}}">
+            <label>
+                <span>Panel domain</span>
+                <input type="text" name="panel_domain" value="{{.PanelDomain}}" placeholder="panel.example.com" required>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Apply panel domain</button>
+            </div>
+        </form>
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;">
+            <input type="hidden" name="settings_action" value="enable_panel_tls">
+            <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
+            <input type="hidden" name="panel_base_url" value="{{.PanelBaseURL}}">
+            <input type="hidden" name="panel_service_name" value="{{.PanelServiceName}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Panel domain</span>
+                    <input type="text" name="panel_domain" value="{{.PanelDomain}}" placeholder="panel.example.com" required>
+                </label>
+                <label>
+                    <span>TLS email</span>
+                    <input type="text" name="panel_tls_email" value="{{.PanelTLSEmail}}" placeholder="ops@example.com" required>
+                </label>
+            </div>
+            <label class="checkbox-row" style="margin-top:12px;">
+                <input type="checkbox" name="panel_tls_redirect" value="1" checked>
+                <span>Redirect HTTP to HTTPS</span>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Enable panel TLS</button>
+            </div>
+        </form>
+        <form method="post" class="inline-form details-inline-form" style="margin-top:12px;">
+            <input type="hidden" name="settings_action" value="restart_panel_service">
+            <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
+            <input type="hidden" name="panel_base_url" value="{{.PanelBaseURL}}">
+            <input type="hidden" name="panel_domain" value="{{.PanelDomain}}">
+            <input type="hidden" name="panel_service_name" value="{{.PanelServiceName}}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Restart panel service</button>
+        </form>
+    </article>
+</section>
+
+<section class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-file-earmark-text" style="color:var(--muted);margin-right:6px;"></i>Config files</h3>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Panel env</strong><span>{{.PanelEnvPath}}</span></div>
+            <div><strong>Panel Nginx config</strong><span>{{.PanelProxyConfigPath}}</span></div>
+        </div>
+        {{if .PanelProxyConfig}}
+        <pre class="command-output">{{.PanelProxyConfig}}</pre>
+        {{else}}
+        <p class="muted">No panel Nginx proxy config has been applied yet.</p>
+        {{end}}
+    </article>
+    <article class="panel">
+        <h3><i class="bi bi-envelope" style="color:var(--accent);margin-right:6px;"></i>SMTP and notifications</h3>
+        <form method="post" class="stack-form compact-form">
+            <input type="hidden" name="settings_action" value="save_panel_settings">
+            <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
+            <input type="hidden" name="panel_base_url" value="{{.PanelBaseURL}}">
+            <input type="hidden" name="panel_service_name" value="{{.PanelServiceName}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>SMTP host</span>
+                    <input type="text" name="smtp_host" value="{{.SMTPHost}}" placeholder="smtp.example.com">
+                </label>
+                <label>
+                    <span>SMTP port</span>
+                    <input type="text" name="smtp_port" value="{{.SMTPPort}}" placeholder="587">
+                </label>
+                <label>
+                    <span>SMTP username</span>
+                    <input type="text" name="smtp_username" value="{{.SMTPUsername}}" placeholder="smtp-user">
+                </label>
+                <label>
+                    <span>SMTP password</span>
+                    <input type="password" name="smtp_password" value="{{.SMTPPassword}}" placeholder="smtp-password">
+                </label>
+                <label>
+                    <span>From email</span>
+                    <input type="text" name="smtp_from" value="{{.SMTPFrom}}" placeholder="panel@example.com">
+                </label>
+                <label>
+                    <span>Notification recipient</span>
+                    <input type="text" name="smtp_to" value="{{.SMTPTo}}" placeholder="ops@example.com">
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Save SMTP settings</button>
+                <button type="submit" formaction="/settings" name="settings_action" value="test_smtp_settings" class="btn btn-sm btn-outline-secondary">Send test mail</button>
+            </div>
+        </form>
+        <p class="muted details-note">Auto deploy webhook success and failure results will be sent to this recipient when SMTP is configured.</p>
+    </article>
+    <article class="panel">
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Recommended flow</h3>
+        <ol>
+            <li>Save panel listen address as `127.0.0.1:8080`.</li>
+            <li>Save panel base URL as `https://panel.example.com`.</li>
+            <li>Apply panel domain to create the Nginx reverse proxy config.</li>
+            <li>Point DNS to this server.</li>
+            <li>Enable panel TLS after DNS resolves correctly.</li>
+            <li>Restart the panel service if listen address changed.</li>
+            <li>Save SMTP settings if you want auto deploy email results.</li>
+        </ol>
+    </article>
+</section>
+{{end}}

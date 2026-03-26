@@ -86,8 +86,16 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("ensure managed_sites.database_name column: %w", err)
 	}
 
+	if err := s.ensureManagedSitesAutoDeployColumns(ctx); err != nil {
+		return fmt.Errorf("ensure managed_sites auto deploy columns: %w", err)
+	}
+
 	if err := s.ensureSiteRuntimeCommandsTable(ctx); err != nil {
 		return fmt.Errorf("ensure site_runtime_commands table: %w", err)
+	}
+
+	if err := s.ensureSiteSubdomainsTable(ctx); err != nil {
+		return fmt.Errorf("ensure site_subdomains table: %w", err)
 	}
 
 	return nil
@@ -168,6 +176,69 @@ func (s *Store) ensureSiteRuntimeCommandsTable(ctx context.Context) error {
 			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			INDEX idx_site_runtime_commands_site_id (site_id),
 			CONSTRAINT fk_site_runtime_commands_site FOREIGN KEY (site_id) REFERENCES managed_sites(id) ON DELETE CASCADE
+		)`)
+	return err
+}
+
+func (s *Store) ensureManagedSitesAutoDeployColumns(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	columns := []struct {
+		name string
+		statement string
+	}{
+		{name: "auto_deploy_enabled", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER database_name`},
+		{name: "auto_deploy_branch", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_branch VARCHAR(191) NOT NULL DEFAULT '' AFTER auto_deploy_enabled`},
+		{name: "auto_deploy_secret", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_secret VARCHAR(255) NOT NULL DEFAULT '' AFTER auto_deploy_branch`},
+		{name: "auto_deploy_command", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_command TEXT NOT NULL AFTER auto_deploy_secret`},
+		{name: "auto_deploy_notify_email", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_notify_email VARCHAR(255) NOT NULL DEFAULT '' AFTER auto_deploy_command`},
+	}
+	for _, column := range columns {
+		var count int
+		err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM information_schema.columns
+			WHERE table_schema = DATABASE()
+			  AND table_name = 'managed_sites'
+			  AND column_name = ?
+		`, column.name).Scan(&count)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.statement); err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS site_subdomains (
+			id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			site_id BIGINT NOT NULL,
+			subdomain VARCHAR(191) NOT NULL,
+			full_domain VARCHAR(255) NOT NULL,
+			runtime VARCHAR(32) NOT NULL,
+			upstream_url VARCHAR(255) NOT NULL DEFAULT '',
+			php_version VARCHAR(32) NOT NULL DEFAULT '',
+			root_directory VARCHAR(255) NOT NULL DEFAULT '',
+			nginx_config_path VARCHAR(255) NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_site_subdomains_full_domain (full_domain),
+			INDEX idx_site_subdomains_site_id (site_id),
+			CONSTRAINT fk_site_subdomains_site FOREIGN KEY (site_id) REFERENCES managed_sites(id) ON DELETE CASCADE
 		)`)
 	return err
 }

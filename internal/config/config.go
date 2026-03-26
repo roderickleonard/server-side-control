@@ -10,6 +10,7 @@ import (
 type Config struct {
 	AppName           string
 	Environment       string
+	EnvPath           string
 	ListenAddr        string
 	BaseURL           string
 	DatabaseDSN       string
@@ -17,6 +18,13 @@ type Config struct {
 	BootstrapPassword string
 	PAMService        string
 	SessionCookieName string
+	ServiceName string
+	SMTPHost          string
+	SMTPPort          string
+	SMTPUsername      string
+	SMTPPassword      string
+	SMTPFrom          string
+	SMTPTo            string
 	MySQLAdminDefaultsFile string
 	NginxBinary       string
 	NginxAvailableDir string
@@ -33,6 +41,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		AppName:           getenv("PANEL_APP_NAME", "Server Side Control"),
 		Environment:       getenv("PANEL_ENV", "development"),
+		EnvPath:           envPath,
 		ListenAddr:        getenv("PANEL_LISTEN_ADDR", ":8080"),
 		BaseURL:           getenv("PANEL_BASE_URL", "http://127.0.0.1:8080"),
 		DatabaseDSN:       os.Getenv("PANEL_DATABASE_DSN"),
@@ -40,6 +49,13 @@ func Load() (Config, error) {
 		BootstrapPassword: os.Getenv("PANEL_BOOTSTRAP_PASSWORD"),
 		PAMService:        getenv("PANEL_PAM_SERVICE", "login"),
 		SessionCookieName: getenv("PANEL_SESSION_COOKIE_NAME", "ssc_session"),
+		ServiceName:       getenv("PANEL_SERVICE_NAME", "server-side-control"),
+		SMTPHost:          getenv("PANEL_SMTP_HOST", ""),
+		SMTPPort:          getenv("PANEL_SMTP_PORT", "587"),
+		SMTPUsername:      getenv("PANEL_SMTP_USERNAME", ""),
+		SMTPPassword:      os.Getenv("PANEL_SMTP_PASSWORD"),
+		SMTPFrom:          getenv("PANEL_SMTP_FROM", ""),
+		SMTPTo:            getenv("PANEL_SMTP_TO", ""),
 		MySQLAdminDefaultsFile: getenv("PANEL_MYSQL_ADMIN_DEFAULTS_FILE", "/etc/server-side-control/mysql-admin.cnf"),
 		NginxBinary:       getenv("PANEL_NGINX_BINARY", "nginx"),
 		NginxAvailableDir: getenv("PANEL_NGINX_AVAILABLE_DIR", "/etc/nginx/sites-available"),
@@ -75,6 +91,13 @@ func (c Config) ToEnv() string {
 		fmt.Sprintf("PANEL_BOOTSTRAP_PASSWORD=%s", c.BootstrapPassword),
 		fmt.Sprintf("PANEL_PAM_SERVICE=%s", c.PAMService),
 		fmt.Sprintf("PANEL_SESSION_COOKIE_NAME=%s", c.SessionCookieName),
+		fmt.Sprintf("PANEL_SERVICE_NAME=%s", c.ServiceName),
+		fmt.Sprintf("PANEL_SMTP_HOST=%s", c.SMTPHost),
+		fmt.Sprintf("PANEL_SMTP_PORT=%s", c.SMTPPort),
+		fmt.Sprintf("PANEL_SMTP_USERNAME=%s", c.SMTPUsername),
+		fmt.Sprintf("PANEL_SMTP_PASSWORD=%s", c.SMTPPassword),
+		fmt.Sprintf("PANEL_SMTP_FROM=%s", c.SMTPFrom),
+		fmt.Sprintf("PANEL_SMTP_TO=%s", c.SMTPTo),
 		fmt.Sprintf("PANEL_MYSQL_ADMIN_DEFAULTS_FILE=%s", c.MySQLAdminDefaultsFile),
 		fmt.Sprintf("PANEL_NGINX_BINARY=%s", c.NginxBinary),
 		fmt.Sprintf("PANEL_NGINX_AVAILABLE_DIR=%s", c.NginxAvailableDir),

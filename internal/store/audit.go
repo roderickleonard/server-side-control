@@ -56,13 +56,33 @@ func (s *Store) ListAuditLogs(ctx context.Context, limit int) ([]domain.AuditLog
 	return logs, rows.Err()
 }
 
+func (s *Store) GetLatestAuditLogByActionAndTarget(ctx context.Context, action string, target string) (domain.AuditLog, error) {
+	if s == nil {
+		return domain.AuditLog{}, errors.New("store is not configured")
+	}
+	var entry domain.AuditLog
+	err := s.db.QueryRowContext(ctx, `SELECT id, actor, action, target, outcome, COALESCE(CAST(metadata AS CHAR), ''), created_at FROM audit_logs WHERE action = ? AND target = ? ORDER BY id DESC LIMIT 1`, action, target).Scan(
+		&entry.ID,
+		&entry.Actor,
+		&entry.Action,
+		&entry.Target,
+		&entry.Outcome,
+		&entry.Metadata,
+		&entry.CreatedAt,
+	)
+	if err != nil {
+		return domain.AuditLog{}, err
+	}
+	return entry, nil
+}
+
 func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.ManagedSite, error) {
 	if s == nil {
 		return domain.ManagedSite{}, errors.New("store is not configured")
 	}
 
 	var site domain.ManagedSite
-	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, database_name, nginx_config_path, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
+	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
 	if err := s.db.QueryRowContext(ctx, query, name).Scan(
 		&site.ID,
 		&site.Name,
@@ -73,6 +93,11 @@ func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.M
 		&site.UpstreamURL,
 		&site.PHPVersion,
 		&site.DatabaseName,
+		&site.AutoDeployEnabled,
+		&site.AutoDeployBranch,
+		&site.AutoDeploySecret,
+		&site.AutoDeployCommand,
+		&site.AutoDeployNotifyEmail,
 		&site.NginxConfigPath,
 		&site.CreatedAt,
 		&site.UpdatedAt,
@@ -87,7 +112,7 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 		return nil, errors.New("store is not configured")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, database_name, nginx_config_path, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list managed sites: %w", err)
 	}
@@ -106,6 +131,11 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 			&site.UpstreamURL,
 			&site.PHPVersion,
 			&site.DatabaseName,
+			&site.AutoDeployEnabled,
+			&site.AutoDeployBranch,
+			&site.AutoDeploySecret,
+			&site.AutoDeployCommand,
+			&site.AutoDeployNotifyEmail,
 			&site.NginxConfigPath,
 			&site.CreatedAt,
 			&site.UpdatedAt,
@@ -158,6 +188,17 @@ func (s *Store) UpdateManagedSiteOwnerLinuxUser(ctx context.Context, name string
 	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET owner_linux_user = ? WHERE name = ?`, ownerLinuxUser, name)
 	if err != nil {
 		return fmt.Errorf("update managed site owner linux user: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) UpdateManagedSiteAutoDeploy(ctx context.Context, name string, enabled bool, branch string, secret string, command string, notifyEmail string) error {
+	if s == nil {
+		return errors.New("store is not configured")
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET auto_deploy_enabled = ?, auto_deploy_branch = ?, auto_deploy_secret = ?, auto_deploy_command = ?, auto_deploy_notify_email = ? WHERE name = ?`, enabled, branch, secret, command, notifyEmail, name)
+	if err != nil {
+		return fmt.Errorf("update managed site auto deploy: %w", err)
 	}
 	return nil
 }

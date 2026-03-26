@@ -29,3 +29,7 @@ func (stubNginxManager) ValidateConfig(path string) error {
 func (stubNginxManager) Reload() error {
 	return fmt.Errorf("nginx management is only supported on Ubuntu target hosts")
 }
+
+func ApplyPanelProxy(availableDir string, enabledDir string, binary string, spec PanelProxySpec) (string, error) {
+	return "", fmt.Errorf("nginx management is only supported on Ubuntu target hosts")
+}

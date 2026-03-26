@@ -83,6 +83,11 @@ type NginxManager interface {
 	Reload() error
 }
 
+type PanelProxySpec struct {
+	Domain     string `json:"domain"`
+	ListenAddr string `json:"listen_addr"`
+}
+
 type RepositoryInspectSpec struct {
 	TargetDirectory string
 	RunAsUser       string

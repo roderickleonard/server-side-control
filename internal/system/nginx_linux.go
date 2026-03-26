@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -361,36 +362,126 @@ func renderNginxConfig(spec SiteSpec) string {
 `, spec.Domain, upstream)
 	case "php":
 		return fmt.Sprintf(`server {
-    listen 80;
-    listen [::]:80;
-    server_name %s;
-    root %s;
-    index index.php index.html index.htm;
+	listen 80;
+	listen [::]:80;
+	server_name %s;
+	root %s;
+	index index.php index.html index.htm;
 
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
+	location / {
+		try_files $uri $uri/ /index.php?$query_string;
+	}
 
-    location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/run/php/php%s-fpm.sock;
-    }
+	location ~ \.php$ {
+		include snippets/fastcgi-php.conf;
+		fastcgi_pass unix:/run/php/php%s-fpm.sock;
+	}
 }
 `, spec.Domain, spec.RootDirectory, spec.PHPVersion)
 	default:
 		return fmt.Sprintf(`server {
-    listen 80;
-    listen [::]:80;
-    server_name %s;
-    root %s;
-    index index.html index.htm;
+	listen 80;
+	listen [::]:80;
+	server_name %s;
+	root %s;
+	index index.html index.htm;
 
-    location / {
-        try_files $uri $uri/ =404;
-    }
+	location / {
+		try_files $uri $uri/ =404;
+	}
 }
 `, spec.Domain, spec.RootDirectory)
 	}
+}
+
+func ApplyPanelProxy(availableDir string, enabledDir string, binary string, spec PanelProxySpec) (string, error) {
+	spec.Domain = strings.TrimSpace(spec.Domain)
+	spec.ListenAddr = strings.TrimSpace(spec.ListenAddr)
+	if !domainPattern.MatchString(spec.Domain) {
+		return "", ErrInvalidDomain
+	}
+	upstream, err := normalizePanelUpstream(spec.ListenAddr)
+	if err != nil {
+		return "", err
+	}
+	if availableDir == "" {
+		availableDir = "/etc/nginx/sites-available"
+	}
+	if enabledDir == "" {
+		enabledDir = "/etc/nginx/sites-enabled"
+	}
+	if binary == "" {
+		binary = "nginx"
+	}
+	m := linuxNginxManager{availableDir: availableDir, enabledDir: enabledDir, binary: binary}
+	if err := os.MkdirAll(m.availableDir, 0o755); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(m.enabledDir, 0o755); err != nil {
+		return "", err
+	}
+	configPath := filepath.Join(m.availableDir, "server-side-control-panel.conf")
+	enabledPath := filepath.Join(m.enabledDir, filepath.Base(configPath))
+	configBody := renderPanelProxyConfig(spec.Domain, upstream)
+	previousConfig, hadPreviousConfig := readIfExists(configPath)
+	hadPreviousLink := fileExists(enabledPath)
+	if err := os.WriteFile(configPath, []byte(configBody), 0o644); err != nil {
+		return "", err
+	}
+	if !hadPreviousLink {
+		if err := os.Symlink(configPath, enabledPath); err != nil && !os.IsExist(err) {
+			rollbackSite(configPath, enabledPath, hadPreviousConfig, previousConfig, hadPreviousLink)
+			return "", err
+		}
+	}
+	if err := m.ValidateConfig(configPath); err != nil {
+		rollbackSite(configPath, enabledPath, hadPreviousConfig, previousConfig, hadPreviousLink)
+		return "", err
+	}
+	if err := m.Reload(); err != nil {
+		rollbackSite(configPath, enabledPath, hadPreviousConfig, previousConfig, hadPreviousLink)
+		return "", err
+	}
+	return configPath, nil
+}
+
+func normalizePanelUpstream(listenAddr string) (string, error) {
+	listenAddr = strings.TrimSpace(listenAddr)
+	if listenAddr == "" {
+		return "", ErrInvalidUpstream
+	}
+	if strings.HasPrefix(listenAddr, ":") {
+		return "127.0.0.1" + listenAddr, nil
+	}
+	host, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return "", ErrInvalidUpstream
+	}
+	host = strings.Trim(host, "[]")
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, port), nil
+}
+
+func renderPanelProxyConfig(domain string, upstream string) string {
+	return fmt.Sprintf(`server {
+    listen 80;
+    listen [::]:80;
+    server_name %s;
+
+    location / {
+        proxy_pass http://%s;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+`, domain, upstream)
 }
 
 func rollbackSite(configPath string, enabledPath string, hadPreviousConfig bool, previousConfig []byte, hadPreviousLink bool) {

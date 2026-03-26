@@ -65,9 +65,19 @@ type TemplateData struct {
 	RepositoryStatus system.RepositoryStatus
 	RuntimeStatus  system.RuntimeStatus
 	GitAuthStatus  system.GitAuthStatus
+	SiteDetailTab string
 	GitRepositoryURL string
 	GitBranch      string
 	GitPostDeployCommand string
+	AutoDeployEnabled bool
+	AutoDeployBranch string
+	AutoDeploySecret string
+	AutoDeployCommand string
+	AutoDeployNotifyEmail string
+	AutoDeployWebhookURL string
+	AutoDeployWebhookAuthHint string
+	LatestWebhookAudit domain.AuditLog
+	LatestDeploymentRelease domain.DeploymentRelease
 	RuntimeNodeVersion string
 	PM2NodeVersion string
 	PM2ProcessName string
@@ -76,6 +86,21 @@ type TemplateData struct {
 	GitCredentialProtocol string
 	GitCredentialHost string
 	GitCredentialUsername string
+	PanelListenAddr string
+	PanelBaseURL string
+	PanelServiceName string
+	PanelDomain string
+	PanelTLSEmail string
+	SMTPHost string
+	SMTPPort string
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom string
+	SMTPTo string
+	PanelEnvPath string
+	PanelProxyConfigPath string
+	PanelProxyConfig string
+	PanelTLSStatus domain.PanelTLSStatus
 	DatabaseRestoreSQL string
 	GeneratedSecret string
 	ResultPath     string
@@ -88,7 +113,14 @@ type TemplateData struct {
 	PackageScripts []string
 	NpmScriptNodeVersion string
 	SiteRuntimeCommands []domain.SiteRuntimeCommand
-	SiteRuntimeCommandsJSON string
+	SiteSubdomains []domain.SiteSubdomain
+	SubdomainLabel string
+	SubdomainMode string
+	SubdomainUpstreamURL string
+	SubdomainPHPVersion string
+	SubdomainRootDirectory string
+	SubdomainDeleteID int64
+	SubdomainTLSEmail string
 	RuntimeCommandID int64
 	RuntimeCommandName string
 	RuntimeCommandNodeVersion string
@@ -147,6 +179,8 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/sites", a.handleSites)
 	a.router.HandleFunc("/sites/details", a.handleSiteDetails)
 	a.router.HandleFunc("/sites/details/runtime-stream", a.handleSiteRuntimeStream)
+	a.router.HandleFunc("/webhooks/site-deploy", a.handleSiteDeployWebhook)
+	a.router.HandleFunc("/settings", a.handleSettings)
 	a.router.HandleFunc("/php", a.handlePHP)
 	a.router.HandleFunc("/deploys", a.handleDeploys)
 	a.router.HandleFunc("/processes", a.handleProcesses)
@@ -165,6 +199,7 @@ func (a *App) nav() []NavItem {
 		{Label: "Users", Path: "/users"},
 		{Label: "Databases", Path: "/databases"},
 		{Label: "Sites", Path: "/sites"},
+		{Label: "Settings", Path: "/settings"},
 		{Label: "PHP", Path: "/php"},
 		{Label: "Deploys", Path: "/deploys"},
 		{Label: "Processes", Path: "/processes"},

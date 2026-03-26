@@ -1,13 +1,21 @@
 package web
 
 import (
+	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -100,6 +108,432 @@ func (a *App) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		Metrics:        snapshot,
 		Alerts:         alerts,
 	})
+}
+
+func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
+	data := TemplateData{
+		Title:           "Settings",
+		DatabaseStatus:  a.databaseStatus(r.Context()),
+		Metrics:         a.metrics.Snapshot(),
+		PanelListenAddr: a.cfg.ListenAddr,
+		PanelBaseURL:    a.cfg.BaseURL,
+		PanelServiceName: firstNonEmpty(a.cfg.ServiceName, "server-side-control"),
+		SMTPHost:        a.cfg.SMTPHost,
+		SMTPPort:        firstNonEmpty(a.cfg.SMTPPort, "587"),
+		SMTPUsername:    a.cfg.SMTPUsername,
+		SMTPPassword:    a.cfg.SMTPPassword,
+		SMTPFrom:        a.cfg.SMTPFrom,
+		SMTPTo:          a.cfg.SMTPTo,
+		PanelEnvPath:    a.cfg.EnvPath,
+	}
+	data.PanelDomain = panelDomainFromBaseURL(a.cfg.BaseURL)
+	data.PanelProxyConfigPath = filepath.Join(a.cfg.NginxAvailableDir, "server-side-control-panel.conf")
+	if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]string{"path": data.PanelProxyConfigPath}, &data.PanelProxyConfig); err != nil {
+		data.PanelProxyConfig = ""
+	}
+	if data.PanelDomain != "" {
+		_, _ = a.helper.Call(r.Context(), "panel.inspect_tls", map[string]string{"domain": data.PanelDomain}, &data.PanelTLSStatus)
+	}
+
+	if r.Method == http.MethodGet {
+		a.render(r.Context(), w, r.URL.Path, "settings.html", data)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		data.RequestError = "The submitted settings form could not be parsed."
+		a.render(r.Context(), w, r.URL.Path, "settings.html", data)
+		return
+	}
+
+	data.PanelListenAddr = strings.TrimSpace(r.FormValue("panel_listen_addr"))
+	data.PanelBaseURL = strings.TrimSpace(r.FormValue("panel_base_url"))
+	data.PanelDomain = strings.TrimSpace(r.FormValue("panel_domain"))
+	data.PanelTLSEmail = strings.TrimSpace(r.FormValue("panel_tls_email"))
+	data.PanelServiceName = firstNonEmpty(strings.TrimSpace(r.FormValue("panel_service_name")), data.PanelServiceName)
+	data.SMTPHost = strings.TrimSpace(r.FormValue("smtp_host"))
+	data.SMTPPort = firstNonEmpty(strings.TrimSpace(r.FormValue("smtp_port")), "587")
+	data.SMTPUsername = strings.TrimSpace(r.FormValue("smtp_username"))
+	data.SMTPPassword = r.FormValue("smtp_password")
+	data.SMTPFrom = strings.TrimSpace(r.FormValue("smtp_from"))
+	data.SMTPTo = strings.TrimSpace(r.FormValue("smtp_to"))
+	if data.PanelDomain == "" {
+		data.PanelDomain = panelDomainFromBaseURL(data.PanelBaseURL)
+	}
+
+	switch r.FormValue("settings_action") {
+	case "save_panel_settings":
+		if data.PanelListenAddr == "" {
+			data.RequestError = "Panel listen address is required."
+			break
+		}
+		if _, err := url.ParseRequestURI(data.PanelBaseURL); err != nil {
+			data.RequestError = "Panel base URL is invalid."
+			break
+		}
+		updatedCfg := a.cfg
+		updatedCfg.ListenAddr = data.PanelListenAddr
+		updatedCfg.BaseURL = data.PanelBaseURL
+		updatedCfg.ServiceName = data.PanelServiceName
+		updatedCfg.SMTPHost = data.SMTPHost
+		updatedCfg.SMTPPort = data.SMTPPort
+		updatedCfg.SMTPUsername = data.SMTPUsername
+		updatedCfg.SMTPPassword = data.SMTPPassword
+		updatedCfg.SMTPFrom = data.SMTPFrom
+		updatedCfg.SMTPTo = data.SMTPTo
+		resultPath, err := a.helper.Call(r.Context(), "panel.write_env", map[string]string{"content": updatedCfg.ToEnv()}, nil)
+		if err != nil {
+			data.RequestError = "Panel config could not be saved: " + err.Error()
+			break
+		}
+		a.cfg = updatedCfg
+		data.ResultPath = resultPath
+		data.SuccessMessage = "Panel settings saved. Restart the service if listen address changed."
+		a.recordAudit(r.Context(), "panel.settings.save", "panel", "success", map[string]any{"base_url": updatedCfg.BaseURL, "listen_addr": updatedCfg.ListenAddr})
+	case "test_smtp_settings":
+		testCfg := a.cfg
+		testCfg.SMTPHost = data.SMTPHost
+		testCfg.SMTPPort = data.SMTPPort
+		testCfg.SMTPUsername = data.SMTPUsername
+		testCfg.SMTPPassword = data.SMTPPassword
+		testCfg.SMTPFrom = data.SMTPFrom
+		testCfg.SMTPTo = data.SMTPTo
+		if err := sendSMTPTestEmail(testCfg); err != nil {
+			data.RequestError = "SMTP test mail could not be sent: " + err.Error()
+			break
+		}
+		data.SuccessMessage = "SMTP test mail sent successfully."
+		a.recordAudit(r.Context(), "panel.smtp.test", data.SMTPTo, "success", nil)
+	case "apply_panel_proxy":
+		if data.PanelDomain == "" {
+			data.RequestError = "Panel domain is required to apply the panel proxy."
+			break
+		}
+		resultPath, err := a.helper.Call(r.Context(), "panel.apply_proxy", system.PanelProxySpec{Domain: data.PanelDomain, ListenAddr: data.PanelListenAddr}, nil)
+		if err != nil {
+			data.RequestError = "Panel proxy config could not be applied: " + err.Error()
+			break
+		}
+		data.ResultPath = resultPath
+		data.SuccessMessage = "Panel domain proxy applied to Nginx successfully."
+		a.recordAudit(r.Context(), "panel.proxy.apply", data.PanelDomain, "success", map[string]any{"listen_addr": data.PanelListenAddr})
+	case "enable_panel_tls":
+		if data.PanelDomain == "" {
+			data.RequestError = "Panel domain is required for TLS."
+			break
+		}
+		if data.PanelTLSEmail == "" {
+			data.RequestError = "TLS email is required."
+			break
+		}
+		output, err := a.nginx.EnableTLS(system.TLSRequest{Domain: data.PanelDomain, Email: data.PanelTLSEmail, Redirect: r.FormValue("panel_tls_redirect") == "1"})
+		if err != nil {
+			data.RequestError = "Panel TLS could not be enabled: " + err.Error()
+			break
+		}
+		data.CommandOutput = output
+		data.SuccessMessage = "Panel TLS enabled successfully."
+		a.recordAudit(r.Context(), "panel.tls.enable", data.PanelDomain, "success", map[string]any{"email": data.PanelTLSEmail})
+	case "restart_panel_service":
+		output, err := a.helper.Call(r.Context(), "panel.restart_service", nil, nil)
+		if err != nil {
+			data.RequestError = "Panel service could not be restarted: " + err.Error()
+			break
+		}
+		data.CommandOutput = output
+		data.SuccessMessage = "Panel service restart scheduled successfully."
+		a.recordAudit(r.Context(), "panel.service.restart", data.PanelServiceName, "success", nil)
+	default:
+		data.RequestError = "Invalid settings action."
+	}
+
+	if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]string{"path": data.PanelProxyConfigPath}, &data.PanelProxyConfig); err != nil {
+		data.PanelProxyConfig = ""
+	}
+	if data.PanelDomain != "" {
+		_, _ = a.helper.Call(r.Context(), "panel.inspect_tls", map[string]string{"domain": data.PanelDomain}, &data.PanelTLSStatus)
+	}
+	a.render(r.Context(), w, r.URL.Path, "settings.html", data)
+}
+
+func panelDomainFromBaseURL(rawURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return ""
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return ""
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ""
+	}
+	return host
+}
+
+func siteDetailTabForAction(action string) string {
+	switch action {
+	case "sync_repository", "generate_deploy_key", "trust_git_host", "store_git_credential", "save_auto_deploy", "rotate_auto_deploy_secret":
+		return "deploy"
+	case "install_nvm", "install_node", "install_pm2", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "run_npm_script", "npm_install", "save_runtime_command", "delete_runtime_command":
+		return "runtime"
+	case "enable_tls", "add_subdomain", "delete_subdomain", "enable_subdomain_tls":
+		return "domains"
+	case "assign_database", "assign_linux_user", "edit_env":
+		return "settings"
+	default:
+		return "overview"
+	}
+}
+
+func buildAutoDeployWebhookURL(baseURL string, siteName string, secret string) string {
+	baseURL = strings.TrimSpace(baseURL)
+	siteName = strings.TrimSpace(siteName)
+	secret = strings.TrimSpace(secret)
+	if baseURL == "" || siteName == "" || secret == "" {
+		return ""
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return ""
+	}
+	parsed.Path = "/webhooks/site-deploy"
+	query := parsed.Query()
+	query.Set("site", siteName)
+	query.Set("secret", secret)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
+func buildWebhookBranch(payload []byte) string {
+	var body map[string]any
+	if err := json.Unmarshal(payload, &body); err != nil {
+		return ""
+	}
+	ref, _ := body["ref"].(string)
+	ref = strings.TrimSpace(ref)
+	ref = strings.TrimPrefix(ref, "refs/heads/")
+	return ref
+}
+
+func verifyWebhookSecret(r *http.Request, payload []byte, secret string) (string, bool) {
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
+		return "none", false
+	}
+	if signature := strings.TrimSpace(r.Header.Get("X-Hub-Signature-256")); signature != "" {
+		mac := hmac.New(sha256.New, []byte(secret))
+		_, _ = mac.Write(payload)
+		expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+		return "github-sha256", subtle.ConstantTimeCompare([]byte(signature), []byte(expected)) == 1
+	}
+	if signature := strings.TrimSpace(r.Header.Get("X-Hub-Signature")); signature != "" {
+		mac := hmac.New(sha1.New, []byte(secret))
+		_, _ = mac.Write(payload)
+		expected := "sha1=" + hex.EncodeToString(mac.Sum(nil))
+		return "github-sha1", subtle.ConstantTimeCompare([]byte(signature), []byte(expected)) == 1
+	}
+	if token := strings.TrimSpace(r.Header.Get("X-Gitlab-Token")); token != "" {
+		return "gitlab-token", subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
+	}
+	if signature := strings.TrimSpace(r.Header.Get("X-Gitea-Signature")); signature != "" {
+		mac := hmac.New(sha256.New, []byte(secret))
+		_, _ = mac.Write(payload)
+		expected := hex.EncodeToString(mac.Sum(nil))
+		return "gitea-sha256", subtle.ConstantTimeCompare([]byte(signature), []byte(expected)) == 1
+	}
+	if token := strings.TrimSpace(r.Header.Get("X-Webhook-Token")); token != "" {
+		return "generic-header", subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
+	}
+	if token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")); token != "" && token != r.Header.Get("Authorization") {
+		return "bearer", subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
+	}
+	querySecret := strings.TrimSpace(r.URL.Query().Get("secret"))
+	if querySecret != "" {
+		return "query-secret", subtle.ConstantTimeCompare([]byte(querySecret), []byte(secret)) == 1
+	}
+	return "missing", false
+}
+
+func autoDeployWebhookAuthHint() string {
+	return "GitHub: X-Hub-Signature-256, GitLab: X-Gitlab-Token, Gitea: X-Gitea-Signature, fallback: X-Webhook-Token or query secret"
+}
+
+func summarizeAuditMetadata(metadata string) string {
+	metadata = strings.TrimSpace(metadata)
+	if metadata == "" || metadata == "{}" || metadata == "null" {
+		return ""
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(metadata), &payload); err != nil {
+		return metadata
+	}
+	keys := []string{"provider", "auth_mode", "branch", "incoming_branch", "reason", "error", "action"}
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if value, ok := payload[key]; ok {
+			text := strings.TrimSpace(fmt.Sprint(value))
+			if text != "" {
+				parts = append(parts, key+": "+text)
+			}
+		}
+	}
+	if len(parts) == 0 {
+		return metadata
+	}
+	return strings.Join(parts, " | ")
+}
+
+func sanitizeSubdomainLabel(label string) string {
+	label = strings.ToLower(strings.TrimSpace(label))
+	label = strings.ReplaceAll(label, "_", "-")
+	label = strings.ReplaceAll(label, ".", "-")
+	buffer := make([]rune, 0, len(label))
+	lastHyphen := false
+	for _, ch := range label {
+		switch {
+		case ch >= 'a' && ch <= 'z', ch >= '0' && ch <= '9':
+			buffer = append(buffer, ch)
+			lastHyphen = false
+		case ch == '-':
+			if len(buffer) == 0 || lastHyphen {
+				continue
+			}
+			buffer = append(buffer, ch)
+			lastHyphen = true
+		}
+	}
+	cleaned := strings.Trim(string(buffer), "-")
+	return cleaned
+}
+
+func subdomainConfigName(siteName string, fullDomain string) string {
+	name := sanitizeSubdomainLabel(siteName + "-" + fullDomain)
+	if name == "" {
+		return "subdomain-site"
+	}
+	if len(name) > 63 {
+		name = strings.Trim(name[:63], "-")
+	}
+	if len(name) < 2 || name[0] < 'a' || name[0] > 'z' {
+		name = "s" + name
+	}
+	return name
+}
+
+func buildSiteSubdomain(site domain.ManagedSite, label string, mode string, upstreamURL string, phpVersion string, rootDirectory string) (domain.SiteSubdomain, system.SiteSpec, error) {
+	label = sanitizeSubdomainLabel(label)
+	if label == "" {
+		return domain.SiteSubdomain{}, system.SiteSpec{}, errors.New("Subdomain label is required.")
+	}
+	fullDomain := label + "." + strings.TrimSpace(site.DomainName)
+	mode = firstNonEmpty(strings.TrimSpace(mode), "reverse_proxy")
+	rootDirectory = strings.TrimSpace(rootDirectory)
+	if rootDirectory == "" {
+		rootDirectory = filepath.Join(site.RootDirectory, "subdomains", label)
+	}
+	upstreamURL = strings.TrimSpace(upstreamURL)
+	phpVersion = strings.TrimSpace(phpVersion)
+	spec := system.SiteSpec{
+		Name:           subdomainConfigName(site.Name, fullDomain),
+		OwnerLinuxUser: site.OwnerLinuxUser,
+		Domain:         fullDomain,
+		Mode:           mode,
+		RootDirectory:  rootDirectory,
+		UpstreamURL:    upstreamURL,
+		PHPVersion:     phpVersion,
+	}
+	record := domain.SiteSubdomain{
+		SiteID:        site.ID,
+		Subdomain:     label,
+		FullDomain:    fullDomain,
+		Runtime:       mode,
+		UpstreamURL:   upstreamURL,
+		PHPVersion:    phpVersion,
+		RootDirectory: rootDirectory,
+	}
+	return record, spec, nil
+}
+
+func (a *App) handleSiteDeployWebhook(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if a.store == nil {
+		http.Error(w, "store unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	siteName := strings.TrimSpace(r.URL.Query().Get("site"))
+	if siteName == "" {
+		http.Error(w, "missing site", http.StatusBadRequest)
+		return
+	}
+	site, err := a.store.GetManagedSiteByName(r.Context(), siteName)
+	if err != nil {
+		http.Error(w, "site not found", http.StatusNotFound)
+		return
+	}
+	if !site.AutoDeployEnabled || site.AutoDeploySecret == "" {
+		a.recordAudit(r.Context(), "deploy.webhook", site.Name, "failure", map[string]any{"reason": "auto_deploy_disabled"})
+		http.Error(w, "auto deploy disabled", http.StatusForbidden)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	authMode, ok := verifyWebhookSecret(r, body, site.AutoDeploySecret)
+	if !ok {
+		a.recordAudit(r.Context(), "deploy.webhook", site.Name, "failure", map[string]any{"reason": "invalid_secret", "auth_mode": authMode})
+		http.Error(w, "invalid secret", http.StatusForbidden)
+		return
+	}
+	incomingBranch := buildWebhookBranch(body)
+	provider := firstNonEmpty(strings.TrimSpace(r.Header.Get("X-GitHub-Event")), strings.TrimSpace(r.Header.Get("X-Gitlab-Event")), strings.TrimSpace(r.Header.Get("X-Gitea-Event")), "generic")
+	configuredBranch := firstNonEmpty(site.AutoDeployBranch, "main")
+	if incomingBranch != "" && configuredBranch != "" && incomingBranch != configuredBranch {
+		a.recordAudit(r.Context(), "deploy.webhook", site.Name, "ignored", map[string]any{"reason": "branch_mismatch", "incoming_branch": incomingBranch, "branch": configuredBranch, "provider": provider, "auth_mode": authMode})
+		writeJSON(w, http.StatusAccepted, map[string]any{"status": "ignored", "reason": "branch_mismatch", "branch": incomingBranch})
+		return
+	}
+	repositoryStatus, inspectErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser})
+	if inspectErr != nil || strings.TrimSpace(repositoryStatus.RemoteURL) == "" {
+		a.recordAudit(r.Context(), "deploy.webhook", site.Name, "failure", map[string]any{"reason": "repository_not_ready", "provider": provider, "auth_mode": authMode})
+		http.Error(w, "site repository is not ready for auto deploy", http.StatusPreconditionFailed)
+		return
+	}
+	a.recordAudit(r.Context(), "deploy.webhook", site.Name, "queued", map[string]any{"branch": configuredBranch, "incoming_branch": incomingBranch, "provider": provider, "auth_mode": authMode})
+	go func(site domain.ManagedSite, repositoryURL string, branch string) {
+		ctx := context.Background()
+		result, deployErr := a.deploys.Deploy(system.DeploySpec{
+			RepositoryURL:     repositoryURL,
+			Branch:            branch,
+			TargetDirectory:   site.RootDirectory,
+			RunAsUser:         site.OwnerLinuxUser,
+			PostDeployCommand: strings.TrimSpace(site.AutoDeployCommand),
+		})
+		if deployErr != nil {
+			a.recordAudit(ctx, "deploy.webhook", site.Name, "failure", map[string]any{"branch": branch, "error": deployErr.Error(), "provider": provider, "auth_mode": authMode})
+			_ = sendAutoDeployResultEmail(a.cfg, site, branch, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser, Action: "deploy", Status: "failure", Output: ""}, deployErr)
+			return
+		}
+		if a.store != nil {
+			_ = a.store.CreateDeployment(ctx, domain.Deployment{SiteID: site.ID, RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser, LastStatus: "success", LastOutput: result.Output})
+			_ = a.store.CreateDeploymentRelease(ctx, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser, Action: result.Action, Status: "success", CommitSHA: result.CommitSHA, PreviousCommitSHA: result.PreviousCommitSHA, Output: result.Output})
+		}
+		metadata := map[string]any{"branch": branch, "action": result.Action, "provider": provider, "auth_mode": authMode}
+		if incomingBranch != "" {
+			metadata["incoming_branch"] = incomingBranch
+		}
+		a.recordAudit(ctx, "deploy.webhook", site.Name, "success", metadata)
+		_ = sendAutoDeployResultEmail(a.cfg, site, branch, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser, Action: result.Action, Status: "success", CommitSHA: result.CommitSHA, PreviousCommitSHA: result.PreviousCommitSHA, Output: result.Output}, nil)
+	}(site, repositoryStatus.RemoteURL, configuredBranch)
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued", "site": site.Name, "branch": configuredBranch})
 }
 
 func (a *App) handlePlaceholder(title string) http.HandlerFunc {
@@ -932,7 +1366,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 	releases := a.listSiteDeploymentReleases(r, site.RootDirectory, site.OwnerLinuxUser)
 
 	if r.Method == http.MethodGet {
-		data := TemplateData{}
+		data := TemplateData{SiteDetailTab: firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("tab")), "overview")}
 		if statusErr != nil {
 			data.RequestError = "Repository status could not be inspected: " + statusErr.Error()
 		} else if runtimeErr != nil {
@@ -953,14 +1387,26 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := TemplateData{
+		SiteDetailTab:       siteDetailTabForAction(action),
 		GitRepositoryURL:    firstNonEmpty(strings.TrimSpace(r.FormValue("repository_url")), repositoryURL),
 		GitBranch:           firstNonEmpty(strings.TrimSpace(r.FormValue("branch")), branch),
 		GitPostDeployCommand: r.FormValue("post_deploy_command"),
+		AutoDeployEnabled:  r.FormValue("auto_deploy_enabled") == "1",
+		AutoDeployBranch:   strings.TrimSpace(r.FormValue("auto_deploy_branch")),
+		AutoDeploySecret:   strings.TrimSpace(r.FormValue("auto_deploy_secret")),
+		AutoDeployCommand:  r.FormValue("auto_deploy_command"),
+		AutoDeployNotifyEmail: strings.TrimSpace(r.FormValue("auto_deploy_notify_email")),
 		RuntimeNodeVersion:  strings.TrimSpace(r.FormValue("node_version")),
 		PM2NodeVersion:      strings.TrimSpace(r.FormValue("pm2_node_version")),
 		PM2ProcessName:      firstNonEmpty(strings.TrimSpace(r.FormValue("process_name")), site.Name),
 		PM2ScriptPath:       strings.TrimSpace(r.FormValue("script_path")),
 		PM2Arguments:        strings.TrimSpace(r.FormValue("process_arguments")),
+		SubdomainLabel:      strings.TrimSpace(r.FormValue("subdomain_label")),
+		SubdomainMode:       firstNonEmpty(strings.TrimSpace(r.FormValue("subdomain_mode")), "reverse_proxy"),
+		SubdomainUpstreamURL: strings.TrimSpace(r.FormValue("subdomain_upstream_url")),
+		SubdomainPHPVersion: strings.TrimSpace(r.FormValue("subdomain_php_version")),
+		SubdomainRootDirectory: strings.TrimSpace(r.FormValue("subdomain_root_directory")),
+		SubdomainTLSEmail:   strings.TrimSpace(r.FormValue("subdomain_tls_email")),
 		RuntimeCommandName:  strings.TrimSpace(r.FormValue("runtime_command_name")),
 		RuntimeCommandNodeVersion: strings.TrimSpace(r.FormValue("runtime_command_node_version")),
 		RuntimeCommandBody:  r.FormValue("runtime_command_body"),
@@ -970,6 +1416,9 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 	}
 	if commandID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("runtime_command_id")), 10, 64); err == nil {
 		data.RuntimeCommandID = commandID
+	}
+	if subdomainDeleteID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subdomain_id")), 10, 64); err == nil {
+		data.SubdomainDeleteID = subdomainDeleteID
 	}
 
 	var output string
@@ -1217,6 +1666,126 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
 		data.RuntimeCommandBody = ""
 		successMessage = "Runtime command profile deleted."
+	case "save_auto_deploy":
+		if data.AutoDeployBranch == "" {
+			data.AutoDeployBranch = firstNonEmpty(branch, "main")
+		}
+		if data.AutoDeployEnabled && data.AutoDeploySecret == "" {
+			secret, err := randomPassword(32)
+			if err != nil {
+				data.RequestError = "Could not generate auto deploy secret."
+				break
+			}
+			data.AutoDeploySecret = secret
+		}
+		if err := a.store.UpdateManagedSiteAutoDeploy(r.Context(), site.Name, data.AutoDeployEnabled, data.AutoDeployBranch, data.AutoDeploySecret, data.AutoDeployCommand, data.AutoDeployNotifyEmail); err != nil {
+			data.RequestError = "Could not save auto deploy settings: " + err.Error()
+			break
+		}
+		site.AutoDeployEnabled = data.AutoDeployEnabled
+		site.AutoDeployBranch = data.AutoDeployBranch
+		site.AutoDeploySecret = data.AutoDeploySecret
+		site.AutoDeployCommand = data.AutoDeployCommand
+		site.AutoDeployNotifyEmail = data.AutoDeployNotifyEmail
+		a.recordAudit(r.Context(), "site.auto_deploy.save", site.Name, "success", map[string]any{"enabled": data.AutoDeployEnabled, "branch": data.AutoDeployBranch})
+		successMessage = "Auto deploy settings saved."
+	case "rotate_auto_deploy_secret":
+		secret, err := randomPassword(32)
+		if err != nil {
+			data.RequestError = "Could not rotate auto deploy secret."
+			break
+		}
+		data.AutoDeploySecret = secret
+		if data.AutoDeployBranch == "" {
+			data.AutoDeployBranch = firstNonEmpty(site.AutoDeployBranch, branch, "main")
+		}
+		if err := a.store.UpdateManagedSiteAutoDeploy(r.Context(), site.Name, data.AutoDeployEnabled || site.AutoDeployEnabled, data.AutoDeployBranch, data.AutoDeploySecret, firstNonEmpty(data.AutoDeployCommand, site.AutoDeployCommand), firstNonEmpty(data.AutoDeployNotifyEmail, site.AutoDeployNotifyEmail)); err != nil {
+			data.RequestError = "Could not rotate auto deploy secret: " + err.Error()
+			break
+		}
+		site.AutoDeploySecret = data.AutoDeploySecret
+		site.AutoDeployNotifyEmail = firstNonEmpty(data.AutoDeployNotifyEmail, site.AutoDeployNotifyEmail)
+		a.recordAudit(r.Context(), "site.auto_deploy.rotate_secret", site.Name, "success", nil)
+		successMessage = "Auto deploy secret rotated."
+	case "add_subdomain":
+		subdomainRecord, siteSpec, err := buildSiteSubdomain(site, data.SubdomainLabel, data.SubdomainMode, data.SubdomainUpstreamURL, data.SubdomainPHPVersion, data.SubdomainRootDirectory)
+		if err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		configPath, err := a.nginx.ApplySite(siteSpec)
+		if err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		subdomainRecord.NginxConfigPath = configPath
+		if err := a.store.CreateSiteSubdomain(r.Context(), subdomainRecord); err != nil {
+			data.RequestError = "Subdomain was applied in Nginx but could not be stored: " + err.Error()
+			break
+		}
+		a.recordAudit(r.Context(), "site.subdomain.create", subdomainRecord.FullDomain, "success", map[string]any{"mode": subdomainRecord.Runtime})
+		successMessage = "Subdomain applied successfully."
+		data.SubdomainLabel = ""
+		data.SubdomainUpstreamURL = ""
+		data.SubdomainPHPVersion = ""
+	case "delete_subdomain":
+		subdomains, err := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if err != nil {
+			data.RequestError = "Could not load subdomains: " + err.Error()
+			break
+		}
+		var selected *domain.SiteSubdomain
+		for index := range subdomains {
+			if subdomains[index].ID == data.SubdomainDeleteID {
+				selected = &subdomains[index]
+				break
+			}
+		}
+		if selected == nil {
+			data.RequestError = "Subdomain record could not be found."
+			break
+		}
+		if err := a.nginx.DeleteSite(system.SiteRemoval{Name: subdomainConfigName(site.Name, selected.FullDomain), Domain: selected.FullDomain, RootDirectory: selected.RootDirectory, ConfigPath: selected.NginxConfigPath}); err != nil {
+			data.RequestError = "Could not delete subdomain from Nginx: " + err.Error()
+			break
+		}
+		if err := a.store.DeleteSiteSubdomain(r.Context(), site.ID, selected.ID); err != nil {
+			data.RequestError = "Subdomain Nginx config was removed but panel record could not be deleted: " + err.Error()
+			break
+		}
+		a.recordAudit(r.Context(), "site.subdomain.delete", selected.FullDomain, "success", nil)
+		successMessage = "Subdomain deleted successfully."
+	case "enable_subdomain_tls":
+		subdomains, err := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if err != nil {
+			data.RequestError = "Could not load subdomains: " + err.Error()
+			break
+		}
+		var selected *domain.SiteSubdomain
+		for index := range subdomains {
+			if subdomains[index].ID == data.SubdomainDeleteID {
+				selected = &subdomains[index]
+				break
+			}
+		}
+		if selected == nil {
+			data.RequestError = "Subdomain record could not be found."
+			break
+		}
+		if data.SubdomainTLSEmail == "" {
+			data.RequestError = "TLS email is required for the subdomain certificate."
+			break
+		}
+		output, actionErr = a.nginx.EnableTLS(system.TLSRequest{Domain: selected.FullDomain, Email: data.SubdomainTLSEmail, Redirect: r.FormValue("subdomain_tls_redirect") == "1"})
+		if actionErr != nil {
+			data.RequestError = "Could not enable TLS for subdomain: " + actionErr.Error()
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "site.subdomain.enable_tls", selected.FullDomain, "failure", map[string]any{"email": data.SubdomainTLSEmail, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		a.recordAudit(r.Context(), "site.subdomain.enable_tls", selected.FullDomain, "success", map[string]any{"email": data.SubdomainTLSEmail})
+		successMessage = "Subdomain TLS enabled successfully."
 	case "restart_pm2":
 		processName := strings.TrimSpace(r.FormValue("process_name"))
 		output, actionErr = a.pm2.Restart(site.OwnerLinuxUser, processName)
@@ -1486,10 +2055,23 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.DatabaseStatus = a.databaseStatus(r.Context())
 	data.Metrics = a.metrics.Snapshot()
 	data.SelectedSite = site
+	if data.SiteDetailTab == "" {
+		data.SiteDetailTab = "overview"
+	}
 	data.RepositoryStatus = repositoryStatus
 	data.RuntimeStatus = runtimeStatus
 	data.GitAuthStatus = gitAuthStatus
 	data.DeploymentReleases = releases
+	data.AutoDeployEnabled = data.AutoDeployEnabled || site.AutoDeployEnabled
+	data.AutoDeployBranch = firstNonEmpty(data.AutoDeployBranch, site.AutoDeployBranch, repositoryStatus.Branch, "main")
+	data.AutoDeploySecret = firstNonEmpty(data.AutoDeploySecret, site.AutoDeploySecret)
+	data.AutoDeployCommand = firstNonEmpty(data.AutoDeployCommand, site.AutoDeployCommand)
+	data.AutoDeployNotifyEmail = firstNonEmpty(data.AutoDeployNotifyEmail, site.AutoDeployNotifyEmail)
+	data.AutoDeployWebhookURL = buildAutoDeployWebhookURL(a.cfg.BaseURL, site.Name, data.AutoDeploySecret)
+	data.AutoDeployWebhookAuthHint = autoDeployWebhookAuthHint()
+	if len(releases) > 0 {
+		data.LatestDeploymentRelease = releases[0]
+	}
 	data.PackageScripts = readPackageJSONScripts(site.RootDirectory)
 	data.NpmScriptNodeVersion = runtimeStatus.DefaultNodeVersion
 	if data.RuntimeCommandNodeVersion == "" {
@@ -1499,9 +2081,16 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.LinuxUsers = a.listLinuxUsers()
 	if commands, err := a.store.ListSiteRuntimeCommands(r.Context(), site.ID); err == nil {
 		data.SiteRuntimeCommands = commands
-		if payload, err := json.Marshal(commands); err == nil {
-			data.SiteRuntimeCommandsJSON = string(payload)
-		}
+	}
+	if subdomains, err := a.store.ListSiteSubdomains(r.Context(), site.ID); err == nil {
+		data.SiteSubdomains = subdomains
+	}
+	if entry, err := a.store.GetLatestAuditLogByActionAndTarget(r.Context(), "deploy.webhook", site.Name); err == nil {
+		entry.Metadata = summarizeAuditMetadata(entry.Metadata)
+		data.LatestWebhookAudit = entry
+	}
+	if data.SubdomainMode == "" {
+		data.SubdomainMode = "reverse_proxy"
 	}
 	envPath := filepath.Join(site.RootDirectory, ".env")
 	var envContent string
