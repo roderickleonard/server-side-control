@@ -81,7 +81,9 @@ The installer writes these values to `panel.env`:
 ## Notes
 
 - The panel systemd unit now runs as the dedicated `server-side-control` user. Privileged operations are delegated to `/usr/local/bin/server-side-control-helper` through `/etc/sudoers.d/server-side-control-helper`.
+- The panel systemd unit uses `KillMode=process` so restarting `server-side-control` does not terminate PM2 processes that were started for site owners.
 - The install script is idempotent for dependency bootstrap: it skips apt packages, Go, and PM2 when they are already installed.
+- When exposing the panel through Nginx, keep `PANEL_BASE_URL` on `http://panel.example.com` until the panel certificate is enabled, then switch it to `https://panel.example.com`.
 - Ubuntu build dependencies include `libpam0g-dev` so the PAM-backed login package can compile on the target host.
 - The install script writes `/etc/server-side-control/install-state.env` so the updater knows which repository path and branch to pull from later.
 - The installer now asks for MySQL root/admin access, creates the panel database and panel MySQL user automatically, writes the panel DSN into `panel.env`, and stores the MySQL admin credentials in a root-only defaults file.

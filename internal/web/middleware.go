@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -71,16 +72,33 @@ func (a *App) clientAddress(r *http.Request) string {
 	return strings.TrimSpace(r.RemoteAddr)
 }
 
-func (a *App) setSessionCookie(w http.ResponseWriter, session auth.Session) {
+func (a *App) setSessionCookie(w http.ResponseWriter, r *http.Request, session auth.Session) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     a.cfg.SessionCookieName,
 		Value:    session.ID,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   strings.HasPrefix(a.cfg.BaseURL, "https://"),
+		Secure:   a.requestUsesHTTPS(r),
 		Expires:  session.ExpiresAt,
 	})
+}
+
+func (a *App) requestUsesHTTPS(r *http.Request) bool {
+	if r != nil {
+		if r.TLS != nil {
+			return true
+		}
+		if strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
+			return true
+		}
+		return false
+	}
+	parsed, err := url.Parse(strings.TrimSpace(a.cfg.BaseURL))
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(parsed.Scheme, "https")
 }
 
 func (a *App) clearSessionCookie(w http.ResponseWriter) {

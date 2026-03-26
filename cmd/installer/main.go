@@ -29,7 +29,7 @@ func main() {
 	fmt.Println("Leave a field blank to use the default value shown in brackets.")
 
 	listenAddr := prompt(reader, "Panel listen address", ":8080", "Panel uygulamasinin sunucuda hangi IP/port uzerinde dinleyecegi. Nginx kullanacaksan genelde 127.0.0.1:8080 tercih edilir.")
-	baseURL := prompt(reader, "Panel base URL", "http://127.0.0.1:8080", "Tarayicidan erisecegin tam panel adresi. Domain kullanacaksan ornek: https://panel.example.com")
+	baseURL := prompt(reader, "Panel base URL", "http://127.0.0.1:8080", "Tarayicidan erisecegin tam panel adresi. Domain kullanacaksan once http://panel.example.com ile basla, TLS etkinlestikten sonra https:// olarak guncelle.")
 	mysqlAdminHost := prompt(reader, "MySQL root host", "127.0.0.1", "MySQL servisinin calistigi host. Ayni sunucudaysa genelde 127.0.0.1")
 	mysqlAdminPort := prompt(reader, "MySQL root port", "3306", "MySQL TCP portu. Varsayilan genelde 3306")
 	mysqlAdminUser := prompt(reader, "MySQL root user", "root", "Panel veritabani ve MySQL kullanicilarini olusturmak icin kullanilacak admin hesap")

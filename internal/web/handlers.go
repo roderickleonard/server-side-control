@@ -82,7 +82,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	ctx := auth.ContextWithIdentity(r.Context(), *identity)
 	a.recordAudit(ctx, "auth.login", identity.Username, "success", map[string]any{"provider": identity.AuthProvider})
-	a.setSessionCookie(w, session)
+	a.setSessionCookie(w, r, session)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
