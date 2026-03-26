@@ -70,7 +70,7 @@ func main() {
 		Addr:              cfg.ListenAddr,
 		Handler:           app.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
+		ReadTimeout:       10 * time.Minute,
 		WriteTimeout:      0,
 		IdleTimeout:       60 * time.Second,
 	}

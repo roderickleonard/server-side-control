@@ -34,6 +34,7 @@
             <button type="button" class="site-tab-btn" data-tab="overview">Overview</button>
             <button type="button" class="site-tab-btn" data-tab="deploy">Deploy</button>
             <button type="button" class="site-tab-btn" data-tab="runtime">Runtime</button>
+            <button type="button" class="site-tab-btn" data-tab="files">Files</button>
             <button type="button" class="site-tab-btn" data-tab="domains">Domains</button>
             <button type="button" class="site-tab-btn" data-tab="settings">Settings</button>
         </div>
@@ -544,6 +545,75 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
             </div>
         </form>
         <p class="muted details-note">File is saved as the site owner user (mode 0600). Never commit secrets to version control.</p>
+    </article>
+</section>
+
+<section class="grid" data-site-tab="files">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Deploy files</span>
+                <h3>Browse {{.SelectedSite.RootDirectory}}</h3>
+            </div>
+        </div>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Site root</strong><span>{{.SelectedSite.RootDirectory}}</span></div>
+            <div><strong>Current path</strong><span>{{if .SiteBrowserCurrentPath}}{{.SiteBrowserCurrentPath}}{{else}}/{{end}}</span></div>
+        </div>
+        <div class="form-actions" style="margin-bottom:12px;">
+            <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.SelectedSite.Name}}&tab=files">Root</a>
+            {{if .SiteBrowserCurrentPath}}
+            <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.SelectedSite.Name}}&tab=files&path={{urlquery .SiteBrowserParentPath}}">Up</a>
+            {{end}}
+        </div>
+        {{if .SiteBrowserEntries}}
+        <div class="table-card table-responsive">
+            <table class="table table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Size</th>
+                        <th>Open</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .SiteBrowserEntries}}
+                    <tr>
+                        <td>{{.Name}}</td>
+                        <td>{{if .IsDir}}Directory{{else}}File{{end}}</td>
+                        <td>{{if .IsDir}}-{{else}}{{.Size}} bytes{{end}}</td>
+                        <td>
+                            {{if .IsDir}}
+                            <a class="table-link" href="/sites/details?name={{$.SelectedSite.Name}}&tab=files&path={{urlquery .RelativePath}}">Open</a>
+                            {{else}}
+                            <a class="table-link" href="/sites/details?name={{$.SelectedSite.Name}}&tab=files&path={{urlquery $.SiteBrowserCurrentPath}}&file={{urlquery .RelativePath}}">Read</a>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted details-note">This directory is empty or could not be read.</p>
+        {{end}}
+    </article>
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">File preview</span>
+                <h3>{{if .SiteBrowserSelectedFile}}{{.SiteBrowserSelectedFile}}{{else}}Select a file{{end}}</h3>
+            </div>
+        </div>
+        {{if .SiteBrowserFileNotice}}
+        <p class="muted details-note">{{.SiteBrowserFileNotice}}</p>
+        {{end}}
+        {{if .SiteBrowserSelectedFile}}
+        <pre class="command-output">{{.SiteBrowserFileContent}}</pre>
+        {{else}}
+        <p class="muted details-note">Choose a file from the left side to read its contents.</p>
+        {{end}}
     </article>
 </section>
 

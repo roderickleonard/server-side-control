@@ -404,6 +404,26 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		writeSuccess(string(content), "", nil)
 	case "files.read_text":
 		var input struct {
+			Path     string `json:"path"`
+			MaxBytes int    `json:"max_bytes"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		cleanPath := filepath.Clean(input.Path)
+		if !filepath.IsAbs(cleanPath) {
+			writeFailure(errors.New("path must be absolute"), "")
+			return
+		}
+		content, err := readTextFile(cleanPath, input.MaxBytes)
+		if err != nil {
+			writeSuccess("", "", nil)
+			return
+		}
+		writeSuccess(content, "", nil)
+	case "files.list_dir":
+		var input struct {
 			Path string `json:"path"`
 		}
 		if err := json.Unmarshal(request.Input, &input); err != nil {
@@ -415,15 +435,52 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			writeFailure(errors.New("path must be absolute"), "")
 			return
 		}
-		content, err := os.ReadFile(cleanPath)
+		entries, err := os.ReadDir(cleanPath)
 		if err != nil {
-			writeSuccess("", "", nil)
+			writeFailure(err, "")
 			return
 		}
-		writeSuccess(string(content), "", nil)
+		type dirEntry struct {
+			Name  string `json:"name"`
+			IsDir bool   `json:"is_dir"`
+			Size  int64  `json:"size"`
+		}
+		items := make([]dirEntry, 0, len(entries))
+		for _, entry := range entries {
+			info, infoErr := entry.Info()
+			size := int64(0)
+			if infoErr == nil {
+				size = info.Size()
+			}
+			items = append(items, dirEntry{Name: entry.Name(), IsDir: entry.IsDir(), Size: size})
+		}
+		writeSuccess(items, "", nil)
 	default:
 		writeFailure(fmt.Errorf("unknown helper action: %s", request.Action), "")
 	}
+}
+
+func readTextFile(path string, maxBytes int) (string, error) {
+	if maxBytes <= 0 {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		return string(content), nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	buffer, err := io.ReadAll(io.LimitReader(file, int64(maxBytes)+1))
+	if err != nil {
+		return "", err
+	}
+	if len(buffer) <= maxBytes {
+		return string(buffer), nil
+	}
+	return string(buffer[:maxBytes]) + fmt.Sprintf("\n\n[truncated after %d bytes]", maxBytes), nil
 }
 
 func handlePM2(request system.HelperRequest) {

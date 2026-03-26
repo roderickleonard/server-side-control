@@ -45,6 +45,13 @@ type NavItem struct {
 	Path  string
 }
 
+type SiteFileEntry struct {
+	Name         string
+	RelativePath string
+	IsDir        bool
+	Size         int64
+}
+
 type TemplateData struct {
 	Title          string
 	CurrentPath    string
@@ -125,6 +132,12 @@ type TemplateData struct {
 	RuntimeCommandName string
 	RuntimeCommandNodeVersion string
 	RuntimeCommandBody string
+	SiteBrowserCurrentPath string
+	SiteBrowserParentPath string
+	SiteBrowserSelectedFile string
+	SiteBrowserFileContent string
+	SiteBrowserFileNotice string
+	SiteBrowserEntries []SiteFileEntry
 	EnvFileContent string
 	EcosystemPort  string
 	Alerts         []string

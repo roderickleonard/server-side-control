@@ -289,6 +289,51 @@ func siteDetailTabForAction(action string) string {
 	}
 }
 
+func resolveSiteBrowserPath(rootDir string, requested string) (string, string, error) {
+	rootDir = filepath.Clean(strings.TrimSpace(rootDir))
+	requested = strings.TrimSpace(requested)
+	if rootDir == "" || !filepath.IsAbs(rootDir) {
+		return "", "", errors.New("invalid site root")
+	}
+	relPath := ""
+	if requested != "" {
+		relPath = strings.TrimPrefix(filepath.Clean("/"+requested), "/")
+		if relPath == "." {
+			relPath = ""
+		}
+	}
+	absPath := filepath.Join(rootDir, relPath)
+	relCheck, err := filepath.Rel(rootDir, absPath)
+	if err != nil {
+		return "", "", err
+	}
+	if relCheck == ".." || strings.HasPrefix(relCheck, ".."+string(os.PathSeparator)) {
+		return "", "", errors.New("path is outside the site root")
+	}
+	if relPath == "." {
+		relPath = ""
+	}
+	return absPath, relPath, nil
+}
+
+func parentRelativePath(relPath string) string {
+	relPath = strings.TrimSpace(relPath)
+	if relPath == "" {
+		return ""
+	}
+	parent := filepath.Dir(relPath)
+	if parent == "." {
+		return ""
+	}
+	return parent
+}
+
+type helperSiteFileEntry struct {
+	Name  string `json:"name"`
+	IsDir bool   `json:"is_dir"`
+	Size  int64  `json:"size"`
+}
+
 func buildAutoDeployWebhookURL(baseURL string, siteName string, secret string) string {
 	baseURL = strings.TrimSpace(baseURL)
 	siteName = strings.TrimSpace(siteName)
@@ -2116,6 +2161,36 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	}
 	if data.SubdomainMode == "" {
 		data.SubdomainMode = "reverse_proxy"
+	}
+	browserPath := firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("path")), data.SiteBrowserCurrentPath)
+	if absPath, relPath, err := resolveSiteBrowserPath(site.RootDirectory, browserPath); err == nil {
+		data.SiteBrowserCurrentPath = relPath
+		data.SiteBrowserParentPath = parentRelativePath(relPath)
+		var helperEntries []helperSiteFileEntry
+		if _, err := a.helper.Call(r.Context(), "files.list_dir", map[string]string{"path": absPath}, &helperEntries); err == nil {
+			entries := make([]SiteFileEntry, 0, len(helperEntries))
+			for _, entry := range helperEntries {
+				entries = append(entries, SiteFileEntry{Name: entry.Name, RelativePath: filepath.Join(relPath, entry.Name), IsDir: entry.IsDir, Size: entry.Size})
+			}
+			sort.Slice(entries, func(i int, j int) bool {
+				if entries[i].IsDir != entries[j].IsDir {
+					return entries[i].IsDir
+				}
+				return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
+			})
+			data.SiteBrowserEntries = entries
+		}
+	}
+	selectedFile := strings.TrimSpace(r.URL.Query().Get("file"))
+	if absFile, relFile, err := resolveSiteBrowserPath(site.RootDirectory, selectedFile); err == nil && relFile != "" {
+		data.SiteBrowserSelectedFile = relFile
+		var content string
+		if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": absFile, "max_bytes": 262144}, &content); err == nil {
+			data.SiteBrowserFileContent = content
+			if strings.Contains(content, "[truncated after ") {
+				data.SiteBrowserFileNotice = "Only the first 256 KB is shown."
+			}
+		}
 	}
 	envPath := filepath.Join(site.RootDirectory, ".env")
 	var envContent string
