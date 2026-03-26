@@ -1010,10 +1010,21 @@ func databaseDetailErrorMessage(err error) string {
 
 func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 	users := a.listLinuxUsers()
-	sites := a.listManagedSites(r)
+	sites := []domain.ManagedSite(nil)
+	var sitesErr error
+	if a.store != nil {
+		sites, sitesErr = a.store.ListManagedSites(r.Context())
+		if sitesErr != nil && a.logger != nil {
+			a.logger.Error("list managed sites", "error", sitesErr)
+		}
+	}
 	versions := a.listPHPVersions()
 
 	if r.Method == http.MethodGet {
+		requestError := ""
+		if sitesErr != nil {
+			requestError = "Managed site list could not be loaded: " + sitesErr.Error()
+		}
 		a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
 			Title:          "Sites",
 			DatabaseStatus: a.databaseStatus(r.Context()),
@@ -1021,6 +1032,7 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 			LinuxUsers:     users,
 			ManagedSites:   sites,
 			PHPVersions:    versions,
+			RequestError:   requestError,
 		})
 		return
 	}
@@ -1121,7 +1133,7 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if a.store != nil {
-		_ = a.store.CreateManagedSite(r.Context(), domain.ManagedSite{
+		if err := a.store.CreateManagedSite(r.Context(), domain.ManagedSite{
 			Name:            spec.Name,
 			OwnerLinuxUser:  spec.OwnerLinuxUser,
 			DomainName:      spec.Domain,
@@ -1130,7 +1142,20 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 			UpstreamURL:     spec.UpstreamURL,
 			PHPVersion:      spec.PHPVersion,
 			NginxConfigPath: configPath,
-		})
+		}); err != nil {
+			a.recordAudit(r.Context(), "nginx.apply_site", spec.Name, "failure", map[string]any{"domain": spec.Domain, "mode": spec.Mode, "config_path": configPath, "store_error": err.Error()})
+			a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+				Title:          "Sites",
+				DatabaseStatus: a.databaseStatus(r.Context()),
+				Metrics:        a.metrics.Snapshot(),
+				LinuxUsers:     users,
+				ManagedSites:   sites,
+				PHPVersions:    versions,
+				RequestError:   "Site Nginx config was applied successfully, but the panel could not save the site record: " + err.Error(),
+				ResultPath:     configPath,
+			})
+			return
+		}
 	}
 
 	a.recordAudit(r.Context(), "nginx.apply_site", spec.Name, "success", map[string]any{"domain": spec.Domain, "mode": spec.Mode, "config_path": configPath})
@@ -2424,6 +2449,9 @@ func (a *App) listManagedSites(r *http.Request) []domain.ManagedSite {
 	}
 	sites, err := a.store.ListManagedSites(r.Context())
 	if err != nil {
+		if a.logger != nil {
+			a.logger.Error("list managed sites", "error", err)
+		}
 		return nil
 	}
 	return sites
