@@ -422,7 +422,8 @@ func ApplyPanelProxy(availableDir string, enabledDir string, binary string, spec
 	}
 	configPath := filepath.Join(m.availableDir, "server-side-control-panel.conf")
 	enabledPath := filepath.Join(m.enabledDir, filepath.Base(configPath))
-	configBody := renderPanelProxyConfig(spec.Domain, upstream)
+	certificatePath, keyPath, _ := panelTLSCertificatePaths(spec.Domain)
+	configBody := renderPanelProxyConfig(spec.Domain, upstream, certificatePath, keyPath)
 	previousConfig, hadPreviousConfig := readIfExists(configPath)
 	hadPreviousLink := fileExists(enabledPath)
 	if err := os.WriteFile(configPath, []byte(configBody), 0o644); err != nil {
@@ -464,28 +465,53 @@ func normalizePanelUpstream(listenAddr string) (string, error) {
 	return net.JoinHostPort(host, port), nil
 }
 
-func renderPanelProxyConfig(domain string, upstream string) string {
-	return fmt.Sprintf(`server {
-    listen 80;
-    listen [::]:80;
-    server_name %s;
-	client_max_body_size 512m;
-
-    location / {
-        proxy_pass http://%s;
-        proxy_http_version 1.1;
+func renderPanelProxyConfig(domain string, upstream string, certificatePath string, keyPath string) string {
+	proxyLocation := fmt.Sprintf(`location / {
+		proxy_pass http://%s;
+		proxy_http_version 1.1;
 		proxy_request_buffering off;
 		proxy_read_timeout 600s;
 		proxy_send_timeout 600s;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
+		proxy_set_header Host $host;
+		proxy_set_header X-Real-IP $remote_addr;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection "upgrade";
+	}`, upstream)
+	if certificatePath != "" && keyPath != "" {
+		return fmt.Sprintf(`server {
+	listen 80;
+	listen [::]:80;
+	server_name %s;
+	client_max_body_size 512m;
+
+	location / {
+		return 301 https://$host$request_uri;
+	}
 }
-`, domain, upstream)
+
+server {
+	listen 443 ssl;
+	listen [::]:443 ssl;
+	server_name %s;
+	client_max_body_size 512m;
+	ssl_certificate %s;
+	ssl_certificate_key %s;
+
+	%s
+}
+`, domain, domain, certificatePath, keyPath, proxyLocation)
+	}
+	return fmt.Sprintf(`server {
+	listen 80;
+	listen [::]:80;
+	server_name %s;
+	client_max_body_size 512m;
+
+	%s
+}
+`, domain, proxyLocation)
 }
 
 func rollbackSite(configPath string, enabledPath string, hadPreviousConfig bool, previousConfig []byte, hadPreviousLink bool) {
@@ -528,6 +554,15 @@ func readLinkIfExists(path string) (string, bool) {
 		return "", false
 	}
 	return target, true
+}
+
+func panelTLSCertificatePaths(domain string) (string, string, bool) {
+	certificatePath := filepath.Join("/etc/letsencrypt/live", domain, "fullchain.pem")
+	keyPath := filepath.Join("/etc/letsencrypt/live", domain, "privkey.pem")
+	if !fileExists(certificatePath) || !fileExists(keyPath) {
+		return "", "", false
+	}
+	return certificatePath, keyPath, true
 }
 
 func renderTLSServerBlock(domain string) string {
