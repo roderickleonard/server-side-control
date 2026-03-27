@@ -326,6 +326,44 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			return
 		}
 		writeSuccess(nil, cleanPath, nil)
+	case "nginx.validate_config":
+		var input struct {
+			Path    string `json:"path"`
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		cleanPath := filepath.Clean(input.Path)
+		availableDir := filepath.Clean(cfg.NginxAvailableDir)
+		if !filepath.IsAbs(cleanPath) {
+			writeFailure(errors.New("nginx config path must be absolute"), "")
+			return
+		}
+		if cleanPath != availableDir && !strings.HasPrefix(cleanPath, availableDir+string(os.PathSeparator)) {
+			writeFailure(errors.New("nginx config path must be inside nginx available dir"), "")
+			return
+		}
+		previousContent, err := os.ReadFile(cleanPath)
+		if err != nil {
+			writeFailure(fmt.Errorf("read current nginx config: %w", err), "")
+			return
+		}
+		if err := os.WriteFile(cleanPath, []byte(input.Content), 0o644); err != nil {
+			writeFailure(fmt.Errorf("write candidate nginx config: %w", err), "")
+			return
+		}
+		validateErr := system.NewNginxManager(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, cfg.CertbotBinary).ValidateConfig(cleanPath)
+		if restoreErr := os.WriteFile(cleanPath, previousContent, 0o644); restoreErr != nil {
+			writeFailure(fmt.Errorf("restore nginx config after validate: %w", restoreErr), "")
+			return
+		}
+		if validateErr != nil {
+			writeFailure(validateErr, "")
+			return
+		}
+		writeSuccess(nil, "nginx config validated successfully", nil)
 	case "deploy.run":
 		var spec system.DeploySpec
 		if err := json.Unmarshal(request.Input, &spec); err != nil {

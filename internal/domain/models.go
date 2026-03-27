@@ -79,6 +79,15 @@ type SiteSubdomain struct {
 	UpdatedAt       time.Time
 }
 
+type NginxConfigRevision struct {
+	ID          int64
+	SiteID      int64
+	SubdomainID int64
+	ConfigPath  string
+	Content     string
+	CreatedAt   time.Time
+}
+
 type PanelTLSStatus struct {
 	Domain        string
 	CertificateOK bool

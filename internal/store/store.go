@@ -98,6 +98,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("ensure site_subdomains table: %w", err)
 	}
 
+	if err := s.ensureNginxConfigRevisionsTable(ctx); err != nil {
+		return fmt.Errorf("ensure nginx_config_revisions table: %w", err)
+	}
+
 	return nil
 }
 
@@ -239,6 +243,24 @@ func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {
 			UNIQUE KEY uniq_site_subdomains_full_domain (full_domain),
 			INDEX idx_site_subdomains_site_id (site_id),
 			CONSTRAINT fk_site_subdomains_site FOREIGN KEY (site_id) REFERENCES managed_sites(id) ON DELETE CASCADE
+		)`)
+	return err
+}
+
+func (s *Store) ensureNginxConfigRevisionsTable(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS nginx_config_revisions (
+			id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			site_id BIGINT NOT NULL,
+			subdomain_id BIGINT NOT NULL DEFAULT 0,
+			config_path VARCHAR(255) NOT NULL,
+			content MEDIUMTEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			INDEX idx_nginx_config_revisions_site_target (site_id, subdomain_id, id DESC),
+			CONSTRAINT fk_nginx_config_revisions_site FOREIGN KEY (site_id) REFERENCES managed_sites(id) ON DELETE CASCADE
 		)`)
 	return err
 }

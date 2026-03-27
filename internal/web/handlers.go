@@ -282,7 +282,7 @@ func siteDetailTabForAction(action string) string {
 		return "runtime"
 	case "enable_tls", "add_subdomain", "delete_subdomain", "enable_subdomain_tls":
 		return "domains"
-	case "assign_database", "assign_linux_user", "edit_env", "save_nginx_config":
+	case "assign_database", "assign_linux_user", "edit_env", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config":
 		return "settings"
 	default:
 		return "overview"
@@ -296,6 +296,51 @@ func isAllowedNginxConfigPath(baseDir string, configPath string) bool {
 		return false
 	}
 	return configPath == baseDir || strings.HasPrefix(configPath, baseDir+string(os.PathSeparator))
+}
+
+func resolveNginxConfigTarget(site domain.ManagedSite, subdomains []domain.SiteSubdomain, targetType string, targetID int64) (string, string, string, int64, error) {
+	targetType = strings.TrimSpace(targetType)
+	switch targetType {
+	case "", "site":
+		if strings.TrimSpace(site.NginxConfigPath) == "" {
+			return "", "", "", 0, errors.New("this site does not have a stored Nginx config path")
+		}
+		return site.NginxConfigPath, site.Name, site.DomainName, 0, nil
+	case "subdomain":
+		for _, subdomain := range subdomains {
+			if subdomain.ID == targetID {
+				if strings.TrimSpace(subdomain.NginxConfigPath) == "" {
+					return "", "", "", 0, errors.New("selected subdomain does not have a stored Nginx config path")
+				}
+				return subdomain.NginxConfigPath, subdomain.FullDomain, subdomain.FullDomain, subdomain.ID, nil
+			}
+		}
+		return "", "", "", 0, errors.New("subdomain config target could not be found")
+	default:
+		return "", "", "", 0, errors.New("invalid Nginx config target type")
+	}
+}
+
+func (a *App) saveNginxConfigContent(ctx context.Context, site domain.ManagedSite, subdomainID int64, configPath string, content string, createRevision bool) error {
+	var previousConfig string
+	_, _ = a.helper.Call(ctx, "files.read_text", map[string]any{"path": configPath, "max_bytes": 1048576}, &previousConfig)
+	if createRevision && a.store != nil && previousConfig != "" && previousConfig != content {
+		_, _ = a.store.CreateNginxConfigRevision(ctx, domain.NginxConfigRevision{SiteID: site.ID, SubdomainID: subdomainID, ConfigPath: configPath, Content: previousConfig})
+	}
+	if _, err := a.helper.Call(ctx, "nginx.write_config", map[string]string{"path": configPath, "content": content}, nil); err != nil {
+		return fmt.Errorf("could not write Nginx config: %w", err)
+	}
+	if err := a.nginx.ValidateConfig(configPath); err != nil {
+		_, _ = a.helper.Call(ctx, "nginx.write_config", map[string]string{"path": configPath, "content": previousConfig}, nil)
+		return fmt.Errorf("Nginx config validation failed, previous config was restored: %w", err)
+	}
+	if err := a.nginx.Reload(); err != nil {
+		_, _ = a.helper.Call(ctx, "nginx.write_config", map[string]string{"path": configPath, "content": previousConfig}, nil)
+		_ = a.nginx.ValidateConfig(configPath)
+		_ = a.nginx.Reload()
+		return fmt.Errorf("Nginx reload failed, previous config was restored: %w", err)
+	}
+	return nil
 }
 
 func resolveSiteBrowserPath(rootDir string, requested string) (string, string, error) {
@@ -1516,10 +1561,20 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 	if subdomainDeleteID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subdomain_id")), 10, 64); err == nil {
 		data.SubdomainDeleteID = subdomainDeleteID
 	}
+	nginxTargetType := firstNonEmpty(strings.TrimSpace(r.FormValue("nginx_target_type")), "site")
+	var nginxTargetID int64
+	if targetID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("nginx_target_id")), 10, 64); err == nil {
+		nginxTargetID = targetID
+	}
+	var nginxRevisionID int64
+	if revisionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("nginx_revision_id")), 10, 64); err == nil {
+		nginxRevisionID = revisionID
+	}
 
 	var output string
 	var actionErr error
 	var successMessage string
+	subdomainsForConfig, _ := a.store.ListSiteSubdomains(r.Context(), site.ID)
 
 	switch action {
 	case "sync_repository":
@@ -1945,37 +2000,71 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		successMessage = "Linux user reassigned to \"" + newOwner + "\"."
 		a.recordAudit(r.Context(), "site.assign_linux_user", site.Name, "success", map[string]any{"owner": newOwner})
 	case "save_nginx_config":
-		if strings.TrimSpace(site.NginxConfigPath) == "" {
-			data.RequestError = "This site does not have a stored Nginx config path."
+		configPath, targetLabel, _, subdomainID, err := resolveNginxConfigTarget(site, subdomainsForConfig, nginxTargetType, nginxTargetID)
+		if err != nil {
+			data.RequestError = err.Error()
 			break
 		}
-		if !isAllowedNginxConfigPath(a.cfg.NginxAvailableDir, site.NginxConfigPath) {
+		if !isAllowedNginxConfigPath(a.cfg.NginxAvailableDir, configPath) {
 			data.RequestError = "Stored Nginx config path is outside the allowed Nginx config directory."
 			break
 		}
-		var previousConfig string
-		_, _ = a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": site.NginxConfigPath, "max_bytes": 1048576}, &previousConfig)
-		if _, actionErr = a.helper.Call(r.Context(), "nginx.write_config", map[string]string{"path": site.NginxConfigPath, "content": data.NginxConfigContent}, nil); actionErr != nil {
-			data.RequestError = "Could not write Nginx config: " + actionErr.Error()
-			break
-		}
-		if actionErr = a.nginx.ValidateConfig(site.NginxConfigPath); actionErr != nil {
-			_, _ = a.helper.Call(r.Context(), "nginx.write_config", map[string]string{"path": site.NginxConfigPath, "content": previousConfig}, nil)
-			data.RequestError = "Nginx config validation failed, previous config was restored: " + actionErr.Error()
-			a.recordAudit(r.Context(), "site.nginx_config.save", site.Name, "failure", map[string]any{"config_path": site.NginxConfigPath, "error": actionErr.Error(), "stage": "validate"})
-			break
-		}
-		if actionErr = a.nginx.Reload(); actionErr != nil {
-			_, _ = a.helper.Call(r.Context(), "nginx.write_config", map[string]string{"path": site.NginxConfigPath, "content": previousConfig}, nil)
-			_ = a.nginx.ValidateConfig(site.NginxConfigPath)
-			_ = a.nginx.Reload()
-			data.RequestError = "Nginx reload failed, previous config was restored: " + actionErr.Error()
-			a.recordAudit(r.Context(), "site.nginx_config.save", site.Name, "failure", map[string]any{"config_path": site.NginxConfigPath, "error": actionErr.Error(), "stage": "reload"})
+		if err := a.saveNginxConfigContent(r.Context(), site, subdomainID, configPath, data.NginxConfigContent, true); err != nil {
+			data.RequestError = err.Error()
+			a.recordAudit(r.Context(), "site.nginx_config.save", targetLabel, "failure", map[string]any{"config_path": configPath, "target_type": nginxTargetType, "subdomain_id": subdomainID, "error": err.Error()})
 			break
 		}
 		data.NginxConfigNotice = "Nginx config saved, validated, and reloaded successfully."
-		a.recordAudit(r.Context(), "site.nginx_config.save", site.Name, "success", map[string]any{"config_path": site.NginxConfigPath})
-		successMessage = "Site Nginx config updated successfully."
+		a.recordAudit(r.Context(), "site.nginx_config.save", targetLabel, "success", map[string]any{"config_path": configPath, "target_type": nginxTargetType, "subdomain_id": subdomainID})
+		successMessage = "Nginx config updated successfully."
+	case "validate_nginx_config":
+		configPath, targetLabel, _, subdomainID, err := resolveNginxConfigTarget(site, subdomainsForConfig, nginxTargetType, nginxTargetID)
+		if err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		if !isAllowedNginxConfigPath(a.cfg.NginxAvailableDir, configPath) {
+			data.RequestError = "Stored Nginx config path is outside the allowed Nginx config directory."
+			break
+		}
+		output, actionErr = a.helper.Call(r.Context(), "nginx.validate_config", map[string]string{"path": configPath, "content": data.NginxConfigContent}, nil)
+		if actionErr != nil {
+			data.RequestError = "Nginx config validation failed: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.nginx_config.validate", targetLabel, "failure", map[string]any{"config_path": configPath, "target_type": nginxTargetType, "subdomain_id": subdomainID, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		data.NginxConfigNotice = "Validation passed. No file was changed."
+		a.recordAudit(r.Context(), "site.nginx_config.validate", targetLabel, "success", map[string]any{"config_path": configPath, "target_type": nginxTargetType, "subdomain_id": subdomainID})
+		successMessage = "Nginx config validated successfully."
+	case "rollback_nginx_config":
+		configPath, targetLabel, _, subdomainID, err := resolveNginxConfigTarget(site, subdomainsForConfig, nginxTargetType, nginxTargetID)
+		if err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		if nginxRevisionID <= 0 {
+			data.RequestError = "Select a saved Nginx config revision to roll back."
+			break
+		}
+		revision, err := a.store.GetNginxConfigRevision(r.Context(), nginxRevisionID, site.ID, subdomainID)
+		if err != nil {
+			data.RequestError = "Could not load Nginx config revision: " + err.Error()
+			break
+		}
+		if revision.ConfigPath != configPath {
+			data.RequestError = "Selected revision does not belong to this Nginx config target."
+			break
+		}
+		data.NginxConfigContent = revision.Content
+		if err := a.saveNginxConfigContent(r.Context(), site, subdomainID, configPath, revision.Content, true); err != nil {
+			data.RequestError = err.Error()
+			a.recordAudit(r.Context(), "site.nginx_config.rollback", targetLabel, "failure", map[string]any{"config_path": configPath, "revision_id": nginxRevisionID, "target_type": nginxTargetType, "subdomain_id": subdomainID, "error": err.Error()})
+			break
+		}
+		data.NginxConfigNotice = "Selected Nginx config revision was restored successfully."
+		a.recordAudit(r.Context(), "site.nginx_config.rollback", targetLabel, "success", map[string]any{"config_path": configPath, "revision_id": nginxRevisionID, "target_type": nginxTargetType, "subdomain_id": subdomainID})
+		successMessage = "Nginx config rollback completed successfully."
 	default:
 		data.RequestError = "Invalid site details action."
 	}
@@ -2221,18 +2310,54 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		data.SubdomainMode = "reverse_proxy"
 	}
 	data.NginxConfigPath = strings.TrimSpace(site.NginxConfigPath)
-	if data.NginxConfigPath != "" && isAllowedNginxConfigPath(a.cfg.NginxAvailableDir, data.NginxConfigPath) {
-		if data.NginxConfigContent == "" {
+	if data.NginxConfigPath != "" {
+		editor := SiteNginxConfigEditor{TargetType: "site", Title: site.Name, Domain: site.DomainName, TargetID: 0, ConfigPath: data.NginxConfigPath, Notice: data.NginxConfigNotice}
+		if isAllowedNginxConfigPath(a.cfg.NginxAvailableDir, editor.ConfigPath) {
 			var content string
-			if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": data.NginxConfigPath, "max_bytes": 1048576}, &content); err == nil {
-				data.NginxConfigContent = content
+			if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": editor.ConfigPath, "max_bytes": 1048576}, &content); err == nil {
+				editor.Content = content
 				if strings.Contains(content, "[truncated after ") {
-					data.NginxConfigNotice = firstNonEmpty(data.NginxConfigNotice, "Only the first 1 MB of the Nginx config is shown.")
+					editor.Notice = firstNonEmpty(editor.Notice, "Only the first 1 MB of the Nginx config is shown.")
 				}
 			}
+			if targetType := strings.TrimSpace(r.FormValue("nginx_target_type")); targetType == "site" || targetType == "" {
+				if data.NginxConfigContent != "" {
+					editor.Content = data.NginxConfigContent
+				}
+			}
+			if revisions, err := a.store.ListNginxConfigRevisions(r.Context(), site.ID, 0, 8); err == nil {
+				editor.Revisions = revisions
+			}
+		} else {
+			editor.Notice = firstNonEmpty(editor.Notice, "Stored Nginx config path is outside the managed Nginx directory and cannot be edited from the panel.")
 		}
-	} else if data.NginxConfigPath != "" {
-		data.NginxConfigNotice = firstNonEmpty(data.NginxConfigNotice, "Stored Nginx config path is outside the managed Nginx directory and cannot be edited from the panel.")
+		data.NginxEditors = append(data.NginxEditors, editor)
+	}
+	for _, subdomain := range data.SiteSubdomains {
+		editor := SiteNginxConfigEditor{TargetType: "subdomain", TargetID: subdomain.ID, Title: subdomain.FullDomain, Domain: subdomain.FullDomain, ConfigPath: strings.TrimSpace(subdomain.NginxConfigPath)}
+		if editor.ConfigPath == "" {
+			continue
+		}
+		if isAllowedNginxConfigPath(a.cfg.NginxAvailableDir, editor.ConfigPath) {
+			var content string
+			if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": editor.ConfigPath, "max_bytes": 1048576}, &content); err == nil {
+				editor.Content = content
+				if strings.Contains(content, "[truncated after ") {
+					editor.Notice = firstNonEmpty(editor.Notice, "Only the first 1 MB of the Nginx config is shown.")
+				}
+			}
+			if strings.TrimSpace(r.FormValue("nginx_target_type")) == "subdomain" && data.NginxConfigContent != "" {
+				if targetID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("nginx_target_id")), 10, 64); err == nil && targetID == subdomain.ID {
+					editor.Content = data.NginxConfigContent
+				}
+			}
+			if revisions, err := a.store.ListNginxConfigRevisions(r.Context(), site.ID, subdomain.ID, 8); err == nil {
+				editor.Revisions = revisions
+			}
+		} else {
+			editor.Notice = "Stored Nginx config path is outside the managed Nginx directory and cannot be edited from the panel."
+		}
+		data.NginxEditors = append(data.NginxEditors, editor)
 	}
 	browserPath := firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("path")), data.SiteBrowserCurrentPath)
 	if absPath, relPath, err := resolveSiteBrowserPath(site.RootDirectory, browserPath); err == nil {

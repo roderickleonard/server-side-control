@@ -52,6 +52,17 @@ type SiteFileEntry struct {
 	Size         int64
 }
 
+type SiteNginxConfigEditor struct {
+	TargetType string
+	TargetID   int64
+	Title      string
+	Domain     string
+	ConfigPath string
+	Content    string
+	Notice     string
+	Revisions  []domain.NginxConfigRevision
+}
+
 type TemplateData struct {
 	Title          string
 	CurrentPath    string
@@ -138,6 +149,7 @@ type TemplateData struct {
 	SiteBrowserFileContent string
 	SiteBrowserFileNotice string
 	SiteBrowserEntries []SiteFileEntry
+	NginxEditors []SiteNginxConfigEditor
 	NginxConfigPath string
 	NginxConfigContent string
 	NginxConfigNotice string
