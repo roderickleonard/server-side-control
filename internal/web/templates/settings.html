@@ -138,7 +138,6 @@
     <article class="panel">
         <h3><i class="bi bi-envelope" style="color:var(--accent);margin-right:6px;"></i>SMTP and notifications</h3>
         <form method="post" class="stack-form compact-form">
-            <input type="hidden" name="settings_action" value="save_panel_settings">
             <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
             <input type="hidden" name="panel_base_url" value="{{.PanelBaseURL}}">
             <input type="hidden" name="panel_service_name" value="{{.PanelServiceName}}">
@@ -169,7 +168,7 @@
                 </label>
             </div>
             <div class="form-actions">
-                <button type="submit">Save SMTP settings</button>
+                <button type="submit" name="settings_action" value="save_panel_settings">Save SMTP settings</button>
                 <button type="submit" formaction="/settings" name="settings_action" value="test_smtp_settings" class="btn btn-sm btn-outline-secondary">Send test mail</button>
             </div>
         </form>
