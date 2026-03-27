@@ -143,6 +143,16 @@ type TemplateData struct {
 	RuntimeCommandName string
 	RuntimeCommandNodeVersion string
 	RuntimeCommandBody string
+	CronJobs []system.CronJob
+	CronSchedule string
+	CronCommand string
+	CronRunInSiteRoot bool
+	CronFilter string
+	CronEditID string
+	CronLogID string
+	CronLogTitle string
+	CronLogContent string
+	CronLogNotice string
 	SiteBrowserCurrentPath string
 	SiteBrowserParentPath string
 	SiteBrowserSelectedFile string

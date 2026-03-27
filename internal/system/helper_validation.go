@@ -55,6 +55,12 @@ var allowedHelperActions = map[string]struct{}{
 	"pm2.logs":         {},
 	"php.switch":       {},
 	"php.list_versions": {},
+	"cron.list":       {},
+	"cron.create":     {},
+	"cron.update":     {},
+	"cron.delete":     {},
+	"cron.clear_log":  {},
+	"cron.rotate_log": {},
 }
 
 func ValidateHelperAction(action string) error {

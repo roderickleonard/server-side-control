@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kaganyegin/server-side-control/internal/auth"
 	"github.com/kaganyegin/server-side-control/internal/domain"
@@ -282,11 +283,198 @@ func siteDetailTabForAction(action string) string {
 		return "runtime"
 	case "enable_tls", "add_subdomain", "delete_subdomain", "enable_subdomain_tls":
 		return "domains"
-	case "assign_database", "assign_linux_user", "edit_env", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config":
+	case "assign_database", "assign_linux_user", "edit_env", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "create_cron_job", "update_cron_job", "delete_cron_job", "clear_cron_log", "rotate_cron_log":
 		return "settings"
 	default:
 		return "overview"
 	}
+}
+
+func describeCronNextRun(schedule string, now time.Time) string {
+	nextRun, err := nextCronRun(schedule, now)
+	if err != nil {
+		return "Could not estimate"
+	}
+	until := nextRun.Sub(now)
+	if until < 0 {
+		until = 0
+	}
+	return fmt.Sprintf("in %s (%s)", humanizeDuration(until), nextRun.Format("2006-01-02 15:04"))
+}
+
+func humanizeDuration(duration time.Duration) string {
+	if duration < time.Minute {
+		return "under 1 minute"
+	}
+	minutes := int(duration.Round(time.Minute) / time.Minute)
+	days := minutes / (24 * 60)
+	minutes -= days * 24 * 60
+	hours := minutes / 60
+	minutes -= hours * 60
+	parts := make([]string, 0, 3)
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%dd", days))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%dh", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", minutes))
+	}
+	if len(parts) == 0 {
+		return "under 1 minute"
+	}
+	return strings.Join(parts, " ")
+}
+
+func nextCronRun(schedule string, now time.Time) (time.Time, error) {
+	fields, err := normalizeCronFields(schedule)
+	if err != nil {
+		return time.Time{}, err
+	}
+	start := now.In(time.Local).Truncate(time.Minute).Add(time.Minute)
+	for offset := 0; offset < 366*24*60; offset++ {
+		candidate := start.Add(time.Duration(offset) * time.Minute)
+		dayOfMonthMatches := cronFieldMatches(fields[2], candidate.Day(), 2)
+		dayOfWeekMatches := cronFieldMatches(fields[4], int(candidate.Weekday()), 4)
+		if cronFieldMatches(fields[0], candidate.Minute(), 0) &&
+			cronFieldMatches(fields[1], candidate.Hour(), 1) &&
+			cronFieldMatches(fields[3], int(candidate.Month()), 3) &&
+			cronDayMatches(fields[2], fields[4], dayOfMonthMatches, dayOfWeekMatches) {
+			return candidate, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("next run is outside the estimation window")
+}
+
+func cronDayMatches(dayOfMonthExpr string, dayOfWeekExpr string, dayOfMonthMatches bool, dayOfWeekMatches bool) bool {
+	dayOfMonthWildcard := cronFieldIsWildcard(dayOfMonthExpr)
+	dayOfWeekWildcard := cronFieldIsWildcard(dayOfWeekExpr)
+	if dayOfMonthWildcard && dayOfWeekWildcard {
+		return true
+	}
+	if dayOfMonthWildcard {
+		return dayOfWeekMatches
+	}
+	if dayOfWeekWildcard {
+		return dayOfMonthMatches
+	}
+	return dayOfMonthMatches || dayOfWeekMatches
+}
+
+func cronFieldIsWildcard(expression string) bool {
+	return strings.TrimSpace(expression) == "*"
+}
+
+func normalizeCronFields(schedule string) ([]string, error) {
+	trimmed := strings.ToLower(strings.TrimSpace(schedule))
+	switch trimmed {
+	case "@yearly", "@annually":
+		return []string{"0", "0", "1", "1", "*"}, nil
+	case "@monthly":
+		return []string{"0", "0", "1", "*", "*"}, nil
+	case "@weekly":
+		return []string{"0", "0", "*", "*", "0"}, nil
+	case "@daily", "@midnight":
+		return []string{"0", "0", "*", "*", "*"}, nil
+	case "@hourly":
+		return []string{"0", "*", "*", "*", "*"}, nil
+	case "@reboot":
+		return nil, fmt.Errorf("@reboot does not have a predictable next run time")
+	}
+	parts := strings.Fields(trimmed)
+	if len(parts) != 5 {
+		return nil, fmt.Errorf("unsupported cron expression")
+	}
+	return parts, nil
+}
+
+func cronFieldMatches(expression string, value int, fieldIndex int) bool {
+	minValue, maxValue := cronFieldBounds(fieldIndex)
+	for _, part := range strings.Split(expression, ",") {
+		if cronPartMatches(strings.TrimSpace(part), value, minValue, maxValue, fieldIndex == 4) {
+			return true
+		}
+	}
+	return false
+}
+
+func cronFieldBounds(fieldIndex int) (int, int) {
+	switch fieldIndex {
+	case 0:
+		return 0, 59
+	case 1:
+		return 0, 23
+	case 2:
+		return 1, 31
+	case 3:
+		return 1, 12
+	case 4:
+		return 0, 7
+	default:
+		return 0, 0
+	}
+}
+
+func cronPartMatches(part string, value int, minValue int, maxValue int, dayOfWeek bool) bool {
+	if part == "" {
+		return false
+	}
+	if dayOfWeek && value == 0 {
+		if part == "7" || strings.HasPrefix(part, "7,") || strings.Contains(part, ",7") || strings.Contains(part, "-7") {
+			return true
+		}
+	}
+	if part == "*" {
+		return true
+	}
+	step := 1
+	base := part
+	if strings.Contains(part, "/") {
+		pieces := strings.SplitN(part, "/", 2)
+		base = strings.TrimSpace(pieces[0])
+		parsedStep, err := strconv.Atoi(strings.TrimSpace(pieces[1]))
+		if err != nil || parsedStep <= 0 {
+			return false
+		}
+		step = parsedStep
+	}
+	start, end, ok := cronRangeBounds(base, minValue, maxValue, dayOfWeek)
+	if !ok || value < start || value > end {
+		return false
+	}
+	return (value-start)%step == 0
+}
+
+func cronRangeBounds(base string, minValue int, maxValue int, dayOfWeek bool) (int, int, bool) {
+	base = strings.TrimSpace(base)
+	if base == "" || base == "*" {
+		return minValue, maxValue, true
+	}
+	parseValue := func(raw string) (int, error) {
+		parsed, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil {
+			return 0, err
+		}
+		if dayOfWeek && parsed == 7 {
+			return 0, nil
+		}
+		return parsed, nil
+	}
+	if strings.Contains(base, "-") {
+		parts := strings.SplitN(base, "-", 2)
+		start, errStart := parseValue(parts[0])
+		end, errEnd := parseValue(parts[1])
+		if errStart != nil || errEnd != nil || start > end {
+			return 0, 0, false
+		}
+		return start, end, true
+	}
+	parsed, err := parseValue(base)
+	if err != nil {
+		return 0, 0, false
+	}
+	return parsed, parsed, true
 }
 
 func isAllowedNginxConfigPath(baseDir string, configPath string) bool {
@@ -1506,7 +1694,12 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 	releases := a.listSiteDeploymentReleases(r, site.RootDirectory, site.OwnerLinuxUser)
 
 	if r.Method == http.MethodGet {
-		data := TemplateData{SiteDetailTab: firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("tab")), "overview")}
+		data := TemplateData{
+			SiteDetailTab: firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("tab")), "overview"),
+			CronFilter:    firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("cron_filter")), "site"),
+			CronEditID:    strings.TrimSpace(r.URL.Query().Get("cron_edit")),
+			CronLogID:     strings.TrimSpace(r.URL.Query().Get("cron_log")),
+		}
 		if statusErr != nil {
 			data.RequestError = "Repository status could not be inspected: " + statusErr.Error()
 		} else if runtimeErr != nil {
@@ -1550,6 +1743,12 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		RuntimeCommandName:  strings.TrimSpace(r.FormValue("runtime_command_name")),
 		RuntimeCommandNodeVersion: strings.TrimSpace(r.FormValue("runtime_command_node_version")),
 		RuntimeCommandBody:  r.FormValue("runtime_command_body"),
+		CronSchedule:        strings.TrimSpace(r.FormValue("cron_schedule")),
+		CronCommand:         strings.TrimSpace(r.FormValue("cron_command")),
+		CronRunInSiteRoot:   r.FormValue("cron_run_in_site_root") != "0",
+		CronFilter:          firstNonEmpty(strings.TrimSpace(r.FormValue("cron_filter")), "site"),
+		CronEditID:          strings.TrimSpace(r.FormValue("cron_id")),
+		CronLogID:           strings.TrimSpace(r.FormValue("cron_log_id")),
 		GitCredentialProtocol: firstNonEmpty(strings.TrimSpace(r.FormValue("credential_protocol")), firstNonEmpty(gitAuthStatus.RepositoryProtocol, "https")),
 		GitCredentialHost:   firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
 		GitCredentialUsername: strings.TrimSpace(r.FormValue("credential_username")),
@@ -1999,6 +2198,110 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		site.OwnerLinuxUser = newOwner
 		successMessage = "Linux user reassigned to \"" + newOwner + "\"."
 		a.recordAudit(r.Context(), "site.assign_linux_user", site.Name, "success", map[string]any{"owner": newOwner})
+	case "create_cron_job":
+		output, actionErr = a.helper.Call(r.Context(), "cron.create", system.CronJobSpec{
+			User:             site.OwnerLinuxUser,
+			Schedule:         data.CronSchedule,
+			Command:          data.CronCommand,
+			SiteName:         site.Name,
+			WorkingDirectory: site.RootDirectory,
+			RunInSiteRoot:    data.CronRunInSiteRoot,
+		}, nil)
+		if actionErr != nil {
+			message := actionErr.Error()
+			switch {
+			case errors.Is(actionErr, system.ErrInvalidUsername):
+				message = "Site owner Linux user is invalid for cron management."
+			case errors.Is(actionErr, system.ErrInvalidCronSchedule):
+				message = "Cron schedule must be a standard 5-field expression or a supported @shortcut."
+			case errors.Is(actionErr, system.ErrInvalidCronCommand):
+				message = "Cron command cannot be empty."
+			case errors.Is(actionErr, system.ErrInvalidTargetDirectory):
+				message = "Site root directory is invalid for run-in-site-root cron jobs."
+			}
+			data.RequestError = message
+			a.recordAudit(r.Context(), "site.cron.create", site.Name, "failure", map[string]any{"user": site.OwnerLinuxUser, "schedule": data.CronSchedule, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		a.recordAudit(r.Context(), "site.cron.create", site.Name, "success", map[string]any{"user": site.OwnerLinuxUser, "schedule": data.CronSchedule, "run_in_site_root": data.CronRunInSiteRoot})
+		data.CronSchedule = ""
+		data.CronCommand = ""
+		data.CronRunInSiteRoot = true
+		successMessage = "Cron job created for the site owner successfully."
+	case "update_cron_job":
+		if strings.TrimSpace(data.CronEditID) == "" {
+			data.RequestError = "Select a panel-managed cron job for this site to edit."
+			break
+		}
+		output, actionErr = a.helper.Call(r.Context(), "cron.update", system.CronJobUpdateSpec{
+			User:             site.OwnerLinuxUser,
+			ID:               data.CronEditID,
+			Schedule:         data.CronSchedule,
+			Command:          data.CronCommand,
+			SiteName:         site.Name,
+			WorkingDirectory: site.RootDirectory,
+			RunInSiteRoot:    data.CronRunInSiteRoot,
+		}, nil)
+		if actionErr != nil {
+			message := actionErr.Error()
+			switch {
+			case errors.Is(actionErr, system.ErrInvalidUsername):
+				message = "Site owner Linux user is invalid for cron management."
+			case errors.Is(actionErr, system.ErrInvalidCronSchedule):
+				message = "Cron schedule must be a standard 5-field expression or a supported @shortcut."
+			case errors.Is(actionErr, system.ErrInvalidCronCommand):
+				message = "Cron command cannot be empty."
+			}
+			data.RequestError = message
+			a.recordAudit(r.Context(), "site.cron.update", site.Name, "failure", map[string]any{"user": site.OwnerLinuxUser, "cron_id": data.CronEditID, "schedule": data.CronSchedule, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		a.recordAudit(r.Context(), "site.cron.update", site.Name, "success", map[string]any{"user": site.OwnerLinuxUser, "cron_id": data.CronEditID, "schedule": data.CronSchedule, "run_in_site_root": data.CronRunInSiteRoot})
+		data.CronEditID = ""
+		data.CronSchedule = ""
+		data.CronCommand = ""
+		data.CronRunInSiteRoot = true
+		successMessage = "Cron job updated successfully."
+	case "delete_cron_job":
+		cronRawLine := strings.TrimSpace(r.FormValue("cron_raw_line"))
+		cronID := strings.TrimSpace(r.FormValue("cron_id"))
+		output, actionErr = a.helper.Call(r.Context(), "cron.delete", system.CronJobDeleteSpec{User: site.OwnerLinuxUser, ID: cronID, RawLine: cronRawLine}, nil)
+		if actionErr != nil {
+			data.RequestError = "Cron job could not be deleted: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.cron.delete", site.Name, "failure", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		a.recordAudit(r.Context(), "site.cron.delete", site.Name, "success", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID})
+		successMessage = "Cron job deleted successfully."
+	case "clear_cron_log":
+		cronID := strings.TrimSpace(r.FormValue("cron_id"))
+		data.CronLogID = cronID
+		output, actionErr = a.helper.Call(r.Context(), "cron.clear_log", map[string]string{"user": site.OwnerLinuxUser, "id": cronID}, nil)
+		if actionErr != nil {
+			data.RequestError = "Cron log could not be cleared: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.cron.clear_log", site.Name, "failure", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		data.CronLogNotice = "Cron log was cleared."
+		a.recordAudit(r.Context(), "site.cron.clear_log", site.Name, "success", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID})
+		successMessage = "Cron log cleared successfully."
+	case "rotate_cron_log":
+		cronID := strings.TrimSpace(r.FormValue("cron_id"))
+		data.CronLogID = cronID
+		output, actionErr = a.helper.Call(r.Context(), "cron.rotate_log", map[string]string{"user": site.OwnerLinuxUser, "id": cronID}, nil)
+		if actionErr != nil {
+			data.RequestError = "Cron log could not be rotated: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.cron.rotate_log", site.Name, "failure", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		data.CronLogNotice = "Cron log was rotated to: " + output
+		a.recordAudit(r.Context(), "site.cron.rotate_log", site.Name, "success", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID, "rotated_path": output})
+		successMessage = "Cron log rotated successfully."
 	case "save_nginx_config":
 		configPath, targetLabel, _, subdomainID, err := resolveNginxConfigTarget(site, subdomainsForConfig, nginxTargetType, nginxTargetID)
 		if err != nil {
@@ -2308,6 +2611,43 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	}
 	if data.SubdomainMode == "" {
 		data.SubdomainMode = "reverse_proxy"
+	}
+	if data.CronFilter == "" {
+		data.CronFilter = "site"
+	}
+	var allCronJobs []system.CronJob
+	if _, err := a.helper.Call(r.Context(), "cron.list", map[string]string{"user": site.OwnerLinuxUser}, &allCronJobs); err == nil {
+		filteredJobs := make([]system.CronJob, 0, len(allCronJobs))
+		for _, job := range allCronJobs {
+			job.NextRunText = describeCronNextRun(job.Schedule, time.Now())
+			if data.CronFilter == "all" {
+				filteredJobs = append(filteredJobs, job)
+				continue
+			}
+			if job.Managed && job.SiteName == site.Name {
+				filteredJobs = append(filteredJobs, job)
+			}
+		}
+		data.CronJobs = filteredJobs
+		for _, job := range allCronJobs {
+			if data.CronEditID != "" && job.Managed && job.SiteName == site.Name && job.ID == data.CronEditID {
+				data.CronSchedule = firstNonEmpty(data.CronSchedule, job.Schedule)
+				data.CronCommand = firstNonEmpty(data.CronCommand, job.Command)
+				data.CronRunInSiteRoot = job.RunInSiteRoot
+			}
+			if data.CronLogID != "" && job.ID == data.CronLogID && job.LogPath != "" {
+				data.CronLogTitle = firstNonEmpty(job.SiteName, site.Name) + " · " + job.Schedule
+				var logContent string
+				if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": job.LogPath, "max_bytes": 65536}, &logContent); err == nil {
+					data.CronLogContent = logContent
+					if data.CronLogNotice == "" && strings.Contains(logContent, "[truncated after ") {
+						data.CronLogNotice = "Only the last available 64 KB of the cron log is shown."
+					}
+				} else if data.CronLogNotice == "" {
+					data.CronLogNotice = "Cron log file could not be read yet. The job may not have run yet."
+				}
+			}
+		}
 	}
 	data.NginxConfigPath = strings.TrimSpace(site.NginxConfigPath)
 	if data.NginxConfigPath != "" {

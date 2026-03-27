@@ -17,6 +17,8 @@ var ErrInvalidCredentialUsername = errors.New("invalid credential username")
 var ErrInvalidCredentialPassword = errors.New("invalid credential password")
 var ErrInvalidTableName = errors.New("invalid mysql table name")
 var ErrInvalidRestorePath = errors.New("invalid mysql restore file path")
+var ErrInvalidCronSchedule = errors.New("invalid cron schedule")
+var ErrInvalidCronCommand = errors.New("invalid cron command")
 
 type UserManager interface {
 	CreateLinuxUser(username string, createHome bool) error
@@ -252,4 +254,41 @@ type PM2Manager interface {
 type PHPManager interface {
 	SwitchSiteVersion(configPath string, version string) error
 	ListAvailableVersions() ([]string, error)
+}
+
+type CronJob struct {
+	ID            string `json:"id"`
+	Schedule      string `json:"schedule"`
+	Command       string `json:"command"`
+	RawLine       string `json:"raw_line"`
+	SiteName      string `json:"site_name"`
+	Managed       bool   `json:"managed"`
+	RunInSiteRoot bool   `json:"run_in_site_root"`
+	LogPath       string `json:"log_path"`
+	NextRunText   string `json:"next_run_text"`
+}
+
+type CronJobSpec struct {
+	User             string `json:"user"`
+	Schedule         string `json:"schedule"`
+	Command          string `json:"command"`
+	SiteName         string `json:"site_name"`
+	WorkingDirectory string `json:"working_directory"`
+	RunInSiteRoot    bool   `json:"run_in_site_root"`
+}
+
+type CronJobDeleteSpec struct {
+	User    string `json:"user"`
+	ID      string `json:"id"`
+	RawLine string `json:"raw_line"`
+}
+
+type CronJobUpdateSpec struct {
+	User             string `json:"user"`
+	ID               string `json:"id"`
+	Schedule         string `json:"schedule"`
+	Command          string `json:"command"`
+	SiteName         string `json:"site_name"`
+	WorkingDirectory string `json:"working_directory"`
+	RunInSiteRoot    bool   `json:"run_in_site_root"`
 }

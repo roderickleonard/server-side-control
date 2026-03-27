@@ -258,6 +258,158 @@
     <article class="panel">
         <div class="section-head">
             <div>
+                <span class="eyebrow">Cron jobs</span>
+                <h3>User cron for {{.SelectedSite.OwnerLinuxUser}}</h3>
+            </div>
+            <span class="badge subtle-badge">Per Linux user</span>
+        </div>
+        <p class="muted details-note">These cron jobs run under the site owner Linux user. If multiple sites share the same Linux user, the same crontab is shared. By default, this view shows only panel-managed jobs for this site.</p>
+        <div class="form-actions" style="margin-top:12px;">
+            <a class="btn btn-sm {{if ne .CronFilter "all"}}btn-outline-secondary{{else}}btn-secondary{{end}}" href="/sites/details?name={{.SelectedSite.Name}}&tab=settings&cron_filter=all">Show all user cron jobs</a>
+            <a class="btn btn-sm {{if ne .CronFilter "site"}}btn-outline-secondary{{else}}btn-secondary{{end}}" href="/sites/details?name={{.SelectedSite.Name}}&tab=settings&cron_filter=site">Show only this site's panel jobs</a>
+        </div>
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="cron_filter" value="{{.CronFilter}}">
+            <input type="hidden" name="cron_id" value="{{.CronEditID}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Schedule</span>
+                    <input type="text" name="cron_schedule" value="{{.CronSchedule}}" placeholder="*/5 * * * * or @daily" required>
+                    <small class="muted details-note">Use standard 5-field cron syntax or shortcuts like <code>@hourly</code> and <code>@daily</code>.</small>
+                </label>
+                <label>
+                    <span>Quick presets</span>
+                    <select onchange="if (this.value) { this.form.cron_schedule.value = this.value; }">
+                        <option value="">Choose a preset</option>
+                        <option value="* * * * *">Every minute</option>
+                        <option value="*/5 * * * *">Every 5 minutes</option>
+                        <option value="0 * * * *">Hourly</option>
+                        <option value="0 0 * * *">Daily at midnight</option>
+                        <option value="0 3 * * *">Daily at 03:00</option>
+                        <option value="0 0 * * 0">Weekly on Sunday</option>
+                        <option value="0 0 1 * *">Monthly on day 1</option>
+                    </select>
+                    <small class="muted details-note">Selecting a preset fills the schedule field; you can still edit it manually.</small>
+                </label>
+                <label class="checkbox-row compact checkbox-align-end">
+                    <input type="hidden" name="cron_run_in_site_root" value="0">
+                    <input type="checkbox" name="cron_run_in_site_root" value="1" {{if .CronRunInSiteRoot}}checked{{end}}>
+                    <span>Run from site root {{.SelectedSite.RootDirectory}}</span>
+                </label>
+                <label class="span-2">
+                    <span>Command</span>
+                    <input type="text" name="cron_command" value="{{.CronCommand}}" placeholder="php artisan schedule:run or npm run cleanup" required>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" name="details_action" value="{{if .CronEditID}}update_cron_job{{else}}create_cron_job{{end}}">{{if .CronEditID}}Save cron changes{{else}}Create cron job{{end}}</button>
+                {{if .CronEditID}}
+                <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.SelectedSite.Name}}&tab=settings&cron_filter={{.CronFilter}}">Cancel edit</a>
+                {{end}}
+            </div>
+        </form>
+        {{if .CronJobs}}
+        <div class="table-card" style="margin-top:18px;">
+            <table class="table table-theme">
+                <thead>
+                    <tr>
+                        <th>Schedule</th>
+                        <th>Next run</th>
+                        <th>Command</th>
+                        <th>Source</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .CronJobs}}
+                    <tr>
+                        <td>{{.Schedule}}</td>
+                        <td>{{.NextRunText}}</td>
+                        <td><code>{{.Command}}</code></td>
+                        <td>
+                            {{if .Managed}}
+                                {{if eq .SiteName $.SelectedSite.Name}}
+                                Panel · this site
+                                {{else if .SiteName}}
+                                Panel · {{.SiteName}}
+                                {{else}}
+                                Panel managed
+                                {{end}}
+                            {{else}}
+                            Existing user cron
+                            {{end}}
+                        </td>
+                        <td>
+                            <div class="stack-cluster">
+                                {{if and .Managed (eq .SiteName $.SelectedSite.Name)}}
+                                <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{$.SelectedSite.Name}}&tab=settings&cron_filter={{$.CronFilter}}&cron_edit={{urlquery .ID}}">Edit</a>
+                                {{end}}
+                                {{if .LogPath}}
+                                <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{$.SelectedSite.Name}}&tab=settings&cron_filter={{$.CronFilter}}&cron_log={{urlquery .ID}}">View log</a>
+                                {{end}}
+                                {{if and .LogPath .Managed (eq .SiteName $.SelectedSite.Name)}}
+                                <form method="post" class="inline-form">
+                                    <input type="hidden" name="details_action" value="clear_cron_log">
+                                    <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                    <input type="hidden" name="cron_filter" value="{{$.CronFilter}}">
+                                    <input type="hidden" name="cron_id" value="{{.ID}}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Clear log</button>
+                                </form>
+                                <form method="post" class="inline-form">
+                                    <input type="hidden" name="details_action" value="rotate_cron_log">
+                                    <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                    <input type="hidden" name="cron_filter" value="{{$.CronFilter}}">
+                                    <input type="hidden" name="cron_id" value="{{.ID}}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Rotate log</button>
+                                </form>
+                                {{end}}
+                                {{if and .Managed (eq .SiteName $.SelectedSite.Name)}}
+                                <form method="post" class="inline-form">
+                                    <input type="hidden" name="details_action" value="delete_cron_job">
+                                    <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                    <input type="hidden" name="cron_filter" value="{{$.CronFilter}}">
+                                    <input type="hidden" name="cron_id" value="{{.ID}}">
+                                    <input type="hidden" name="cron_raw_line" value="{{.RawLine}}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Delete</button>
+                                </form>
+                                {{end}}
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted details-note" style="margin-top:14px;">No cron jobs are currently installed for this Linux user.</p>
+        {{end}}
+        <div style="margin-top:18px;"></div>
+        <div class="panel" style="padding:16px;border:1px solid var(--border);">
+            <div class="section-head">
+                <div>
+                    <span class="eyebrow">Cron log</span>
+                    <h3>{{if .CronLogTitle}}{{.CronLogTitle}}{{else}}Select a managed cron job log{{end}}</h3>
+                </div>
+            </div>
+            {{if .CronLogNotice}}
+            <p class="muted details-note">{{.CronLogNotice}}</p>
+            {{end}}
+            {{if .CronLogContent}}
+            <pre class="command-output">{{.CronLogContent}}</pre>
+            {{else}}
+            <p class="muted details-note">Use “View log” on a panel-managed cron job to inspect its latest output.</p>
+            {{end}}
+        </div>
+    </article>
+</section>
+
+<div style="margin-top:24px;"></div>
+
+<section class="grid single" data-site-tab="settings">
+    <article class="panel">
+        <div class="section-head">
+            <div>
                 <span class="eyebrow">Nginx</span>
                 <h3>{{if .NginxEditors}}Edit managed Nginx configs{{else}}No editable Nginx configs{{end}}</h3>
             </div>

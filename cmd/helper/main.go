@@ -408,6 +408,62 @@ func handle(cfg config.Config, request system.HelperRequest) {
 	case "php.list_versions":
 		versions, err := system.NewPHPManager().ListAvailableVersions()
 		writeSuccess(versions, "", err)
+	case "cron.list":
+		var input struct {
+			User string `json:"user"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		jobs, err := system.ListCronJobs(input.User)
+		writeSuccess(jobs, "", err)
+	case "cron.create":
+		var spec system.CronJobSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.CreateCronJob(spec)
+		writeSuccess(nil, output, err)
+	case "cron.update":
+		var spec system.CronJobUpdateSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.UpdateCronJob(spec)
+		writeSuccess(nil, output, err)
+	case "cron.delete":
+		var spec system.CronJobDeleteSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.DeleteCronJob(spec)
+		writeSuccess(nil, output, err)
+	case "cron.clear_log":
+		var input struct {
+			User string `json:"user"`
+			ID   string `json:"id"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.ClearCronJobLog(input.User, input.ID)
+		writeSuccess(nil, output, err)
+	case "cron.rotate_log":
+		var input struct {
+			User string `json:"user"`
+			ID   string `json:"id"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.RotateCronJobLog(input.User, input.ID)
+		writeSuccess(nil, output, err)
 	case "files.write_env":
 		var input struct {
 			Path    string `json:"path"`
