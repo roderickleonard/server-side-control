@@ -313,15 +313,15 @@ func buildManagedCronLine(id string, logPath string, spec CronJobSpec) string {
 
 
 func renderCronCommand(spec CronJobSpec, logPath string) string {
-	baseCommand := strings.TrimSpace(spec.Command)
+	baseCommand := escapeCronPercents(strings.TrimSpace(spec.Command))
 	if spec.RunInSiteRoot {
 		baseCommand = "cd " + shellQuote(spec.WorkingDirectory) + " && " + baseCommand
 	}
 	logDirectory := filepath.Dir(logPath)
 	shellCommand := "mkdir -p " + shellQuote(logDirectory) +
-		" && { printf '\n[%s] job start\n' \"$(date '+%Y-%m-%d %H:%M:%S')\"; . ~/.nvm/nvm.sh 2>/dev/null || true; " +
+		" && { echo; echo \"[$(date -Iseconds)] job start\"; . ~/.nvm/nvm.sh 2>/dev/null || true; " +
 		baseCommand +
-		"; status=$?; printf '[%s] exit %s\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" \"$status\"; exit \"$status\"; } >> " + shellQuote(logPath) + " 2>&1"
+		"; status=$?; echo \"[$(date -Iseconds)] exit $status\"; exit \"$status\"; } >> " + shellQuote(logPath) + " 2>&1"
 	return escapeCronPercents("/bin/bash -lc " + shellQuote(shellCommand))
 }
 
