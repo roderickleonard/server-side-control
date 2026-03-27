@@ -339,6 +339,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	data.SMTPFrom = strings.TrimSpace(r.FormValue("smtp_from"))
 	data.SMTPTo = strings.TrimSpace(r.FormValue("smtp_to"))
 	data.TOTPCode = strings.TrimSpace(r.FormValue("totp_code"))
+	data.TOTPSetupSecret = firstNonEmpty(strings.TrimSpace(r.FormValue("totp_secret")), data.TOTPSetupSecret)
 	data.PasskeyLabel = strings.TrimSpace(r.FormValue("passkey_label"))
 	if data.PanelDomain == "" {
 		data.PanelDomain = panelDomainFromBaseURL(data.PanelBaseURL)
@@ -362,21 +363,27 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		data.SuccessMessage = "Two-step verification setup created. Add it to Apple Passwords or another TOTP app, then confirm with a code below."
 		a.recordAudit(r.Context(), "panel.totp.setup", identity.Username, "success", nil)
 	case "enable_totp":
-		if strings.TrimSpace(security.TOTPSecret) == "" {
+		currentSecurity, err := a.store.GetPanelUserSecurity(r.Context(), identity.Username)
+		if err != nil {
+			data.RequestError = "Two-step verification status could not be reloaded: " + err.Error()
+			break
+		}
+		secret := firstNonEmpty(strings.TrimSpace(currentSecurity.TOTPSecret), strings.TrimSpace(data.TOTPSetupSecret))
+		if secret == "" {
 			data.RequestError = "Start two-step verification setup first."
 			break
 		}
-		if !auth.ValidateTOTP(security.TOTPSecret, data.TOTPCode, time.Now()) {
+		if !auth.ValidateTOTP(secret, data.TOTPCode, time.Now()) {
 			data.RequestError = "Verification code is invalid."
 			break
 		}
-		if err := a.store.SavePanelUserTOTP(r.Context(), identity.Username, security.TOTPSecret, true); err != nil {
+		if err := a.store.SavePanelUserTOTP(r.Context(), identity.Username, secret, true); err != nil {
 			data.RequestError = "Two-step verification could not be enabled: " + err.Error()
 			break
 		}
 		data.TOTPEnabled = true
 		data.TOTPSetupPending = false
-		data.TOTPSetupSecret = strings.TrimSpace(security.TOTPSecret)
+		data.TOTPSetupSecret = secret
 		data.TOTPProvisioningURI = auth.BuildTOTPProvisioningURI(a.cfg.AppName, identity.Username, data.TOTPSetupSecret)
 		data.TOTPCode = ""
 		data.SuccessMessage = "Two-step verification enabled successfully."

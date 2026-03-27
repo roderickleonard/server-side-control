@@ -79,10 +79,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const totpQr = document.getElementById("totp-qr");
     const otpauthUri = totpQr ? (totpQr.getAttribute("data-otpauth-uri") || "") : "";
-    if (totpQr && otpauthUri && window.QRCode && typeof window.QRCode.toCanvas === "function") {
-        const canvas = document.createElement("canvas");
-        totpQr.appendChild(canvas);
-        window.QRCode.toCanvas(canvas, otpauthUri, { width: 192, margin: 1 }, () => {});
+    if (totpQr && otpauthUri) {
+        if (window.QRCode && typeof window.QRCode.toCanvas === "function") {
+            const canvas = document.createElement("canvas");
+            totpQr.appendChild(canvas);
+            window.QRCode.toCanvas(canvas, otpauthUri, { width: 192, margin: 1 }, () => {});
+        } else {
+            const image = document.createElement("img");
+            image.src = "https://api.qrserver.com/v1/create-qr-code/?size=192x192&data=" + encodeURIComponent(otpauthUri);
+            image.width = 192;
+            image.height = 192;
+            image.alt = "TOTP QR code";
+            image.loading = "lazy";
+            totpQr.appendChild(image);
+        }
     }
 
     const base64UrlToBytes = (value) => {

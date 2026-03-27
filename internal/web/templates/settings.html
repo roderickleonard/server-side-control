@@ -144,7 +144,7 @@
             <p class="muted details-note">Apple Passwords uses standard TOTP verification codes. If QR import is not available, add a verification code manually with this setup key.</p>
         </div>
         {{end}}
-        {{if not .TOTPEnabled}}
+        {{if and (not .TOTPEnabled) (not .TOTPSetupPending)}}
         <form method="post" class="stack-form compact-form" style="margin-top:16px;">
             <input type="hidden" name="settings_action" value="start_totp_setup">
             <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
@@ -164,6 +164,7 @@
         {{if .TOTPSetupPending}}
         <form method="post" class="stack-form compact-form" style="margin-top:16px;">
             <input type="hidden" name="settings_action" value="enable_totp">
+            <input type="hidden" name="totp_secret" value="{{.TOTPSetupSecret}}">
             <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
             <input type="hidden" name="panel_base_url" value="{{.PanelBaseURL}}">
             <input type="hidden" name="panel_service_name" value="{{.PanelServiceName}}">

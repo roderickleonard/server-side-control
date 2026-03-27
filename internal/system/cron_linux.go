@@ -39,14 +39,7 @@ func ListCronJobs(user string) ([]CronJob, error) {
 	if err != nil {
 		return nil, err
 	}
-	jobs := make([]CronJob, 0)
-	for _, line := range strings.Split(content, "\n") {
-		job, ok := parseCronJobLine(line)
-		if ok {
-			jobs = append(jobs, job)
-		}
-	}
-	return jobs, nil
+	return parseCronJobs(content), nil
 }
 
 func CreateCronJob(spec CronJobSpec) (string, error) {
@@ -122,8 +115,19 @@ func UpdateCronJob(spec CronJobUpdateSpec) (string, error) {
 	updated := make([]string, 0, len(lines))
 	replaced := false
 	updatedLine := ""
-	for _, line := range lines {
-		job, ok := parseCronJobLine(line)
+	pendingMetadata := ""
+	for index := 0; index < len(lines); index++ {
+		line := lines[index]
+		if metadata, ok := parseManagedMetadataComment(line); ok {
+			pendingMetadata = metadata
+			continue
+		}
+		job, ok := parseCronJobLineWithMetadata(line, pendingMetadata)
+		metadataLine := ""
+		if pendingMetadata != "" {
+			metadataLine = cronManagedPrefix + pendingMetadata
+		}
+		pendingMetadata = ""
 		if ok && job.Managed && job.ID == spec.ID {
 			logPath := job.LogPath
 			if logPath == "" {
@@ -146,6 +150,9 @@ func UpdateCronJob(spec CronJobUpdateSpec) (string, error) {
 			updated = append(updated, updatedLine)
 			replaced = true
 			continue
+		}
+		if metadataLine != "" {
+			updated = append(updated, metadataLine)
 		}
 		updated = append(updated, line)
 	}
@@ -173,10 +180,21 @@ func DeleteCronJob(spec CronJobDeleteSpec) (string, error) {
 	updated := make([]string, 0, len(lines))
 	removedLine := ""
 	removed := false
-	for _, line := range lines {
+	pendingMetadata := ""
+	for index := 0; index < len(lines); index++ {
+		line := lines[index]
 		trimmed := strings.TrimSpace(line)
+		if metadata, ok := parseManagedMetadataComment(line); ok {
+			pendingMetadata = metadata
+			continue
+		}
 		if !removed {
-			job, ok := parseCronJobLine(line)
+			job, ok := parseCronJobLineWithMetadata(line, pendingMetadata)
+			metadataLine := ""
+			if pendingMetadata != "" {
+				metadataLine = cronManagedPrefix + pendingMetadata
+			}
+			pendingMetadata = ""
 			if ok {
 				if spec.ID != "" && job.ID != "" && job.ID == spec.ID {
 					removed = true
@@ -194,7 +212,13 @@ func DeleteCronJob(spec CronJobDeleteSpec) (string, error) {
 				removedLine = trimmed
 				continue
 			}
+			if metadataLine != "" {
+				updated = append(updated, metadataLine)
+			}
+			updated = append(updated, line)
+			continue
 		}
+		pendingMetadata = ""
 		updated = append(updated, line)
 	}
 	if !removed {
@@ -308,7 +332,7 @@ func buildManagedCronLine(id string, logPath string, spec CronJobSpec) string {
 		return spec.Schedule + " " + renderCronCommand(spec, logPath)
 	}
 	encodedMetadata := base64.RawURLEncoding.EncodeToString(metadataJSON)
-	return spec.Schedule + " " + renderCronCommand(spec, logPath) + " " + cronManagedPrefix + "b64:" + encodedMetadata
+	return cronManagedPrefix + "b64:" + encodedMetadata + "\n" + spec.Schedule + " " + renderCronCommand(spec, logPath)
 }
 
 
@@ -330,21 +354,20 @@ func escapeCronPercents(value string) string {
 }
 
 func parseCronJobLine(line string) (CronJob, bool) {
+	return parseCronJobLineWithMetadata(line, "")
+}
+
+func parseCronJobLineWithMetadata(line string, metadataComment string) (CronJob, bool) {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.Contains(trimmed, "=") && !strings.HasPrefix(trimmed, "@") && !strings.Contains(trimmed, " ") {
 		return CronJob{}, false
 	}
-	mainPart := trimmed
-	commentPart := ""
-	if index := strings.Index(trimmed, cronManagedPrefix); index >= 0 {
-		mainPart = strings.TrimSpace(trimmed[:index])
-		commentPart = strings.TrimSpace(trimmed[index+len(cronManagedPrefix):])
-	}
-	schedule, command, ok := splitCronScheduleCommand(mainPart)
+	schedule, command, ok := splitCronScheduleCommand(trimmed)
 	if !ok {
 		return CronJob{}, false
 	}
 	job := CronJob{Schedule: schedule, Command: command, RawLine: trimmed}
+	commentPart := strings.TrimSpace(metadataComment)
 	if commentPart != "" {
 		if strings.HasPrefix(commentPart, "b64:") {
 			encoded := strings.TrimSpace(strings.TrimPrefix(commentPart, "b64:"))
@@ -376,6 +399,32 @@ func parseCronJobLine(line string) (CronJob, bool) {
 		}
 	}
 	return job, true
+}
+
+func parseManagedMetadataComment(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, cronManagedPrefix) {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(trimmed, cronManagedPrefix)), true
+}
+
+func parseCronJobs(content string) []CronJob {
+	lines := strings.Split(content, "\n")
+	jobs := make([]CronJob, 0, len(lines))
+	pendingMetadata := ""
+	for _, line := range lines {
+		if metadata, ok := parseManagedMetadataComment(line); ok {
+			pendingMetadata = metadata
+			continue
+		}
+		job, ok := parseCronJobLineWithMetadata(line, pendingMetadata)
+		pendingMetadata = ""
+		if ok {
+			jobs = append(jobs, job)
+		}
+	}
+	return jobs
 }
 
 func decodeLegacyManagedCronMetadata(raw string) *managedCronMetadata {
