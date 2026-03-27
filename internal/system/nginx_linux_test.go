@@ -44,7 +44,7 @@ func TestRenderPanelProxyConfigWithTLS(t *testing.T) {
 	if !strings.Contains(config, "listen 443 ssl;") {
 		t.Fatalf("expected tls listener in config, got %q", config)
 	}
-	if !strings.Contains(config, "return 301 https://$host$request_uri;") {
+	if !strings.Contains(config, "return 308 https://$host$request_uri;") {
 		t.Fatalf("expected http to https redirect in config, got %q", config)
 	}
 	if !strings.Contains(config, "ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;") {

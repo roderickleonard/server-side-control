@@ -487,7 +487,7 @@ func renderPanelProxyConfig(domain string, upstream string, certificatePath stri
 	client_max_body_size 512m;
 
 	location / {
-		return 301 https://$host$request_uri;
+	        return 308 https://$host$request_uri;
 	}
 }
 

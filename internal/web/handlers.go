@@ -353,6 +353,22 @@ func buildAutoDeployWebhookURL(baseURL string, siteName string, secret string) s
 	return parsed.String()
 }
 
+func requestExternalBaseURL(r *http.Request, fallbackBaseURL string) string {
+	fallbackBaseURL = strings.TrimSpace(fallbackBaseURL)
+	if r == nil || strings.TrimSpace(r.Host) == "" {
+		return fallbackBaseURL
+	}
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
+		scheme = "https"
+	} else if fallbackBaseURL != "" {
+		if parsed, err := url.Parse(fallbackBaseURL); err == nil && parsed.Scheme != "" {
+			scheme = parsed.Scheme
+		}
+	}
+	return scheme + "://" + strings.TrimSpace(r.Host)
+}
+
 func buildWebhookBranch(payload []byte) string {
 	var body map[string]any
 	if err := json.Unmarshal(payload, &body); err != nil {
@@ -2137,7 +2153,7 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.AutoDeploySecret = firstNonEmpty(data.AutoDeploySecret, site.AutoDeploySecret)
 	data.AutoDeployCommand = firstNonEmpty(data.AutoDeployCommand, site.AutoDeployCommand)
 	data.AutoDeployNotifyEmail = firstNonEmpty(data.AutoDeployNotifyEmail, site.AutoDeployNotifyEmail)
-	data.AutoDeployWebhookURL = buildAutoDeployWebhookURL(a.cfg.BaseURL, site.Name, data.AutoDeploySecret)
+	data.AutoDeployWebhookURL = buildAutoDeployWebhookURL(requestExternalBaseURL(r, a.cfg.BaseURL), site.Name, data.AutoDeploySecret)
 	data.AutoDeployWebhookAuthHint = autoDeployWebhookAuthHint()
 	if len(releases) > 0 {
 		data.LatestDeploymentRelease = releases[0]
