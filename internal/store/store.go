@@ -102,7 +102,112 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("ensure nginx_config_revisions table: %w", err)
 	}
 
+	if err := s.ensurePanelUsersTOTPColumns(ctx); err != nil {
+		return fmt.Errorf("ensure panel_users totp columns: %w", err)
+	}
+
+	if err := s.ensurePanelUsersRecoveryColumns(ctx); err != nil {
+		return fmt.Errorf("ensure panel_users recovery columns: %w", err)
+	}
+
+	if err := s.ensurePanelUserPasskeysTable(ctx); err != nil {
+		return fmt.Errorf("ensure panel_user_passkeys table: %w", err)
+	}
+
 	return nil
+}
+
+func (s *Store) ensurePanelUsersTOTPColumns(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	columns := []struct {
+		name      string
+		statement string
+	}{
+		{name: "totp_enabled", statement: `ALTER TABLE panel_users ADD COLUMN totp_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER enabled`},
+		{name: "totp_secret", statement: `ALTER TABLE panel_users ADD COLUMN totp_secret VARCHAR(128) NOT NULL DEFAULT '' AFTER totp_enabled`},
+		{name: "totp_enabled_at", statement: `ALTER TABLE panel_users ADD COLUMN totp_enabled_at DATETIME NULL AFTER totp_secret`},
+	}
+	for _, column := range columns {
+		var count int
+		err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM information_schema.columns
+			WHERE table_schema = DATABASE()
+			  AND table_name = 'panel_users'
+			  AND column_name = ?
+		`, column.name).Scan(&count)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.statement); err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensurePanelUsersRecoveryColumns(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	columns := []struct {
+		name      string
+		statement string
+	}{
+		{name: "recovery_codes_json", statement: `ALTER TABLE panel_users ADD COLUMN recovery_codes_json MEDIUMTEXT NOT NULL AFTER totp_enabled_at`},
+		{name: "recovery_generated_at", statement: `ALTER TABLE panel_users ADD COLUMN recovery_generated_at DATETIME NULL AFTER recovery_codes_json`},
+	}
+	for _, column := range columns {
+		var count int
+		err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM information_schema.columns
+			WHERE table_schema = DATABASE()
+			  AND table_name = 'panel_users'
+			  AND column_name = ?
+		`, column.name).Scan(&count)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.statement); err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensurePanelUserPasskeysTable(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS panel_user_passkeys (
+			id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			linux_user VARCHAR(191) NOT NULL,
+			credential_id VARCHAR(512) NOT NULL,
+			label VARCHAR(191) NOT NULL DEFAULT '',
+			public_key_spki TEXT NOT NULL,
+			sign_count BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_panel_user_passkeys_credential_id (credential_id),
+			INDEX idx_panel_user_passkeys_linux_user (linux_user)
+		)`)
+	return err
 }
 
 func (s *Store) ensureManagedSitesUpstreamColumn(ctx context.Context) error {

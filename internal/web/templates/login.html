@@ -11,14 +11,38 @@
             </div>
         </div>
         <div class="login-card-body">
-            <p class="login-subtitle">Use your Ubuntu system account credentials to sign in via PAM. The bootstrap account is available as an emergency fallback.</p>
+            <p class="login-subtitle">Use your Ubuntu system account credentials to sign in via PAM. If enabled on your account, a second TOTP step compatible with Apple Passwords will be requested after password verification.</p>
             {{if .RequestError}}
             <div class="alert" style="margin-bottom: 16px;">{{.RequestError}}</div>
             {{end}}
+            {{if .SuccessMessage}}
+            <div class="alert success" style="margin-bottom: 16px;">{{.SuccessMessage}}</div>
+            {{end}}
+            {{if .LoginRequiresTOTP}}
+            <form method="post" class="login-form">
+                <input type="hidden" name="login_action" value="verify_totp">
+                <label>
+                    <span>Username</span>
+                    <input type="text" value="{{.LoginUsername}}" autocomplete="username" readonly>
+                </label>
+                <label>
+                    <span>Verification code</span>
+                    <input type="text" name="totp_code" value="{{.TOTPCode}}" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
+                </label>
+                <label>
+                    <span>Or recovery code</span>
+                    <input type="text" name="recovery_code" value="{{.RecoveryCode}}" autocomplete="one-time-code" placeholder="ABCDE-FGHIJ">
+                </label>
+                <button type="submit">
+                    <i class="bi bi-shield-lock"></i> Verify and sign in
+                </button>
+            </form>
+            <p class="login-subtitle" style="margin-top:16px;">Open Apple Passwords or your authenticator app and enter the current 6-digit code.</p>
+            {{else}}
             <form method="post" class="login-form">
                 <label>
                     <span>Username</span>
-                    <input type="text" name="username" autocomplete="username" placeholder="e.g. ubuntu" required>
+                    <input type="text" id="login-username" name="username" value="{{.LoginUsername}}" autocomplete="username webauthn" placeholder="e.g. ubuntu" required>
                 </label>
                 <label>
                     <span>Password</span>
@@ -27,7 +51,11 @@
                 <button type="submit">
                     <i class="bi bi-box-arrow-in-right"></i> Sign in
                 </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="passkey-login-button">
+                    <i class="bi bi-key"></i> Use passkey
+                </button>
             </form>
+            {{end}}
         </div>
     </div>
 </section>

@@ -36,6 +36,8 @@ type App struct {
 	helper    *system.HelperClient
 	auth      auth.Authenticator
 	sessions  *auth.SessionManager
+	pendingLogins *auth.PendingLoginManager
+	webauthnChallenges *auth.WebAuthnChallengeManager
 	router    *http.ServeMux
 	staticFS  http.Handler
 }
@@ -73,6 +75,19 @@ type TemplateData struct {
 	AuthProvider   string
 	RequestError   string
 	SuccessMessage string
+	LoginUsername  string
+	LoginRequiresTOTP bool
+	TOTPCode       string
+	TOTPEnabled    bool
+	TOTPSetupPending bool
+	TOTPSetupSecret string
+	TOTPProvisioningURI string
+	RecoveryCode string
+	RecoveryCodes []string
+	RecoveryCodesRemaining int
+	Passkeys []store.PanelUserPasskey
+	PasskeyLabel string
+	PasskeyError string
 	LinuxUsers     []system.LinuxUser
 	DatabaseAccess []system.DatabaseAccess
 	DatabaseDetails system.DatabaseDetails
@@ -193,6 +208,8 @@ func New(cfg config.Config, logger *slog.Logger, dataStore *store.Store, metrics
 		helper:   helperClient,
 		auth:     authenticator,
 		sessions: sessions,
+		pendingLogins: auth.NewPendingLoginManager(5 * time.Minute),
+		webauthnChallenges: auth.NewWebAuthnChallengeManager(5 * time.Minute),
 		router:   http.NewServeMux(),
 		staticFS: http.StripPrefix("/static/", http.FileServer(http.FS(staticRoot))),
 	}
@@ -209,6 +226,8 @@ func (a *App) registerRoutes() {
 	a.router.Handle("/static/", a.staticFS)
 	a.router.HandleFunc("/healthz", a.handleHealthz)
 	a.router.HandleFunc("/login", a.handleLogin)
+	a.router.HandleFunc("/login/passkey/begin", a.handlePasskeyLoginBegin)
+	a.router.HandleFunc("/login/passkey/finish", a.handlePasskeyLoginFinish)
 	a.router.HandleFunc("/logout", a.handleLogout)
 	a.router.HandleFunc("/", a.handleDashboard)
 	a.router.HandleFunc("/users", a.handleUsers)
@@ -219,6 +238,8 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/sites/details/runtime-stream", a.handleSiteRuntimeStream)
 	a.router.HandleFunc("/webhooks/site-deploy", a.handleSiteDeployWebhook)
 	a.router.HandleFunc("/settings", a.handleSettings)
+	a.router.HandleFunc("/settings/passkeys/begin", a.handlePasskeyRegisterBegin)
+	a.router.HandleFunc("/settings/passkeys/finish", a.handlePasskeyRegisterFinish)
 	a.router.HandleFunc("/php", a.handlePHP)
 	a.router.HandleFunc("/deploys", a.handleDeploys)
 	a.router.HandleFunc("/processes", a.handleProcesses)

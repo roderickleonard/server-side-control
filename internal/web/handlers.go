@@ -40,9 +40,14 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
-			Title: "Login",
-		})
+		data := TemplateData{Title: "Login"}
+		if pendingLogin, err := a.currentPendingLogin(r); err == nil {
+			data.LoginRequiresTOTP = true
+			data.LoginUsername = pendingLogin.Identity.Username
+		} else {
+			a.clearPendingLoginCookie(w)
+		}
+		a.render(r.Context(), w, r.URL.Path, "login.html", data)
 		return
 	}
 
@@ -59,7 +64,91 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username := r.FormValue("username")
+	if r.FormValue("login_action") == "verify_totp" {
+		pendingLogin, err := a.currentPendingLogin(r)
+		if err != nil {
+			a.clearPendingLoginCookie(w)
+			a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
+				Title:        "Login",
+				RequestError: "Two-step verification step expired. Sign in again.",
+			})
+			return
+		}
+
+		data := TemplateData{
+			Title:             "Login",
+			LoginRequiresTOTP: true,
+			LoginUsername:     pendingLogin.Identity.Username,
+			TOTPCode:          strings.TrimSpace(r.FormValue("totp_code")),
+			RecoveryCode:      strings.TrimSpace(r.FormValue("recovery_code")),
+		}
+		security, securityErr := a.store.GetPanelUserSecurity(r.Context(), pendingLogin.Identity.Username)
+		if securityErr != nil {
+			data.RequestError = "Two-step verification status could not be checked: " + securityErr.Error()
+			a.render(r.Context(), w, r.URL.Path, "login.html", data)
+			return
+		}
+		if !security.TOTPEnabled || strings.TrimSpace(security.TOTPSecret) == "" {
+			a.pendingLogins.Delete(r.Context(), pendingLogin.ID)
+			a.clearPendingLoginCookie(w)
+			data.LoginRequiresTOTP = false
+			data.LoginUsername = ""
+			data.TOTPCode = ""
+			data.RequestError = "Two-step verification is no longer enabled for this account. Sign in again."
+			a.render(r.Context(), w, r.URL.Path, "login.html", data)
+			return
+		}
+		verifiedWithRecoveryCode := false
+		if data.RecoveryCode != "" {
+			recoveryHash := auth.HashRecoveryCode(data.RecoveryCode)
+			remainingHashes := make([]string, 0, len(security.RecoveryCodes))
+			matched := false
+			for _, storedHash := range security.RecoveryCodes {
+				if !matched && strings.TrimSpace(storedHash) == recoveryHash {
+					matched = true
+					continue
+				}
+				remainingHashes = append(remainingHashes, storedHash)
+			}
+			if !matched {
+				a.recordAudit(r.Context(), "auth.login.recovery", pendingLogin.Identity.Username, "failure", map[string]any{"provider": pendingLogin.Identity.AuthProvider})
+				data.RequestError = "Recovery code is invalid."
+				a.render(r.Context(), w, r.URL.Path, "login.html", data)
+				return
+			}
+			if err := a.store.SavePanelUserRecoveryCodes(r.Context(), pendingLogin.Identity.Username, remainingHashes); err != nil {
+				data.RequestError = "Recovery code state could not be updated: " + err.Error()
+				a.render(r.Context(), w, r.URL.Path, "login.html", data)
+				return
+			}
+			verifiedWithRecoveryCode = true
+		} else if !auth.ValidateTOTP(security.TOTPSecret, data.TOTPCode, time.Now()) {
+			a.recordAudit(r.Context(), "auth.login.2fa", pendingLogin.Identity.Username, "failure", map[string]any{"provider": pendingLogin.Identity.AuthProvider})
+			data.RequestError = "Verification code is invalid."
+			a.render(r.Context(), w, r.URL.Path, "login.html", data)
+			return
+		}
+
+		session, err := a.sessions.Create(r.Context(), pendingLogin.Identity, a.clientAddress(r))
+		if err != nil {
+			http.Error(w, "session error", http.StatusInternalServerError)
+			return
+		}
+		_ = a.store.TouchPanelUserLastLogin(r.Context(), pendingLogin.Identity.Username)
+		a.pendingLogins.Delete(r.Context(), pendingLogin.ID)
+		a.clearPendingLoginCookie(w)
+		ctx := auth.ContextWithIdentity(r.Context(), pendingLogin.Identity)
+		provider := pendingLogin.Identity.AuthProvider + "+totp"
+		if verifiedWithRecoveryCode {
+			provider = pendingLogin.Identity.AuthProvider + "+recovery"
+		}
+		a.recordAudit(ctx, "auth.login", pendingLogin.Identity.Username, "success", map[string]any{"provider": provider})
+		a.setSessionCookie(w, r, session)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
 	identity, err := a.auth.Authenticate(r.Context(), username, password)
 	if err != nil {
@@ -75,12 +164,38 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	security, securityErr := a.store.GetPanelUserSecurity(r.Context(), identity.Username)
+	if securityErr != nil {
+		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
+			Title:        "Login",
+			RequestError: "Two-step verification status could not be loaded: " + securityErr.Error(),
+		})
+		return
+	}
+	if security.TOTPEnabled && strings.TrimSpace(security.TOTPSecret) != "" {
+		pendingLogin, err := a.pendingLogins.Create(r.Context(), *identity, a.clientAddress(r))
+		if err != nil {
+			http.Error(w, "login challenge error", http.StatusInternalServerError)
+			return
+		}
+		a.setPendingLoginCookie(w, r, pendingLogin)
+		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
+			Title:             "Login",
+			SuccessMessage:    "Password accepted. Enter the 6-digit verification code from Apple Passwords or another authenticator app.",
+			LoginRequiresTOTP: true,
+			LoginUsername:     identity.Username,
+		})
+		return
+	}
+
 	session, err := a.sessions.Create(r.Context(), *identity, a.clientAddress(r))
 	if err != nil {
 		http.Error(w, "session error", http.StatusInternalServerError)
 		return
 	}
 
+	_ = a.store.TouchPanelUserLastLogin(r.Context(), identity.Username)
+	a.clearPendingLoginCookie(w)
 	ctx := auth.ContextWithIdentity(r.Context(), *identity)
 	a.recordAudit(ctx, "auth.login", identity.Username, "success", map[string]any{"provider": identity.AuthProvider})
 	a.setSessionCookie(w, r, session)
@@ -88,6 +203,10 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if pendingLogin, err := a.currentPendingLogin(r); err == nil {
+		a.pendingLogins.Delete(r.Context(), pendingLogin.ID)
+	}
+	a.clearPendingLoginCookie(w)
 	a.recordAudit(r.Context(), "auth.logout", "session", "success", nil)
 	if cookie, err := r.Cookie(a.cfg.SessionCookieName); err == nil {
 		a.sessions.Delete(r.Context(), cookie.Value)
@@ -112,6 +231,7 @@ func (a *App) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
+	identity, _ := auth.IdentityFromContext(r.Context())
 	data := TemplateData{
 		Title:           "Settings",
 		DatabaseStatus:  a.databaseStatus(r.Context()),
@@ -134,6 +254,23 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if data.PanelDomain != "" {
 		_, _ = a.helper.Call(r.Context(), "panel.inspect_tls", map[string]string{"domain": data.PanelDomain}, &data.PanelTLSStatus)
+	}
+	security, securityErr := a.store.GetPanelUserSecurity(r.Context(), identity.Username)
+	if securityErr == nil {
+		data.TOTPEnabled = security.TOTPEnabled
+		data.TOTPSetupSecret = strings.TrimSpace(security.TOTPSecret)
+		data.TOTPSetupPending = data.TOTPSetupSecret != "" && !security.TOTPEnabled
+		data.RecoveryCodesRemaining = len(security.RecoveryCodes)
+		if data.TOTPSetupSecret != "" {
+			data.TOTPProvisioningURI = auth.BuildTOTPProvisioningURI(a.cfg.AppName, identity.Username, data.TOTPSetupSecret)
+		}
+	} else {
+		data.RequestError = "Login security status could not be loaded: " + securityErr.Error()
+	}
+	if passkeys, err := a.store.ListPanelUserPasskeys(r.Context(), identity.Username); err == nil {
+		data.Passkeys = passkeys
+	} else if data.RequestError == "" {
+		data.RequestError = "Passkey list could not be loaded: " + err.Error()
 	}
 
 	if r.Method == http.MethodGet {
@@ -161,11 +298,101 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	data.SMTPPassword = r.FormValue("smtp_password")
 	data.SMTPFrom = strings.TrimSpace(r.FormValue("smtp_from"))
 	data.SMTPTo = strings.TrimSpace(r.FormValue("smtp_to"))
+	data.TOTPCode = strings.TrimSpace(r.FormValue("totp_code"))
+	data.PasskeyLabel = strings.TrimSpace(r.FormValue("passkey_label"))
 	if data.PanelDomain == "" {
 		data.PanelDomain = panelDomainFromBaseURL(data.PanelBaseURL)
 	}
 
 	switch r.FormValue("settings_action") {
+	case "start_totp_setup":
+		secret, err := auth.GenerateTOTPSecret()
+		if err != nil {
+			data.RequestError = "Two-step verification secret could not be generated: " + err.Error()
+			break
+		}
+		if err := a.store.SavePanelUserTOTP(r.Context(), identity.Username, secret, false); err != nil {
+			data.RequestError = "Two-step verification setup could not be saved: " + err.Error()
+			break
+		}
+		data.TOTPEnabled = false
+		data.TOTPSetupPending = true
+		data.TOTPSetupSecret = secret
+		data.TOTPProvisioningURI = auth.BuildTOTPProvisioningURI(a.cfg.AppName, identity.Username, secret)
+		data.SuccessMessage = "Two-step verification setup created. Add it to Apple Passwords or another TOTP app, then confirm with a code below."
+		a.recordAudit(r.Context(), "panel.totp.setup", identity.Username, "success", nil)
+	case "enable_totp":
+		if strings.TrimSpace(security.TOTPSecret) == "" {
+			data.RequestError = "Start two-step verification setup first."
+			break
+		}
+		if !auth.ValidateTOTP(security.TOTPSecret, data.TOTPCode, time.Now()) {
+			data.RequestError = "Verification code is invalid."
+			break
+		}
+		if err := a.store.SavePanelUserTOTP(r.Context(), identity.Username, security.TOTPSecret, true); err != nil {
+			data.RequestError = "Two-step verification could not be enabled: " + err.Error()
+			break
+		}
+		data.TOTPEnabled = true
+		data.TOTPSetupPending = false
+		data.TOTPSetupSecret = strings.TrimSpace(security.TOTPSecret)
+		data.TOTPProvisioningURI = auth.BuildTOTPProvisioningURI(a.cfg.AppName, identity.Username, data.TOTPSetupSecret)
+		data.TOTPCode = ""
+		data.SuccessMessage = "Two-step verification enabled successfully."
+		a.recordAudit(r.Context(), "panel.totp.enable", identity.Username, "success", nil)
+	case "generate_recovery_codes":
+		if !security.TOTPEnabled || strings.TrimSpace(security.TOTPSecret) == "" {
+			data.RequestError = "Enable two-step verification before generating recovery codes."
+			break
+		}
+		plainCodes, hashes, err := auth.GenerateRecoveryCodes(8)
+		if err != nil {
+			data.RequestError = "Recovery codes could not be generated: " + err.Error()
+			break
+		}
+		if err := a.store.SavePanelUserRecoveryCodes(r.Context(), identity.Username, hashes); err != nil {
+			data.RequestError = "Recovery codes could not be saved: " + err.Error()
+			break
+		}
+		data.RecoveryCodes = plainCodes
+		data.RecoveryCodesRemaining = len(hashes)
+		data.SuccessMessage = "Recovery codes generated. Store them now; they are shown only once."
+		a.recordAudit(r.Context(), "panel.totp.recovery.generate", identity.Username, "success", map[string]any{"count": len(hashes)})
+	case "disable_totp":
+		if !security.TOTPEnabled || strings.TrimSpace(security.TOTPSecret) == "" {
+			data.RequestError = "Two-step verification is not enabled for this account."
+			break
+		}
+		if !auth.ValidateTOTP(security.TOTPSecret, data.TOTPCode, time.Now()) {
+			data.RequestError = "Verification code is invalid."
+			break
+		}
+		if err := a.store.DisablePanelUserTOTP(r.Context(), identity.Username); err != nil {
+			data.RequestError = "Two-step verification could not be disabled: " + err.Error()
+			break
+		}
+		data.TOTPEnabled = false
+		data.TOTPSetupPending = false
+		data.TOTPSetupSecret = ""
+		data.TOTPProvisioningURI = ""
+		data.TOTPCode = ""
+		data.RecoveryCodes = nil
+		data.RecoveryCodesRemaining = 0
+		data.SuccessMessage = "Two-step verification disabled successfully."
+		a.recordAudit(r.Context(), "panel.totp.disable", identity.Username, "success", nil)
+	case "delete_passkey":
+		passkeyID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("passkey_id")), 10, 64)
+		if err != nil || passkeyID <= 0 {
+			data.RequestError = "Passkey id is invalid."
+			break
+		}
+		if err := a.store.DeletePanelUserPasskey(r.Context(), identity.Username, passkeyID); err != nil {
+			data.RequestError = "Passkey could not be deleted: " + err.Error()
+			break
+		}
+		data.SuccessMessage = "Passkey removed successfully."
+		a.recordAudit(r.Context(), "panel.passkey.delete", identity.Username, "success", map[string]any{"passkey_id": passkeyID})
 	case "save_panel_settings":
 		if data.PanelListenAddr == "" {
 			data.RequestError = "Panel listen address is required."
@@ -257,7 +484,200 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if data.PanelDomain != "" {
 		_, _ = a.helper.Call(r.Context(), "panel.inspect_tls", map[string]string{"domain": data.PanelDomain}, &data.PanelTLSStatus)
 	}
+	if refreshedSecurity, err := a.store.GetPanelUserSecurity(r.Context(), identity.Username); err == nil {
+		data.TOTPEnabled = refreshedSecurity.TOTPEnabled
+		data.TOTPSetupSecret = strings.TrimSpace(refreshedSecurity.TOTPSecret)
+		data.TOTPSetupPending = data.TOTPSetupSecret != "" && !refreshedSecurity.TOTPEnabled
+		data.RecoveryCodesRemaining = len(refreshedSecurity.RecoveryCodes)
+		if data.TOTPSetupSecret != "" {
+			data.TOTPProvisioningURI = auth.BuildTOTPProvisioningURI(a.cfg.AppName, identity.Username, data.TOTPSetupSecret)
+		}
+	}
+	if passkeys, err := a.store.ListPanelUserPasskeys(r.Context(), identity.Username); err == nil {
+		data.Passkeys = passkeys
+	}
 	a.render(r.Context(), w, r.URL.Path, "settings.html", data)
+}
+
+func (a *App) completeAuthenticatedLogin(w http.ResponseWriter, r *http.Request, identity auth.Identity, provider string) bool {
+	session, err := a.sessions.Create(r.Context(), identity, a.clientAddress(r))
+	if err != nil {
+		http.Error(w, "session error", http.StatusInternalServerError)
+		return false
+	}
+	_ = a.store.TouchPanelUserLastLogin(r.Context(), identity.Username)
+	a.clearPendingLoginCookie(w)
+	ctx := auth.ContextWithIdentity(r.Context(), identity)
+	a.recordAudit(ctx, "auth.login", identity.Username, "success", map[string]any{"provider": provider})
+	a.setSessionCookie(w, r, session)
+	return true
+}
+
+func (a *App) handlePasskeyLoginBegin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid form data"})
+		return
+	}
+	username := strings.TrimSpace(r.FormValue("username"))
+	if username == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "username is required"})
+		return
+	}
+	passkeys, err := a.store.ListPanelUserPasskeys(r.Context(), username)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "passkeys could not be loaded"})
+		return
+	}
+	if len(passkeys) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no passkey registered for this account"})
+		return
+	}
+	challenge, err := a.webauthnChallenges.Create(r.Context(), username, "login", a.clientAddress(r))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "passkey challenge could not be created"})
+		return
+	}
+	allowCredentials := make([]map[string]string, 0, len(passkeys))
+	for _, passkey := range passkeys {
+		allowCredentials = append(allowCredentials, map[string]string{"type": "public-key", "id": passkey.CredentialID})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"challenge_id": challenge.ID,
+		"publicKey": map[string]any{
+			"challenge":        challenge.Challenge,
+			"rpId":             strings.Split(a.requestHost(r), ":")[0],
+			"allowCredentials": allowCredentials,
+			"userVerification": "preferred",
+			"timeout":          60000,
+		},
+	})
+}
+
+func (a *App) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var payload struct {
+		ChallengeID string `json:"challenge_id"`
+		CredentialID string `json:"credential_id"`
+		ClientDataJSON string `json:"client_data_json"`
+		AuthenticatorData string `json:"authenticator_data"`
+		Signature string `json:"signature"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+		return
+	}
+	challenge, err := a.webauthnChallenges.Get(r.Context(), payload.ChallengeID)
+	if err != nil || challenge.Operation != "login" || challenge.RemoteAddr != a.clientAddress(r) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "passkey challenge expired"})
+		return
+	}
+	passkey, err := a.store.GetPanelUserPasskeyByCredentialID(r.Context(), payload.CredentialID)
+	if err != nil || passkey.LinuxUser != challenge.Username {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "passkey not found"})
+		return
+	}
+	rpID := strings.Split(a.requestHost(r), ":")[0]
+	signCount, err := auth.VerifyWebAuthnAssertion(passkey.PublicKeySPKI, rpID, payload.ClientDataJSON, payload.AuthenticatorData, payload.Signature, challenge.Challenge, a.requestOrigin(r))
+	if err != nil {
+		a.recordAudit(r.Context(), "auth.login.passkey", challenge.Username, "failure", map[string]any{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "passkey verification failed"})
+		return
+	}
+	if signCount > passkey.SignCount {
+		_ = a.store.UpdatePanelUserPasskeySignCount(r.Context(), passkey.ID, signCount)
+	}
+	identity := auth.Identity{Username: challenge.Username, DisplayName: challenge.Username, AuthProvider: "passkey"}
+	a.webauthnChallenges.Delete(r.Context(), challenge.ID)
+	if !a.completeAuthenticatedLogin(w, r, identity, "passkey") {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"redirect": "/"})
+}
+
+func (a *App) handlePasskeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	identity, ok := auth.IdentityFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		return
+	}
+	challenge, err := a.webauthnChallenges.Create(r.Context(), identity.Username, "register", a.clientAddress(r))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "passkey challenge could not be created"})
+		return
+	}
+	passkeys, _ := a.store.ListPanelUserPasskeys(r.Context(), identity.Username)
+	excludeCredentials := make([]map[string]string, 0, len(passkeys))
+	for _, passkey := range passkeys {
+		excludeCredentials = append(excludeCredentials, map[string]string{"type": "public-key", "id": passkey.CredentialID})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"challenge_id": challenge.ID,
+		"publicKey": map[string]any{
+			"challenge": challenge.Challenge,
+			"rp": map[string]string{"name": a.cfg.AppName, "id": strings.Split(a.requestHost(r), ":")[0]},
+			"user": map[string]string{"id": auth.Base64URLEncode([]byte(identity.Username)), "name": identity.Username, "displayName": firstNonEmpty(identity.DisplayName, identity.Username)},
+			"pubKeyCredParams": []map[string]any{{"type": "public-key", "alg": -7}},
+			"authenticatorSelection": map[string]string{"residentKey": "preferred", "userVerification": "preferred"},
+			"excludeCredentials": excludeCredentials,
+			"attestation": "none",
+			"timeout": 60000,
+		},
+	})
+}
+
+func (a *App) handlePasskeyRegisterFinish(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	identity, ok := auth.IdentityFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		return
+	}
+	var payload struct {
+		ChallengeID string `json:"challenge_id"`
+		CredentialID string `json:"credential_id"`
+		ClientDataJSON string `json:"client_data_json"`
+		PublicKeySPKI string `json:"public_key_spki"`
+		Label string `json:"label"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+		return
+	}
+	challenge, err := a.webauthnChallenges.Get(r.Context(), payload.ChallengeID)
+	if err != nil || challenge.Operation != "register" || challenge.Username != identity.Username || challenge.RemoteAddr != a.clientAddress(r) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "passkey challenge expired"})
+		return
+	}
+	clientData, _, err := auth.ParseClientData(payload.ClientDataJSON)
+	if err != nil || clientData.Type != "webauthn.create" || clientData.Challenge != challenge.Challenge || strings.TrimSpace(clientData.Origin) != a.requestOrigin(r) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "passkey registration payload is invalid"})
+		return
+	}
+	if strings.TrimSpace(payload.PublicKeySPKI) == "" || strings.TrimSpace(payload.CredentialID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "passkey public key is missing"})
+		return
+	}
+	if err := a.store.SavePanelUserPasskey(r.Context(), identity.Username, payload.CredentialID, payload.Label, payload.PublicKeySPKI, 0); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "passkey could not be saved"})
+		return
+	}
+	a.webauthnChallenges.Delete(r.Context(), challenge.ID)
+		a.recordAudit(r.Context(), "panel.passkey.register", identity.Username, "success", nil)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func panelDomainFromBaseURL(rawURL string) string {

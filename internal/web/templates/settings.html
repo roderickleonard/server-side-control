@@ -124,6 +124,166 @@
 
 <section class="grid">
     <article class="panel">
+        <h3><i class="bi bi-shield-check" style="color:var(--accent);margin-right:6px;"></i>Login security</h3>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Current user</strong><span>{{.CurrentUser}}</span></div>
+            <div><strong>Two-step verification</strong><span>{{if .TOTPEnabled}}Enabled{{else if .TOTPSetupPending}}Setup pending{{else}}Disabled{{end}}</span></div>
+            <div><strong>Compatibility</strong><span>Apple Passwords, 1Password, Google Authenticator</span></div>
+        </div>
+        {{if or .TOTPEnabled .TOTPSetupPending}}
+        <div style="margin-top:16px;">
+            <div id="totp-qr" data-otpauth-uri="{{.TOTPProvisioningURI}}" style="margin-bottom:16px;"></div>
+            <label>
+                <span>Setup key</span>
+                <input type="text" value="{{.TOTPSetupSecret}}" readonly>
+            </label>
+            <label style="margin-top:12px;display:block;">
+                <span>Provisioning URI</span>
+                <textarea rows="3" readonly>{{.TOTPProvisioningURI}}</textarea>
+            </label>
+            <p class="muted details-note">Apple Passwords uses standard TOTP verification codes. If QR import is not available, add a verification code manually with this setup key.</p>
+        </div>
+        {{end}}
+        {{if not .TOTPEnabled}}
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;">
+            <input type="hidden" name="settings_action" value="start_totp_setup">
+            <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
+            <input type="hidden" name="panel_base_url" value="{{.PanelBaseURL}}">
+            <input type="hidden" name="panel_service_name" value="{{.PanelServiceName}}">
+            <input type="hidden" name="smtp_host" value="{{.SMTPHost}}">
+            <input type="hidden" name="smtp_port" value="{{.SMTPPort}}">
+            <input type="hidden" name="smtp_username" value="{{.SMTPUsername}}">
+            <input type="hidden" name="smtp_password" value="{{.SMTPPassword}}">
+            <input type="hidden" name="smtp_from" value="{{.SMTPFrom}}">
+            <input type="hidden" name="smtp_to" value="{{.SMTPTo}}">
+            <div class="form-actions">
+                <button type="submit">{{if .TOTPSetupPending}}Regenerate setup key{{else}}Start two-step verification{{end}}</button>
+            </div>
+        </form>
+        {{end}}
+        {{if .TOTPSetupPending}}
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;">
+            <input type="hidden" name="settings_action" value="enable_totp">
+            <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
+            <input type="hidden" name="panel_base_url" value="{{.PanelBaseURL}}">
+            <input type="hidden" name="panel_service_name" value="{{.PanelServiceName}}">
+            <input type="hidden" name="smtp_host" value="{{.SMTPHost}}">
+            <input type="hidden" name="smtp_port" value="{{.SMTPPort}}">
+            <input type="hidden" name="smtp_username" value="{{.SMTPUsername}}">
+            <input type="hidden" name="smtp_password" value="{{.SMTPPassword}}">
+            <input type="hidden" name="smtp_from" value="{{.SMTPFrom}}">
+            <input type="hidden" name="smtp_to" value="{{.SMTPTo}}">
+            <label>
+                <span>Confirm with a 6-digit code</span>
+                <input type="text" name="totp_code" value="{{.TOTPCode}}" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" required>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Enable two-step verification</button>
+            </div>
+        </form>
+        {{end}}
+        {{if .TOTPEnabled}}
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;">
+            <input type="hidden" name="settings_action" value="generate_recovery_codes">
+            <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
+            <input type="hidden" name="panel_base_url" value="{{.PanelBaseURL}}">
+            <input type="hidden" name="panel_service_name" value="{{.PanelServiceName}}">
+            <input type="hidden" name="smtp_host" value="{{.SMTPHost}}">
+            <input type="hidden" name="smtp_port" value="{{.SMTPPort}}">
+            <input type="hidden" name="smtp_username" value="{{.SMTPUsername}}">
+            <input type="hidden" name="smtp_password" value="{{.SMTPPassword}}">
+            <input type="hidden" name="smtp_from" value="{{.SMTPFrom}}">
+            <input type="hidden" name="smtp_to" value="{{.SMTPTo}}">
+            <div class="form-actions">
+                <button type="submit">Generate recovery codes</button>
+            </div>
+        </form>
+        <p class="muted details-note">Remaining recovery codes: {{.RecoveryCodesRemaining}}</p>
+        {{end}}
+        {{if .RecoveryCodes}}
+        <div class="panel" style="margin-top:16px;padding:16px;border:1px solid var(--border);">
+            <h4>Recovery codes</h4>
+            <p class="muted details-note">Each code works once. Store them outside the panel now; they will not be shown again.</p>
+            <pre class="command-output">{{range .RecoveryCodes}}{{.}}
+{{end}}</pre>
+        </div>
+        {{end}}
+        {{if .TOTPEnabled}}
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;">
+            <input type="hidden" name="settings_action" value="disable_totp">
+            <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
+            <input type="hidden" name="panel_base_url" value="{{.PanelBaseURL}}">
+            <input type="hidden" name="panel_service_name" value="{{.PanelServiceName}}">
+            <input type="hidden" name="smtp_host" value="{{.SMTPHost}}">
+            <input type="hidden" name="smtp_port" value="{{.SMTPPort}}">
+            <input type="hidden" name="smtp_username" value="{{.SMTPUsername}}">
+            <input type="hidden" name="smtp_password" value="{{.SMTPPassword}}">
+            <input type="hidden" name="smtp_from" value="{{.SMTPFrom}}">
+            <input type="hidden" name="smtp_to" value="{{.SMTPTo}}">
+            <label>
+                <span>Current verification code</span>
+                <input type="text" name="totp_code" value="{{.TOTPCode}}" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" required>
+            </label>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Disable two-step verification</button>
+            </div>
+        </form>
+        {{end}}
+        <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);"></div>
+        <h4>Passkeys</h4>
+        <p class="muted details-note">Register a passkey to sign in with Touch ID, Face ID, Safari passkeys, or Apple Passwords without entering your account password.</p>
+        <div class="form-grid two-up" style="margin-top:12px;">
+            <label>
+                <span>New passkey label</span>
+                <input type="text" id="passkey-label" name="passkey_label" value="{{.PasskeyLabel}}" placeholder="My MacBook passkey">
+            </label>
+            <div class="form-actions" style="align-items:end;">
+                <button type="button" id="passkey-register-button">Register passkey</button>
+            </div>
+        </div>
+        {{if .Passkeys}}
+        <div class="table-card" style="margin-top:16px;">
+            <table class="table table-theme">
+                <thead>
+                    <tr>
+                        <th>Label</th>
+                        <th>Credential</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Passkeys}}
+                    <tr>
+                        <td>{{.Label}}</td>
+                        <td><code>{{.CredentialID}}</code></td>
+                        <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+                        <td>
+                            <form method="post" class="inline-form">
+                                <input type="hidden" name="settings_action" value="delete_passkey">
+                                <input type="hidden" name="passkey_id" value="{{.ID}}">
+                                <input type="hidden" name="panel_listen_addr" value="{{$.PanelListenAddr}}">
+                                <input type="hidden" name="panel_base_url" value="{{$.PanelBaseURL}}">
+                                <input type="hidden" name="panel_service_name" value="{{$.PanelServiceName}}">
+                                <input type="hidden" name="smtp_host" value="{{$.SMTPHost}}">
+                                <input type="hidden" name="smtp_port" value="{{$.SMTPPort}}">
+                                <input type="hidden" name="smtp_username" value="{{$.SMTPUsername}}">
+                                <input type="hidden" name="smtp_password" value="{{$.SMTPPassword}}">
+                                <input type="hidden" name="smtp_from" value="{{$.SMTPFrom}}">
+                                <input type="hidden" name="smtp_to" value="{{$.SMTPTo}}">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted details-note" style="margin-top:12px;">No passkeys registered yet.</p>
+        {{end}}
+    </article>
+    <article class="panel">
         <h3><i class="bi bi-file-earmark-text" style="color:var(--muted);margin-right:6px;"></i>Config files</h3>
         <div class="site-delete-summary details-summary">
             <div><strong>Panel env</strong><span>{{.PanelEnvPath}}</span></div>
