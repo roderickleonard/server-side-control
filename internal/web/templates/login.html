@@ -12,6 +12,20 @@
         </div>
         <div class="login-card-body">
             <p class="login-subtitle">Use your Ubuntu system account credentials to sign in via PAM. If enabled on your account, a second TOTP step compatible with Apple Passwords will be requested after password verification.</p>
+            <div class="login-steps" aria-label="Sign in steps">
+                <div class="login-step {{if or (eq .LoginStage "username") (eq .LoginStage "")}}is-active{{else}}is-complete{{end}}">
+                    <span class="login-step-index">1</span>
+                    <span class="login-step-label">Username</span>
+                </div>
+                <div class="login-step {{if eq .LoginStage "passkey"}}is-active{{else if or (eq .LoginStage "password") .LoginRequiresTOTP}}is-complete{{end}}">
+                    <span class="login-step-index">2</span>
+                    <span class="login-step-label">Passkey or password</span>
+                </div>
+                <div class="login-step {{if .LoginRequiresTOTP}}is-active{{end}}">
+                    <span class="login-step-index">3</span>
+                    <span class="login-step-label">Verification</span>
+                </div>
+            </div>
             {{if .RequestError}}
             <div class="alert" style="margin-bottom: 16px;">{{.RequestError}}</div>
             {{end}}
@@ -38,11 +52,50 @@
                 </button>
             </form>
             <p class="login-subtitle" style="margin-top:16px;">Open Apple Passwords or your authenticator app and enter the current 6-digit code.</p>
-            {{else}}
-            <form method="post" class="login-form">
+            {{else if eq .LoginStage "passkey"}}
+            <form method="post" class="login-form" style="margin-bottom:12px;">
+                <input type="hidden" name="login_action" value="choose_username">
                 <label>
                     <span>Username</span>
-                    <input type="text" id="login-username" name="username" value="{{.LoginUsername}}" autocomplete="username webauthn" placeholder="e.g. ubuntu" required>
+                    <input type="text" id="login-username" name="username" value="{{.LoginUsername}}" autocomplete="username webauthn" readonly>
+                </label>
+            </form>
+            <div class="panel" style="padding:14px;border:1px solid var(--border);margin-bottom:12px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                    <div>
+                        <strong>Passkey sign-in</strong>
+                        <p class="muted details-note" style="margin:6px 0 0 0;">If this device supports the saved passkey, the prompt will open automatically. If it fails, use your password below.</p>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="passkey-login-button" data-passkey-autostart="{{if .LoginPasskeyAutostart}}1{{else}}0{{end}}" data-default-label="Try passkey again">
+                        <i class="bi bi-key"></i> Try passkey again
+                    </button>
+                </div>
+                <div id="passkey-login-status" class="login-passkey-status" style="display:none;">
+                    <span class="login-spinner" aria-hidden="true"></span>
+                    <span>Waiting for passkey confirmation on this device...</span>
+                </div>
+                <div id="passkey-login-error" class="alert" style="display:none;margin-top:12px;"></div>
+            </div>
+            <form method="post" class="login-form" id="password-fallback-form" {{if not .LoginPasswordVisible}}style="display:none;"{{end}}>
+                <input type="hidden" name="login_action" value="password_login">
+                <label>
+                    <span>Username</span>
+                    <input type="text" name="username" value="{{.LoginUsername}}" autocomplete="username" readonly>
+                </label>
+                <label>
+                    <span>Password</span>
+                    <input type="password" name="password" autocomplete="current-password" placeholder="••••••••" required>
+                </label>
+                <button type="submit">
+                    <i class="bi bi-box-arrow-in-right"></i> Sign in with password
+                </button>
+            </form>
+            {{else if eq .LoginStage "password"}}
+            <form method="post" class="login-form">
+                <input type="hidden" name="login_action" value="password_login">
+                <label>
+                    <span>Username</span>
+                    <input type="text" id="login-username" name="username" value="{{.LoginUsername}}" autocomplete="username" readonly>
                 </label>
                 <label>
                     <span>Password</span>
@@ -51,8 +104,16 @@
                 <button type="submit">
                     <i class="bi bi-box-arrow-in-right"></i> Sign in
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="passkey-login-button" style="margin-top:10px;">
-                    <i class="bi bi-key"></i> Use passkey
+            </form>
+            {{else}}
+            <form method="post" class="login-form">
+                <input type="hidden" name="login_action" value="choose_username">
+                <label>
+                    <span>Username</span>
+                    <input type="text" id="login-username" name="username" value="{{.LoginUsername}}" autocomplete="username webauthn" placeholder="e.g. ubuntu" required>
+                </label>
+                <button type="submit">
+                    <i class="bi bi-arrow-right"></i> Continue
                 </button>
             </form>
             {{end}}

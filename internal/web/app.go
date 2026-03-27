@@ -76,7 +76,11 @@ type TemplateData struct {
 	RequestError   string
 	SuccessMessage string
 	LoginUsername  string
+	LoginStage     string
 	LoginRequiresTOTP bool
+	LoginPasskeyAvailable bool
+	LoginPasskeyAutostart bool
+	LoginPasswordVisible bool
 	TOTPCode       string
 	TOTPEnabled    bool
 	TOTPSetupPending bool

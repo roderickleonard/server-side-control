@@ -40,7 +40,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		data := TemplateData{Title: "Login"}
+		data := TemplateData{Title: "Login", LoginStage: "username"}
 		if pendingLogin, err := a.currentPendingLogin(r); err == nil {
 			data.LoginRequiresTOTP = true
 			data.LoginUsername = pendingLogin.Identity.Username
@@ -59,6 +59,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
 			Title:        "Login",
+			LoginStage:   "username",
 			RequestError: "The submitted form could not be parsed.",
 		})
 		return
@@ -79,6 +80,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			Title:             "Login",
 			LoginRequiresTOTP: true,
 			LoginUsername:     pendingLogin.Identity.Username,
+			LoginStage:        "totp",
 			TOTPCode:          strings.TrimSpace(r.FormValue("totp_code")),
 			RecoveryCode:      strings.TrimSpace(r.FormValue("recovery_code")),
 		}
@@ -92,6 +94,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			a.pendingLogins.Delete(r.Context(), pendingLogin.ID)
 			a.clearPendingLoginCookie(w)
 			data.LoginRequiresTOTP = false
+			data.LoginStage = "username"
 			data.LoginUsername = ""
 			data.TOTPCode = ""
 			data.RequestError = "Two-step verification is no longer enabled for this account. Sign in again."
@@ -149,6 +152,39 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	username := strings.TrimSpace(r.FormValue("username"))
+	loginAction := strings.TrimSpace(r.FormValue("login_action"))
+	if username == "" {
+		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
+			Title:        "Login",
+			LoginStage:   "username",
+			RequestError: "Username is required.",
+		})
+		return
+	}
+	if loginAction == "choose_username" || (loginAction == "" && strings.TrimSpace(r.FormValue("password")) == "") {
+		passkeys, err := a.store.ListPanelUserPasskeys(r.Context(), username)
+		if err != nil {
+			a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
+				Title:              "Login",
+				LoginStage:         "passkey",
+				LoginUsername:      username,
+				LoginPasswordVisible: true,
+				RequestError:       "Sign-in method could not be prepared. Continue with your password.",
+			})
+			return
+		}
+		data := TemplateData{
+			Title:                "Login",
+			LoginStage:           "passkey",
+			LoginUsername:        username,
+			LoginPasswordVisible: len(passkeys) == 0,
+			LoginPasskeyAvailable: len(passkeys) > 0,
+			LoginPasskeyAutostart: len(passkeys) > 0,
+		}
+		data.SuccessMessage = "If this device can use a saved passkey for this account, the passkey prompt will open automatically. You can always continue with your password."
+			a.render(r.Context(), w, r.URL.Path, "login.html", data)
+		return
+	}
 	password := r.FormValue("password")
 	identity, err := a.auth.Authenticate(r.Context(), username, password)
 	if err != nil {
@@ -158,8 +194,11 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			message = "PAM authentication is not available on this host. Use the bootstrap account until the Ubuntu target environment is ready."
 		}
 		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
-			Title:        "Login",
-			RequestError: message,
+			Title:                "Login",
+			LoginStage:           "password",
+			LoginUsername:        username,
+			LoginPasswordVisible: true,
+			RequestError:         message,
 		})
 		return
 	}
@@ -182,6 +221,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
 			Title:             "Login",
 			SuccessMessage:    "Password accepted. Enter the 6-digit verification code from Apple Passwords or another authenticator app.",
+				LoginStage:        "totp",
 			LoginRequiresTOTP: true,
 			LoginUsername:     identity.Username,
 		})
@@ -533,7 +573,7 @@ func (a *App) handlePasskeyLoginBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(passkeys) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no passkey registered for this account"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Passkey sign-in is not available. Use your password instead."})
 		return
 	}
 	challenge, err := a.webauthnChallenges.Create(r.Context(), username, "login", a.clientAddress(r))

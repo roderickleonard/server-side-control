@@ -123,44 +123,109 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const passkeyLoginButton = document.getElementById("passkey-login-button");
-    passkeyLoginButton?.addEventListener("click", async () => {
+    const passwordFallbackForm = document.getElementById("password-fallback-form");
+    const passkeyLoginError = document.getElementById("passkey-login-error");
+    const passkeyLoginStatus = document.getElementById("passkey-login-status");
+    const setPasskeyLoading = (isLoading) => {
+        if (passkeyLoginButton) {
+            passkeyLoginButton.disabled = isLoading;
+            const defaultLabel = passkeyLoginButton.getAttribute("data-default-label") || "Try passkey again";
+            passkeyLoginButton.innerHTML = isLoading
+                ? '<i class="bi bi-hourglass-split"></i> Waiting for passkey...'
+                : '<i class="bi bi-key"></i> ' + defaultLabel;
+        }
+        if (passkeyLoginStatus) {
+            passkeyLoginStatus.style.display = isLoading ? "flex" : "none";
+        }
+    };
+    const showPasswordFallback = (message) => {
+        setPasskeyLoading(false);
+        if (passwordFallbackForm) {
+            passwordFallbackForm.style.display = "";
+        }
+        if (passkeyLoginError) {
+            if (message) {
+                passkeyLoginError.textContent = message;
+                passkeyLoginError.style.display = "block";
+            } else {
+                passkeyLoginError.style.display = "none";
+            }
+        }
+    };
+
+    const tryPasskeyLogin = async () => {
         const usernameInput = document.getElementById("login-username");
         const username = (usernameInput?.value || "").trim();
-        if (!username || !window.PublicKeyCredential) {
+        if (!username) {
             return;
         }
-        const beginResponse = await fetch("/login/passkey/begin", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-            body: new URLSearchParams({ username }),
-        });
-        const beginPayload = await beginResponse.json();
-        if (!beginResponse.ok) {
-            window.alert(beginPayload.error || "Passkey login could not be started.");
+        if (!window.PublicKeyCredential) {
+            showPasswordFallback("This device or browser does not support passkeys. Use your password instead.");
             return;
         }
-        const credential = await navigator.credentials.get({ publicKey: preparePublicKeyOptions(beginPayload.publicKey) });
+        setPasskeyLoading(true);
+        let beginPayload;
+        try {
+            const beginResponse = await fetch("/login/passkey/begin", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+                body: new URLSearchParams({ username }),
+            });
+            beginPayload = await beginResponse.json();
+            if (!beginResponse.ok) {
+                showPasswordFallback(beginPayload.error || "Passkey sign-in is not available for this account.");
+                return;
+            }
+        } catch {
+            showPasswordFallback("Passkey sign-in could not be started. Use your password instead.");
+            return;
+        }
+
+        let credential;
+        try {
+            credential = await navigator.credentials.get({ publicKey: preparePublicKeyOptions(beginPayload.publicKey) });
+        } catch {
+            showPasswordFallback("Passkey sign-in was cancelled or failed. Use your password instead.");
+            return;
+        }
         if (!credential) {
+            showPasswordFallback("No passkey response was returned. Use your password instead.");
             return;
         }
-        const finishResponse = await fetch("/login/passkey/finish", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                challenge_id: beginPayload.challenge_id,
-                credential_id: credential.id,
-                client_data_json: bytesToBase64Url(credential.response.clientDataJSON),
-                authenticator_data: bytesToBase64Url(credential.response.authenticatorData),
-                signature: bytesToBase64Url(credential.response.signature),
-            }),
-        });
-        const finishPayload = await finishResponse.json();
-        if (!finishResponse.ok) {
-            window.alert(finishPayload.error || "Passkey login failed.");
-            return;
+
+        try {
+            const finishResponse = await fetch("/login/passkey/finish", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    challenge_id: beginPayload.challenge_id,
+                    credential_id: credential.id,
+                    client_data_json: bytesToBase64Url(credential.response.clientDataJSON),
+                    authenticator_data: bytesToBase64Url(credential.response.authenticatorData),
+                    signature: bytesToBase64Url(credential.response.signature),
+                }),
+            });
+            const finishPayload = await finishResponse.json();
+            if (!finishResponse.ok) {
+                showPasswordFallback(finishPayload.error || "Passkey sign-in failed. Use your password instead.");
+                return;
+            }
+            setPasskeyLoading(false);
+            window.location.href = finishPayload.redirect || "/";
+        } catch {
+            showPasswordFallback("Passkey sign-in could not be completed. Use your password instead.");
         }
-        window.location.href = finishPayload.redirect || "/";
+    };
+
+    passkeyLoginButton?.addEventListener("click", async () => {
+        await tryPasskeyLogin();
     });
+
+    if (passkeyLoginButton?.getAttribute("data-passkey-autostart") === "1") {
+        setTimeout(() => {
+            void tryPasskeyLogin();
+        }, 120);
+    }
 
     const passkeyRegisterButton = document.getElementById("passkey-register-button");
     passkeyRegisterButton?.addEventListener("click", async () => {
