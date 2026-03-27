@@ -282,11 +282,20 @@ func siteDetailTabForAction(action string) string {
 		return "runtime"
 	case "enable_tls", "add_subdomain", "delete_subdomain", "enable_subdomain_tls":
 		return "domains"
-	case "assign_database", "assign_linux_user", "edit_env":
+	case "assign_database", "assign_linux_user", "edit_env", "save_nginx_config":
 		return "settings"
 	default:
 		return "overview"
 	}
+}
+
+func isAllowedNginxConfigPath(baseDir string, configPath string) bool {
+	baseDir = filepath.Clean(strings.TrimSpace(baseDir))
+	configPath = filepath.Clean(strings.TrimSpace(configPath))
+	if baseDir == "" || configPath == "" || !filepath.IsAbs(baseDir) || !filepath.IsAbs(configPath) {
+		return false
+	}
+	return configPath == baseDir || strings.HasPrefix(configPath, baseDir+string(os.PathSeparator))
 }
 
 func resolveSiteBrowserPath(rootDir string, requested string) (string, string, error) {
@@ -1499,6 +1508,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		GitCredentialProtocol: firstNonEmpty(strings.TrimSpace(r.FormValue("credential_protocol")), firstNonEmpty(gitAuthStatus.RepositoryProtocol, "https")),
 		GitCredentialHost:   firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
 		GitCredentialUsername: strings.TrimSpace(r.FormValue("credential_username")),
+		NginxConfigContent:  r.FormValue("nginx_config_content"),
 	}
 	if commandID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("runtime_command_id")), 10, 64); err == nil {
 		data.RuntimeCommandID = commandID
@@ -1934,6 +1944,38 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		site.OwnerLinuxUser = newOwner
 		successMessage = "Linux user reassigned to \"" + newOwner + "\"."
 		a.recordAudit(r.Context(), "site.assign_linux_user", site.Name, "success", map[string]any{"owner": newOwner})
+	case "save_nginx_config":
+		if strings.TrimSpace(site.NginxConfigPath) == "" {
+			data.RequestError = "This site does not have a stored Nginx config path."
+			break
+		}
+		if !isAllowedNginxConfigPath(a.cfg.NginxAvailableDir, site.NginxConfigPath) {
+			data.RequestError = "Stored Nginx config path is outside the allowed Nginx config directory."
+			break
+		}
+		var previousConfig string
+		_, _ = a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": site.NginxConfigPath, "max_bytes": 1048576}, &previousConfig)
+		if _, actionErr = a.helper.Call(r.Context(), "nginx.write_config", map[string]string{"path": site.NginxConfigPath, "content": data.NginxConfigContent}, nil); actionErr != nil {
+			data.RequestError = "Could not write Nginx config: " + actionErr.Error()
+			break
+		}
+		if actionErr = a.nginx.ValidateConfig(site.NginxConfigPath); actionErr != nil {
+			_, _ = a.helper.Call(r.Context(), "nginx.write_config", map[string]string{"path": site.NginxConfigPath, "content": previousConfig}, nil)
+			data.RequestError = "Nginx config validation failed, previous config was restored: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.nginx_config.save", site.Name, "failure", map[string]any{"config_path": site.NginxConfigPath, "error": actionErr.Error(), "stage": "validate"})
+			break
+		}
+		if actionErr = a.nginx.Reload(); actionErr != nil {
+			_, _ = a.helper.Call(r.Context(), "nginx.write_config", map[string]string{"path": site.NginxConfigPath, "content": previousConfig}, nil)
+			_ = a.nginx.ValidateConfig(site.NginxConfigPath)
+			_ = a.nginx.Reload()
+			data.RequestError = "Nginx reload failed, previous config was restored: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.nginx_config.save", site.Name, "failure", map[string]any{"config_path": site.NginxConfigPath, "error": actionErr.Error(), "stage": "reload"})
+			break
+		}
+		data.NginxConfigNotice = "Nginx config saved, validated, and reloaded successfully."
+		a.recordAudit(r.Context(), "site.nginx_config.save", site.Name, "success", map[string]any{"config_path": site.NginxConfigPath})
+		successMessage = "Site Nginx config updated successfully."
 	default:
 		data.RequestError = "Invalid site details action."
 	}
@@ -2177,6 +2219,20 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	}
 	if data.SubdomainMode == "" {
 		data.SubdomainMode = "reverse_proxy"
+	}
+	data.NginxConfigPath = strings.TrimSpace(site.NginxConfigPath)
+	if data.NginxConfigPath != "" && isAllowedNginxConfigPath(a.cfg.NginxAvailableDir, data.NginxConfigPath) {
+		if data.NginxConfigContent == "" {
+			var content string
+			if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": data.NginxConfigPath, "max_bytes": 1048576}, &content); err == nil {
+				data.NginxConfigContent = content
+				if strings.Contains(content, "[truncated after ") {
+					data.NginxConfigNotice = firstNonEmpty(data.NginxConfigNotice, "Only the first 1 MB of the Nginx config is shown.")
+				}
+			}
+		}
+	} else if data.NginxConfigPath != "" {
+		data.NginxConfigNotice = firstNonEmpty(data.NginxConfigNotice, "Stored Nginx config path is outside the managed Nginx directory and cannot be edited from the panel.")
 	}
 	browserPath := firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("path")), data.SiteBrowserCurrentPath)
 	if absPath, relPath, err := resolveSiteBrowserPath(site.RootDirectory, browserPath); err == nil {

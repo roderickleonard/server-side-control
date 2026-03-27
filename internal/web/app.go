@@ -138,6 +138,9 @@ type TemplateData struct {
 	SiteBrowserFileContent string
 	SiteBrowserFileNotice string
 	SiteBrowserEntries []SiteFileEntry
+	NginxConfigPath string
+	NginxConfigContent string
+	NginxConfigNotice string
 	EnvFileContent string
 	EcosystemPort  string
 	Alerts         []string

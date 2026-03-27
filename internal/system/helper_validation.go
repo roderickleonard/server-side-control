@@ -22,6 +22,7 @@ var allowedHelperActions = map[string]struct{}{
 	"nginx.validate":   {},
 	"nginx.reload":     {},
 	"nginx.enable_tls": {},
+	"nginx.write_config": {},
 	"deploy.run":       {},
 	"deploy.rollback":  {},
 	"deploy.inspect":   {},

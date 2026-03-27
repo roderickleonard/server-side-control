@@ -302,6 +302,30 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		output, err := system.NewNginxManager(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, cfg.CertbotBinary).EnableTLS(input)
 		writeSuccess(nil, output, err)
+	case "nginx.write_config":
+		var input struct {
+			Path    string `json:"path"`
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		cleanPath := filepath.Clean(input.Path)
+		availableDir := filepath.Clean(cfg.NginxAvailableDir)
+		if !filepath.IsAbs(cleanPath) {
+			writeFailure(errors.New("nginx config path must be absolute"), "")
+			return
+		}
+		if cleanPath != availableDir && !strings.HasPrefix(cleanPath, availableDir+string(os.PathSeparator)) {
+			writeFailure(errors.New("nginx config path must be inside nginx available dir"), "")
+			return
+		}
+		if err := os.WriteFile(cleanPath, []byte(input.Content), 0o644); err != nil {
+			writeFailure(fmt.Errorf("write nginx config: %w", err), "")
+			return
+		}
+		writeSuccess(nil, cleanPath, nil)
 	case "deploy.run":
 		var spec system.DeploySpec
 		if err := json.Unmarshal(request.Input, &spec); err != nil {

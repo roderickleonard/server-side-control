@@ -254,6 +254,46 @@
 
 <div style="margin-top:24px;"></div>
 
+<section class="grid single" data-site-tab="settings">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Nginx</span>
+                <h3>{{if .NginxConfigPath}}Edit site Nginx config{{else}}No editable Nginx config{{end}}</h3>
+            </div>
+            {{if .NginxConfigPath}}
+            <span class="badge subtle-badge">Managed config</span>
+            {{end}}
+        </div>
+        {{if .NginxConfigPath}}
+        <div class="site-delete-summary details-summary">
+            <div><strong>Config path</strong><span>{{.NginxConfigPath}}</span></div>
+            <div><strong>Domain</strong><span>{{.SelectedSite.DomainName}}</span></div>
+        </div>
+        {{if .NginxConfigNotice}}
+        <p class="muted details-note" style="margin-top:12px;">{{.NginxConfigNotice}}</p>
+        {{else}}
+        <p class="muted details-note" style="margin-top:12px;">Saving this editor validates the full Nginx config and reloads Nginx only if validation succeeds. Invalid changes are rolled back automatically.</p>
+        {{end}}
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;">
+            <input type="hidden" name="details_action" value="save_nginx_config">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <label>
+                <span>Nginx config</span>
+                <textarea name="nginx_config_content" rows="22" spellcheck="false" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">{{.NginxConfigContent}}</textarea>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Save and reload Nginx</button>
+            </div>
+        </form>
+        {{else}}
+        <p class="muted details-note">This site does not currently have a stored Nginx config path, so there is nothing to edit here yet.</p>
+        {{end}}
+    </article>
+</section>
+
+<div style="margin-top:24px;"></div>
+
 <section class="grid" data-site-tab="runtime">
     <article class="panel">
         <div class="section-head">
