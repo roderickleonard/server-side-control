@@ -162,7 +162,7 @@ func (s *Store) ensurePanelUsersRecoveryColumns(ctx context.Context) error {
 		name      string
 		statement string
 	}{
-		{name: "recovery_codes_json", statement: `ALTER TABLE panel_users ADD COLUMN recovery_codes_json MEDIUMTEXT NOT NULL AFTER totp_enabled_at`},
+		{name: "recovery_codes_json", statement: `ALTER TABLE panel_users ADD COLUMN recovery_codes_json MEDIUMTEXT NOT NULL DEFAULT ('[]') AFTER totp_enabled_at`},
 		{name: "recovery_generated_at", statement: `ALTER TABLE panel_users ADD COLUMN recovery_generated_at DATETIME NULL AFTER recovery_codes_json`},
 	}
 	for _, column := range columns {
@@ -186,6 +186,9 @@ func (s *Store) ensurePanelUsersRecoveryColumns(ctx context.Context) error {
 			}
 			return err
 		}
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE panel_users SET recovery_codes_json = '[]' WHERE recovery_codes_json IS NULL OR recovery_codes_json = ''`); err != nil {
+		return err
 	}
 	return nil
 }

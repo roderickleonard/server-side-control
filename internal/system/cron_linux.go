@@ -6,11 +6,12 @@ import (
 	"bytes"
 	"context"
 	crand "crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/user"
-	"net/url"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -19,6 +20,15 @@ import (
 )
 
 const cronManagedPrefix = "# SSC:"
+
+type managedCronMetadata struct {
+	ID   string `json:"id"`
+	Site string `json:"site"`
+	Root string `json:"root"`
+	Cmd  string `json:"cmd"`
+	Log  string `json:"log"`
+	CWD  string `json:"cwd,omitempty"`
+}
 
 func ListCronJobs(user string) ([]CronJob, error) {
 	user = strings.TrimSpace(user)
@@ -283,16 +293,22 @@ func appendCronLine(current string, line string) string {
 }
 
 func buildManagedCronLine(id string, logPath string, spec CronJobSpec) string {
-	vals := url.Values{}
-	vals.Set("id", id)
-	vals.Set("site", spec.SiteName)
-	vals.Set("root", boolToFlag(spec.RunInSiteRoot))
-	vals.Set("cmd", spec.Command)
-	vals.Set("log", logPath)
-	if spec.WorkingDirectory != "" {
-		vals.Set("cwd", spec.WorkingDirectory)
+	metadata := managedCronMetadata{
+		ID:   id,
+		Site: spec.SiteName,
+		Root: boolToFlag(spec.RunInSiteRoot),
+		Cmd:  spec.Command,
+		Log:  logPath,
 	}
-	return spec.Schedule + " " + renderCronCommand(spec, logPath) + " " + cronManagedPrefix + vals.Encode()
+	if spec.WorkingDirectory != "" {
+		metadata.CWD = spec.WorkingDirectory
+	}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return spec.Schedule + " " + renderCronCommand(spec, logPath)
+	}
+	encodedMetadata := base64.RawURLEncoding.EncodeToString(metadataJSON)
+	return spec.Schedule + " " + renderCronCommand(spec, logPath) + " " + cronManagedPrefix + "b64:" + encodedMetadata
 }
 
 
@@ -306,7 +322,11 @@ func renderCronCommand(spec CronJobSpec, logPath string) string {
 		" && { printf '\n[%s] job start\n' \"$(date '+%Y-%m-%d %H:%M:%S')\"; . ~/.nvm/nvm.sh 2>/dev/null || true; " +
 		baseCommand +
 		"; status=$?; printf '[%s] exit %s\n' \"$(date '+%Y-%m-%d %H:%M:%S')\" \"$status\"; exit \"$status\"; } >> " + shellQuote(logPath) + " 2>&1"
-	return "/bin/bash -lc " + shellQuote(shellCommand)
+	return escapeCronPercents("/bin/bash -lc " + shellQuote(shellCommand))
+}
+
+func escapeCronPercents(value string) string {
+	return strings.ReplaceAll(value, "%", "\\%")
 }
 
 func parseCronJobLine(line string) (CronJob, bool) {
@@ -326,18 +346,93 @@ func parseCronJobLine(line string) (CronJob, bool) {
 	}
 	job := CronJob{Schedule: schedule, Command: command, RawLine: trimmed}
 	if commentPart != "" {
-		if values, err := url.ParseQuery(commentPart); err == nil {
-			job.Managed = true
-			job.ID = values.Get("id")
-			job.SiteName = values.Get("site")
-			job.RunInSiteRoot = values.Get("root") == "1"
-			job.LogPath = values.Get("log")
-			if decodedCommand := values.Get("cmd"); decodedCommand != "" {
-				job.Command = decodedCommand
+		if strings.HasPrefix(commentPart, "b64:") {
+			encoded := strings.TrimSpace(strings.TrimPrefix(commentPart, "b64:"))
+			if decoded, err := base64.RawURLEncoding.DecodeString(encoded); err == nil {
+				var metadata managedCronMetadata
+				if err := json.Unmarshal(decoded, &metadata); err == nil {
+					job.Managed = true
+					job.ID = metadata.ID
+					job.SiteName = metadata.Site
+					job.RunInSiteRoot = metadata.Root == "1"
+					job.LogPath = metadata.Log
+					if strings.TrimSpace(metadata.Cmd) != "" {
+						job.Command = metadata.Cmd
+					}
+				}
+			}
+		} else {
+			legacyMetadata := decodeLegacyManagedCronMetadata(commentPart)
+			if legacyMetadata != nil {
+				job.Managed = true
+				job.ID = legacyMetadata.ID
+				job.SiteName = legacyMetadata.Site
+				job.RunInSiteRoot = legacyMetadata.Root == "1"
+				job.LogPath = legacyMetadata.Log
+				if strings.TrimSpace(legacyMetadata.Cmd) != "" {
+					job.Command = legacyMetadata.Cmd
+				}
 			}
 		}
 	}
 	return job, true
+}
+
+func decodeLegacyManagedCronMetadata(raw string) *managedCronMetadata {
+	values, err := parseLegacyManagedMetadata(raw)
+	if err != nil {
+		return nil
+	}
+	return &managedCronMetadata{
+		ID:   values["id"],
+		Site: values["site"],
+		Root: values["root"],
+		Cmd:  values["cmd"],
+		Log:  values["log"],
+		CWD:  values["cwd"],
+	}
+}
+
+func parseLegacyManagedMetadata(raw string) (map[string]string, error) {
+	result := map[string]string{}
+	for _, part := range strings.Split(strings.TrimSpace(raw), "&") {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+		pieces := strings.SplitN(part, "=", 2)
+		if len(pieces) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(pieces[0])
+		value := strings.TrimSpace(pieces[1])
+		decodedValue, err := legacyPercentDecode(value)
+		if err != nil {
+			return nil, err
+		}
+		result[key] = strings.ReplaceAll(decodedValue, "+", " ")
+	}
+	return result, nil
+}
+
+func legacyPercentDecode(value string) (string, error) {
+	value = strings.ReplaceAll(value, "+", " ")
+	var builder strings.Builder
+	for index := 0; index < len(value); index++ {
+		if value[index] != '%' {
+			builder.WriteByte(value[index])
+			continue
+		}
+		if index+2 >= len(value) {
+			return "", fmt.Errorf("invalid escape sequence")
+		}
+		decoded, err := strconv.ParseUint(value[index+1:index+3], 16, 8)
+		if err != nil {
+			return "", err
+		}
+		builder.WriteByte(byte(decoded))
+		index += 2
+	}
+	return builder.String(), nil
 }
 
 func splitCronScheduleCommand(line string) (string, string, bool) {

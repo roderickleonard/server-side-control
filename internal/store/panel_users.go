@@ -67,8 +67,8 @@ func (s *Store) SavePanelUserTOTP(ctx context.Context, username string, secret s
 		enabledAt = time.Now().UTC()
 	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO panel_users (linux_user, role, enabled, totp_enabled, totp_secret, totp_enabled_at)
-		VALUES (?, 'operator', 1, ?, ?, ?)
+		INSERT INTO panel_users (linux_user, role, enabled, totp_enabled, totp_secret, totp_enabled_at, recovery_codes_json, recovery_generated_at)
+		VALUES (?, 'operator', 1, ?, ?, ?, '[]', NULL)
 		ON DUPLICATE KEY UPDATE totp_enabled = VALUES(totp_enabled), totp_secret = VALUES(totp_secret), totp_enabled_at = VALUES(totp_enabled_at)
 	`, username, enabled, secret, enabledAt)
 	if err != nil {
@@ -194,8 +194,8 @@ func (s *Store) TouchPanelUserLastLogin(ctx context.Context, username string) er
 		return nil
 	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO panel_users (linux_user, role, enabled, last_login_at)
-		VALUES (?, 'operator', 1, UTC_TIMESTAMP())
+		INSERT INTO panel_users (linux_user, role, enabled, last_login_at, recovery_codes_json, recovery_generated_at)
+		VALUES (?, 'operator', 1, UTC_TIMESTAMP(), '[]', NULL)
 		ON DUPLICATE KEY UPDATE last_login_at = UTC_TIMESTAMP()
 	`, username)
 	if err != nil {
