@@ -1,4 +1,23 @@
 document.addEventListener("DOMContentLoaded", () => {
+    // Mobile sidebar toggle
+    const sbToggle = document.getElementById("sb-toggle");
+    const sbOverlay = document.getElementById("sb-overlay");
+    const sidebar = document.getElementById("sidebar");
+    if (sbToggle && sidebar) {
+        const openSidebar = () => {
+            sidebar.classList.add("is-open");
+            sbOverlay?.classList.add("is-open");
+        };
+        const closeSidebar = () => {
+            sidebar.classList.remove("is-open");
+            sbOverlay?.classList.remove("is-open");
+        };
+        sbToggle.addEventListener("click", () => {
+            sidebar.classList.contains("is-open") ? closeSidebar() : openSidebar();
+        });
+        sbOverlay?.addEventListener("click", closeSidebar);
+    }
+
     const ownerSelect = document.getElementById("site-owner-select");
     const siteNameInput = document.getElementById("site-name-input");
     const rootPreview = document.getElementById("site-root-preview");

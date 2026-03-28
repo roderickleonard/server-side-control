@@ -202,9 +202,8 @@
         <p class="muted details-note">Remaining recovery codes: {{.RecoveryCodesRemaining}}</p>
         {{end}}
         {{if .RecoveryCodes}}
-        <div class="panel" style="margin-top:16px;padding:16px;border:1px solid var(--border);">
-            <h4>Recovery codes</h4>
-            <p class="muted details-note">Each code works once. Store them outside the panel now; they will not be shown again.</p>
+        <div class="recovery-codes-block">
+            <p class="muted details-note"><strong style="color:var(--ink-soft);">Recovery codes</strong> — each code works once. Store them outside the panel now; they will not be shown again.</p>
             <pre class="command-output">{{range .RecoveryCodes}}{{.}}
 {{end}}</pre>
         </div>
@@ -230,8 +229,7 @@
             </div>
         </form>
         {{end}}
-        <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);"></div>
-        <h4>Passkeys</h4>
+        <h4><i class="bi bi-key" style="color:var(--accent);font-size:12px;"></i> Passkeys</h4>
         <p class="muted details-note">Register a passkey to sign in with Touch ID, Face ID, Safari passkeys, or Apple Passwords without entering your account password.</p>
         <div class="form-grid two-up" style="margin-top:12px;">
             <label>

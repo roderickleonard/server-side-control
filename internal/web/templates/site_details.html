@@ -44,7 +44,7 @@
 <section class="grid single" id="cmd-output-section">
     <article class="panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <h3 style="margin:0"><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Command output</h3>
+            <span class="panel-title"><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Command output</span>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="cmd-output-toggle">{{if .CommandOutput}}Hide{{else}}Show{{end}}</button>
         </div>
         <div id="cmd-output-body"{{if not .CommandOutput}} class="hidden"{{end}}>
