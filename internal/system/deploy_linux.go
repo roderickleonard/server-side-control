@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -156,6 +157,75 @@ func (linuxDeployManager) Inspect(spec RepositoryInspectSpec) (RepositoryStatus,
 	return status, nil
 }
 
+func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
+	spec.RepositoryURL = strings.TrimSpace(spec.RepositoryURL)
+	spec.Branch = strings.TrimSpace(spec.Branch)
+	spec.TargetDirectory = strings.TrimSpace(spec.TargetDirectory)
+	spec.RunAsUser = strings.TrimSpace(spec.RunAsUser)
+	if spec.Branch == "" {
+		spec.Branch = "main"
+	}
+
+	if !repoURLPattern.MatchString(spec.RepositoryURL) {
+		return ErrInvalidRepoURL
+	}
+	if !branchPattern.MatchString(spec.Branch) {
+		return ErrInvalidBranch
+	}
+	if !filepath.IsAbs(spec.TargetDirectory) {
+		return ErrInvalidTargetDirectory
+	}
+	if !usernamePattern.MatchString(spec.RunAsUser) {
+		return ErrInvalidRunAsUser
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	if err := os.MkdirAll(filepath.Dir(spec.TargetDirectory), 0o755); err != nil {
+		return err
+	}
+
+	if dirExists(filepath.Join(spec.TargetDirectory, ".git")) {
+		if err := runAsUserStream(ctx, spec.RunAsUser, stdout, stderr, "git", "-C", spec.TargetDirectory, "fetch", "--all", "--prune"); err != nil {
+			return err
+		}
+		if err := runAsUserStream(ctx, spec.RunAsUser, stdout, stderr, "git", "-C", spec.TargetDirectory, "checkout", spec.Branch); err != nil {
+			return err
+		}
+		if err := runAsUserStream(ctx, spec.RunAsUser, stdout, stderr, "git", "-C", spec.TargetDirectory, "pull", "--ff-only", "origin", spec.Branch); err != nil {
+			return err
+		}
+	} else {
+		if err := runAsUserStream(ctx, spec.RunAsUser, stdout, stderr, "git", "clone", "--branch", spec.Branch, spec.RepositoryURL, spec.TargetDirectory); err != nil {
+			return err
+		}
+	}
+
+	if strings.TrimSpace(spec.PostDeployCommand) != "" {
+		return runShellAsUserStream(ctx, spec.RunAsUser, spec.TargetDirectory, spec.PostDeployCommand, stdout, stderr)
+	}
+	return nil
+}
+
+func StreamGitCommand(spec GitCommandSpec, stdout io.Writer, stderr io.Writer) error {
+	spec.User = strings.TrimSpace(spec.User)
+	spec.WorkingDirectory = strings.TrimSpace(spec.WorkingDirectory)
+	spec.Command = strings.TrimSpace(spec.Command)
+	if !usernamePattern.MatchString(spec.User) {
+		return ErrInvalidRunAsUser
+	}
+	if !filepath.IsAbs(spec.WorkingDirectory) {
+		return ErrInvalidTargetDirectory
+	}
+	if err := ValidateGitCommand(spec.Command); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	return runShellAsUserStream(ctx, spec.User, spec.WorkingDirectory, spec.Command, stdout, stderr)
+}
+
 func currentCommit(ctx context.Context, username string, directory string, output *bytes.Buffer) (string, error) {
 	if !dirExists(filepath.Join(directory, ".git")) {
 		return "", nil
@@ -193,12 +263,34 @@ func runAsUser(ctx context.Context, username string, output *bytes.Buffer, name 
 	return nil
 }
 
+func runAsUserStream(ctx context.Context, username string, stdout io.Writer, stderr io.Writer, name string, args ...string) error {
+	fullArgs := append([]string{"-u", username, "--", name}, args...)
+	cmd := exec.CommandContext(ctx, "sudo", fullArgs...)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("command failed: %w", err)
+	}
+	return nil
+}
+
 func runShellAsUser(ctx context.Context, username string, workingDir string, command string, output *bytes.Buffer) error {
 	// Source NVM automatically so post-deploy commands can use the user's managed Node version.
 	shellCommand := fmt.Sprintf(". ~/.nvm/nvm.sh 2>/dev/null || true; cd %s && %s", shellQuote(workingDir), command)
 	cmd := exec.CommandContext(ctx, "sudo", "-u", username, "--", "bash", "-lc", shellCommand)
 	cmd.Stdout = output
 	cmd.Stderr = output
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("post-deploy command failed: %w", err)
+	}
+	return nil
+}
+
+func runShellAsUserStream(ctx context.Context, username string, workingDir string, command string, stdout io.Writer, stderr io.Writer) error {
+	shellCommand := fmt.Sprintf(". ~/.nvm/nvm.sh 2>/dev/null || true; cd %s && %s", shellQuote(workingDir), command)
+	cmd := exec.CommandContext(ctx, "sudo", "-u", username, "--", "bash", "-lc", shellCommand)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("post-deploy command failed: %w", err)
 	}

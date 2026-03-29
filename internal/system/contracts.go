@@ -15,6 +15,7 @@ var ErrInvalidGitHost = errors.New("invalid git host")
 var ErrInvalidCredentialProtocol = errors.New("invalid credential protocol")
 var ErrInvalidCredentialUsername = errors.New("invalid credential username")
 var ErrInvalidCredentialPassword = errors.New("invalid credential password")
+var ErrInvalidGitCommand = errors.New("invalid git command")
 var ErrInvalidTableName = errors.New("invalid mysql table name")
 var ErrInvalidRestorePath = errors.New("invalid mysql restore file path")
 var ErrInvalidCronSchedule = errors.New("invalid cron schedule")
@@ -111,6 +112,12 @@ type DeploySpec struct {
 	TargetDirectory   string
 	RunAsUser         string
 	PostDeployCommand string
+}
+
+type GitCommandSpec struct {
+	User             string `json:"user"`
+	WorkingDirectory string `json:"working_directory"`
+	Command          string `json:"command"`
 }
 
 type RollbackSpec struct {

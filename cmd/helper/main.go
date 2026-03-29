@@ -26,7 +26,7 @@ func main() {
 		writeFailure(errors.New("helper must run as root"), "")
 		return
 	}
-	if len(os.Args) > 1 && os.Args[1] == "stream-runtime" {
+	if len(os.Args) > 1 && (os.Args[1] == "stream-runtime" || os.Args[1] == "stream-action") {
 		handleStreamMode()
 		return
 	}
@@ -60,6 +60,26 @@ func handleStreamMode() {
 		os.Exit(1)
 	}
 	switch request.Action {
+	case "deploy.run":
+		var spec system.DeploySpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode deploy spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamDeploy(spec, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "deploy.run_custom_git_command":
+		var spec system.GitCommandSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode git command spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamGitCommand(spec, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
 	case "runtime.run_npm_script":
 		var spec system.NPMScriptSpec
 		if err := json.Unmarshal(request.Input, &spec); err != nil {
@@ -87,6 +107,36 @@ func handleStreamMode() {
 			os.Exit(1)
 		}
 		if err := system.StreamCustomRuntimeCommand(spec, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "git_auth.ensure_deploy_key":
+		var spec system.GitDeployKeySpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode deploy key spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamEnsureDeployKey(spec, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "git_auth.trust_host":
+		var spec system.GitHostTrustSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode git host spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamTrustGitHost(spec, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "git_auth.store_credential":
+		var spec system.GitCredentialSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode git credential spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamStoreGitCredential(spec, os.Stdout, os.Stderr); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
 			os.Exit(1)
 		}

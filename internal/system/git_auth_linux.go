@@ -5,6 +5,7 @@ package system
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -174,6 +175,79 @@ func (linuxGitAuthManager) StoreCredential(spec GitCredentialSpec) (string, erro
 		return "", err
 	}
 	return "Credentials stored for " + protocol + "://" + host, nil
+}
+
+func StreamEnsureDeployKey(spec GitDeployKeySpec, stdout io.Writer, stderr io.Writer) error {
+	homeDirectory, err := lookupUserHome(spec.User)
+	if err != nil {
+		return err
+	}
+	basePath := deployKeyBasePath(homeDirectory, spec.SiteName)
+	sshDir := filepath.Join(homeDirectory, ".ssh")
+	sshConfigPath := filepath.Join(sshDir, "config")
+	marker := "# server-side-control:" + spec.SiteName
+	_, repoHost := parseRepositoryEndpoint(spec.RepositoryURL)
+	if repoHost == "" {
+		repoHost = "github.com"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	script := fmt.Sprintf(`set -e
+mkdir -p %s; chmod 700 %s
+if [ ! -f %s ]; then
+  ssh-keygen -t ed25519 -N '' -C %s -f %s
+else
+  echo 'Deploy key already exists'
+fi
+touch %s; chmod 600 %s
+if ! grep -qF %s %s; then
+  printf '\n%s\nHost %s\n  IdentityFile %s\n  IdentitiesOnly no\n' >> %s
+fi
+cat %s`,
+		shellQuote(sshDir), shellQuote(sshDir),
+		shellQuote(basePath),
+		shellQuote(spec.SiteName+" deploy key"),
+		shellQuote(basePath),
+		shellQuote(sshConfigPath), shellQuote(sshConfigPath),
+		shellQuote(marker), shellQuote(sshConfigPath),
+		marker, repoHost, basePath,
+		shellQuote(sshConfigPath),
+		shellQuote(basePath+".pub"),
+	)
+	return runBashAsUserStream(ctx, spec.User, script, stdout, stderr)
+}
+
+func StreamTrustGitHost(spec GitHostTrustSpec, stdout io.Writer, stderr io.Writer) error {
+	homeDirectory, err := lookupUserHome(spec.User)
+	if err != nil {
+		return err
+	}
+	host := strings.TrimSpace(spec.Host)
+	if !gitHostPattern.MatchString(host) {
+		return ErrInvalidGitHost
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	knownHostsPath := filepath.Join(homeDirectory, ".ssh", "known_hosts")
+	script := fmt.Sprintf("set -e; mkdir -p %s; chmod 700 %s; touch %s; chmod 600 %s; if ssh-keygen -F %s -f %s >/dev/null 2>&1; then echo 'Host already trusted'; else ssh-keyscan -H %s >> %s; echo 'Host added to known_hosts'; fi",
+		shellQuote(filepath.Join(homeDirectory, ".ssh")),
+		shellQuote(filepath.Join(homeDirectory, ".ssh")),
+		shellQuote(knownHostsPath),
+		shellQuote(knownHostsPath),
+		shellQuote(host),
+		shellQuote(knownHostsPath),
+		shellQuote(host),
+		shellQuote(knownHostsPath),
+	)
+	return runBashAsUserStream(ctx, spec.User, script, stdout, stderr)
+}
+
+func StreamStoreGitCredential(spec GitCredentialSpec, stdout io.Writer, stderr io.Writer) error {
+	message, err := (linuxGitAuthManager{}).StoreCredential(spec)
+	if message != "" {
+		_, _ = fmt.Fprintln(stdout, message)
+	}
+	return err
 }
 
 func parseRepositoryEndpoint(repositoryURL string) (string, string) {

@@ -2,7 +2,10 @@
 
 package system
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 type stubDeployManager struct{}
 
@@ -20,4 +23,12 @@ func (stubDeployManager) Rollback(spec RollbackSpec) (DeployResult, error) {
 
 func (stubDeployManager) Inspect(spec RepositoryInspectSpec) (RepositoryStatus, error) {
 	return RepositoryStatus{}, fmt.Errorf("git deployment is only supported on Ubuntu target hosts")
+}
+
+func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
+	return fmt.Errorf("git deployment is only supported on Ubuntu target hosts")
+}
+
+func StreamGitCommand(spec GitCommandSpec, stdout io.Writer, stderr io.Writer) error {
+	return fmt.Errorf("git deployment is only supported on Ubuntu target hosts")
 }

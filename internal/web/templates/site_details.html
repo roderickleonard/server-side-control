@@ -99,7 +99,7 @@
 <section class="grid single" data-site-tab="deploy">
     <article class="panel">
         <h3><i class="bi bi-git" style="color:var(--accent);margin-right:6px;"></i>{{if .RepositoryStatus.IsGitRepo}}Pull latest code{{else}}Clone repository{{end}}</h3>
-        <form method="post" class="stack-form">
+        <form method="post" class="stack-form site-action-stream-form" id="site-deploy-sync-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
             <input type="hidden" name="details_action" value="sync_repository">
             <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
             <div class="form-grid two-up">
@@ -126,6 +126,18 @@
             </div>
             <div class="form-actions">
                 <button type="submit">{{if .RepositoryStatus.IsGitRepo}}Pull latest{{else}}Clone into site root{{end}}</button>
+            </div>
+        </form>
+        <form method="post" class="stack-form compact-form site-action-stream-form" id="site-custom-git-form" data-stream-endpoint="/sites/details/action-stream" style="margin-top:16px;">
+            <input type="hidden" name="details_action" value="run_custom_git_command">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <label>
+                <span>Custom git command</span>
+                <input type="text" name="git_custom_command" value="{{.GitCustomCommand}}" placeholder="git status" required>
+            </label>
+            <p class="muted details-note">Only a single safe <code>git ...</code> command is allowed. Chaining, pipes, redirects, quotes and shell operators are blocked.</p>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Run custom git command</button>
             </div>
         </form>
     </article>
@@ -687,13 +699,13 @@
         <p class="muted details-note">Generate a deploy key, add the public key to GitHub/GitLab, then clone the repository using the SSH URL.</p>
         {{end}}
         <div class="stack-cluster top-gap">
-            <form method="post" class="inline-form details-inline-form">
+            <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
                 <input type="hidden" name="details_action" value="generate_deploy_key">
                 <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
                 <input type="hidden" name="repository_url" value="{{.GitRepositoryURL}}">
                 <button type="submit">Generate SSH deploy key</button>
             </form>
-            <form method="post" class="stack-form compact-form">
+            <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
                 <input type="hidden" name="details_action" value="trust_git_host">
                 <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
                 <div class="form-grid two-up">
@@ -722,7 +734,7 @@
             <div><strong>Target host</strong><span>{{if .GitCredentialHost}}{{.GitCredentialHost}}{{else}}-{{end}}</span></div>
         </div>
         <p class="muted details-note">Use this for private repositories accessed over HTTPS with a username and personal access token.</p>
-        <form method="post" class="stack-form compact-form">
+        <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
             <input type="hidden" name="details_action" value="store_git_credential">
             <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
             <div class="form-grid two-up">
@@ -994,6 +1006,7 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     const tabNav = document.getElementById('site-tab-nav');
     const runtimeForm = document.getElementById('runtime-npm-actions');
     const customForm = document.getElementById('runtime-custom-form');
+    const siteActionForms = Array.from(document.querySelectorAll('.site-action-stream-form'));
     const outputSection = document.getElementById('cmd-output-section');
     const outputBody = document.getElementById('cmd-output-body');
     const outputPre = document.getElementById('cmd-output-pre');
@@ -1117,6 +1130,65 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
         }
     }
 
+    async function streamForm(form, endpoint, reloadOnSuccess) {
+        const buttons = Array.from(form.querySelectorAll('button'));
+        buttons.forEach((button) => {
+            button.disabled = true;
+        });
+
+        setOutputVisibility(true);
+        outputPre.textContent = '';
+        outputStatus.textContent = 'Running...';
+        outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        try {
+            const payload = new URLSearchParams(new FormData(form));
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                },
+                body: payload.toString()
+            });
+
+            if (!response.ok || !response.body) {
+                const text = await response.text();
+                outputStatus.textContent = 'Failed';
+                outputPre.textContent = text || 'Command could not be started.';
+                return;
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    break;
+                }
+                outputPre.textContent += decoder.decode(value, { stream: true });
+                outputPre.scrollTop = outputPre.scrollHeight;
+            }
+
+            if (outputPre.textContent.includes('[command failed]')) {
+                outputStatus.textContent = 'Failed';
+                return;
+            }
+            outputStatus.textContent = reloadOnSuccess ? 'Completed, refreshing...' : 'Completed';
+            if (reloadOnSuccess) {
+                window.setTimeout(() => {
+                    window.location.reload();
+                }, 700);
+            }
+        } catch (error) {
+            outputStatus.textContent = 'Failed';
+            outputPre.textContent += '\n' + String(error);
+        } finally {
+            buttons.forEach((button) => {
+                button.disabled = false;
+            });
+        }
+    }
+
     async function streamCustomCommand() {
         const buttons = Array.from(customForm.querySelectorAll('button'));
         buttons.forEach((button) => {
@@ -1189,6 +1261,13 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
 
     commandClear.addEventListener('click', () => {
         resetCustomCommandForm();
+    });
+
+    siteActionForms.forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            streamForm(form, form.dataset.streamEndpoint || '/sites/details/action-stream', form.dataset.reloadOnSuccess === '1');
+        });
     });
 
     setOutputVisibility(!outputBody.classList.contains('hidden'));

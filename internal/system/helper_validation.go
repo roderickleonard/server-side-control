@@ -25,6 +25,7 @@ var allowedHelperActions = map[string]struct{}{
 	"nginx.write_config": {},
 	"nginx.validate_config": {},
 	"deploy.run":       {},
+	"deploy.run_custom_git_command": {},
 	"deploy.rollback":  {},
 	"deploy.inspect":   {},
 	"runtime.inspect":  {},

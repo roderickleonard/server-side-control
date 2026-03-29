@@ -107,6 +107,7 @@ type TemplateData struct {
 	GitRepositoryURL string
 	GitBranch      string
 	GitPostDeployCommand string
+	GitCustomCommand string
 	AutoDeployEnabled bool
 	AutoDeployBranch string
 	AutoDeploySecret string
@@ -249,6 +250,7 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/sites", a.handleSites)
 	a.router.HandleFunc("/sites/details", a.handleSiteDetails)
 	a.router.HandleFunc("/sites/details/runtime-stream", a.handleSiteRuntimeStream)
+	a.router.HandleFunc("/sites/details/action-stream", a.handleSiteActionStream)
 	a.router.HandleFunc("/webhooks/site-deploy", a.handleSiteDeployWebhook)
 	a.router.HandleFunc("/settings", a.handleSettings)
 	a.router.HandleFunc("/settings/passkeys/begin", a.handlePasskeyRegisterBegin)

@@ -2,7 +2,10 @@
 
 package system
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 type stubGitAuthManager struct{}
 
@@ -24,4 +27,16 @@ func (stubGitAuthManager) TrustHost(spec GitHostTrustSpec) (string, error) {
 
 func (stubGitAuthManager) StoreCredential(spec GitCredentialSpec) (string, error) {
 	return "", fmt.Errorf("git auth management is only supported on Ubuntu target hosts")
+}
+
+func StreamEnsureDeployKey(spec GitDeployKeySpec, stdout io.Writer, stderr io.Writer) error {
+	return fmt.Errorf("git auth management is only supported on Ubuntu target hosts")
+}
+
+func StreamTrustGitHost(spec GitHostTrustSpec, stdout io.Writer, stderr io.Writer) error {
+	return fmt.Errorf("git auth management is only supported on Ubuntu target hosts")
+}
+
+func StreamStoreGitCredential(spec GitCredentialSpec, stdout io.Writer, stderr io.Writer) error {
+	return fmt.Errorf("git auth management is only supported on Ubuntu target hosts")
 }
