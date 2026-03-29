@@ -3431,7 +3431,7 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		}
 		data.SiteSubdomains[index].AutoDeployWebhookURL = buildSubdomainAutoDeployWebhookURL(requestExternalBaseURL(r, a.cfg.BaseURL), site.Name, data.SiteSubdomains[index].ID, data.SiteSubdomains[index].AutoDeploySecret)
 		data.SiteSubdomains[index].DeploymentReleases = a.listSiteDeploymentReleases(r, data.SiteSubdomains[index].RootDirectory, site.OwnerLinuxUser)
-		if gitAuthStatus, err := a.gitAuths.Inspect(system.GitAuthInspectSpec{User: site.OwnerLinuxUser, SiteName: data.SiteSubdomains[index].FullDomain, RepositoryURL: data.SiteSubdomains[index].RepositoryURL}); err == nil {
+		if gitAuthStatus, err := a.gitAuth.Inspect(system.GitAuthInspectSpec{User: site.OwnerLinuxUser, SiteName: data.SiteSubdomains[index].FullDomain, RepositoryURL: data.SiteSubdomains[index].RepositoryURL}); err == nil {
 			data.SiteSubdomains[index].GitAuthStatus = gitAuthStatus
 		}
 		if entry, err := a.store.GetLatestAuditLogByActionAndTarget(r.Context(), "deploy.webhook", data.SiteSubdomains[index].FullDomain); err == nil {
