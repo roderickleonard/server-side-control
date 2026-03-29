@@ -116,3 +116,7 @@ func readPTYControlFrames(reader io.Reader, ptmx *os.File) error {
 		}
 	}
 }
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
