@@ -408,6 +408,47 @@ func handle(cfg config.Config, request system.HelperRequest) {
 	case "php.list_versions":
 		versions, err := system.NewPHPManager().ListAvailableVersions()
 		writeSuccess(versions, "", err)
+	case "redis.inspect":
+		status, err := system.NewRedisManager().Inspect()
+		writeSuccess(status, "", err)
+	case "redis.install":
+		output, err := system.NewRedisManager().Install()
+		writeSuccess(nil, output, err)
+	case "redis.configure":
+		var spec system.RedisConfigSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewRedisManager().Configure(spec)
+		writeSuccess(nil, output, err)
+	case "redis.start":
+		output, err := system.NewRedisManager().Start()
+		writeSuccess(nil, output, err)
+	case "redis.stop":
+		output, err := system.NewRedisManager().Stop()
+		writeSuccess(nil, output, err)
+	case "redis.restart":
+		output, err := system.NewRedisManager().Restart()
+		writeSuccess(nil, output, err)
+	case "redis.test_connection":
+		var spec system.RedisPingSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewRedisManager().TestConnection(spec)
+		writeSuccess(nil, output, err)
+	case "redis.logs":
+		var input struct {
+			Lines int `json:"lines"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewRedisManager().Logs(input.Lines)
+		writeSuccess(nil, output, err)
 	case "cron.list":
 		var input struct {
 			User string `json:"user"`

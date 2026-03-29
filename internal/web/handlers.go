@@ -3568,6 +3568,270 @@ func (a *App) listPHPVersions() []string {
 	return versions
 }
 
+func (a *App) handleRedis(w http.ResponseWriter, r *http.Request) {
+	status, inspectErr := a.redis.Inspect()
+	data := TemplateData{
+		Title:          "Redis",
+		DatabaseStatus: a.databaseStatus(r.Context()),
+		Metrics:        a.metrics.Snapshot(),
+		RedisStatus:    status,
+		RedisUsername:  status.Username,
+		RedisPassword:  "",
+		RedisEvictionPolicy: firstNonEmpty(status.EvictionPolicy, "noeviction"),
+	}
+	if status.Port > 0 {
+		data.RedisPort = strconv.Itoa(status.Port)
+	} else {
+		data.RedisPort = "6379"
+	}
+	data.RedisMaxMemoryMB = strconv.FormatInt(status.MaxMemoryBytes/(1024*1024), 10)
+	if inspectErr != nil {
+		data.RequestError = "Redis status could not be loaded: " + inspectErr.Error()
+	}
+
+	if r.Method == http.MethodGet {
+		a.render(r.Context(), w, r.URL.Path, "redis.html", data)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		data.RequestError = "The submitted Redis form could not be parsed."
+		a.render(r.Context(), w, r.URL.Path, "redis.html", data)
+		return
+	}
+
+	data.RedisUsername = strings.TrimSpace(r.FormValue("redis_username"))
+	if data.RedisUsername == "" {
+		data.RedisUsername = status.Username
+	}
+	if portValue := strings.TrimSpace(r.FormValue("redis_port")); portValue != "" {
+		data.RedisPort = portValue
+	}
+	data.RedisPassword = strings.TrimSpace(r.FormValue("redis_password"))
+	if maxMemoryValue := strings.TrimSpace(r.FormValue("redis_max_memory_mb")); maxMemoryValue != "" {
+		data.RedisMaxMemoryMB = maxMemoryValue
+	}
+	if evictionPolicy := strings.TrimSpace(r.FormValue("redis_eviction_policy")); evictionPolicy != "" {
+		data.RedisEvictionPolicy = evictionPolicy
+	}
+
+	action := strings.TrimSpace(r.FormValue("redis_action"))
+	switch action {
+	case "install":
+		output, err := a.redis.Install()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "Redis could not be installed: " + err.Error()
+			a.recordAudit(r.Context(), "redis.install", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Redis installed and started successfully."
+		a.recordAudit(r.Context(), "redis.install", status.ServiceName, "success", nil)
+	case "save_config":
+		password := data.RedisPassword
+		generated := false
+		if password == "" {
+			secret, err := randomPassword(24)
+			if err != nil {
+				http.Error(w, "password generation failed", http.StatusInternalServerError)
+				return
+			}
+			password = secret
+			generated = true
+		}
+
+		port, err := strconv.Atoi(strings.TrimSpace(data.RedisPort))
+		if err != nil {
+			data.RequestError = "Redis port must be a valid number."
+			break
+		}
+		maxMemoryMB, err := strconv.ParseInt(strings.TrimSpace(data.RedisMaxMemoryMB), 10, 64)
+		if err != nil || maxMemoryMB < 0 {
+			data.RequestError = "Redis memory limit must be zero or a positive number in MB."
+			break
+		}
+
+		output, err := a.redis.Configure(system.RedisConfigSpec{
+			Username: data.RedisUsername,
+			Password: password,
+			Port:     port,
+			MaxMemoryBytes: maxMemoryMB * 1024 * 1024,
+			EvictionPolicy: data.RedisEvictionPolicy,
+		})
+		data.CommandOutput = output
+		if err != nil {
+			message := err.Error()
+			switch {
+			case errors.Is(err, system.ErrInvalidRedisUsername):
+				message = "Redis username must start with a letter and contain only letters, numbers, dashes, or underscores."
+			case errors.Is(err, system.ErrInvalidRedisPassword):
+				message = "Redis password cannot be empty or contain spaces."
+			case errors.Is(err, system.ErrInvalidRedisPort):
+				message = "Redis port must be between 1 and 65535."
+			case errors.Is(err, system.ErrInvalidRedisMaxMemory):
+				message = "Redis memory limit must be zero or a positive number."
+			case errors.Is(err, system.ErrInvalidRedisEvictionPolicy):
+				message = "Redis eviction policy is not valid."
+			}
+			data.RequestError = message
+			a.recordAudit(r.Context(), "redis.configure", data.RedisUsername, "failure", map[string]any{"port": port, "max_memory_mb": maxMemoryMB, "eviction_policy": data.RedisEvictionPolicy, "error": err.Error()})
+			break
+		}
+		restartOutput, restartErr := a.redis.Restart()
+		if restartOutput != "" {
+			if data.CommandOutput != "" {
+				data.CommandOutput += "\n\n"
+			}
+			data.CommandOutput += restartOutput
+		}
+		if restartErr != nil {
+			data.RequestError = "Redis configuration was saved but restart failed: " + restartErr.Error()
+			a.recordAudit(r.Context(), "redis.restart", status.ServiceName, "failure", map[string]any{"error": restartErr.Error(), "after": "configure"})
+			break
+		}
+		data.SuccessMessage = "Redis configuration saved and service restarted successfully."
+		if generated {
+			data.GeneratedSecret = password
+		}
+		a.recordAudit(r.Context(), "redis.configure", data.RedisUsername, "success", map[string]any{"port": port, "max_memory_mb": maxMemoryMB, "eviction_policy": data.RedisEvictionPolicy})
+		a.recordAudit(r.Context(), "redis.restart", status.ServiceName, "success", map[string]any{"after": "configure"})
+		data.RedisPassword = ""
+	case "start":
+		output, err := a.redis.Start()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "Redis service could not be started: " + err.Error()
+			a.recordAudit(r.Context(), "redis.start", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Redis service started successfully."
+		a.recordAudit(r.Context(), "redis.start", status.ServiceName, "success", nil)
+	case "stop":
+		output, err := a.redis.Stop()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "Redis service could not be stopped: " + err.Error()
+			a.recordAudit(r.Context(), "redis.stop", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Redis service stopped successfully."
+		a.recordAudit(r.Context(), "redis.stop", status.ServiceName, "success", nil)
+	case "restart":
+		output, err := a.redis.Restart()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "Redis service could not be restarted: " + err.Error()
+			a.recordAudit(r.Context(), "redis.restart", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Redis service restarted successfully."
+		a.recordAudit(r.Context(), "redis.restart", status.ServiceName, "success", nil)
+	case "test_connection":
+		port, err := strconv.Atoi(strings.TrimSpace(data.RedisPort))
+		if err != nil {
+			data.RequestError = "Redis port must be a valid number."
+			break
+		}
+		output, err := a.redis.TestConnection(system.RedisPingSpec{
+			Username: data.RedisUsername,
+			Password: data.RedisPassword,
+			Port:     port,
+		})
+		data.CommandOutput = output
+		if err != nil {
+			message := err.Error()
+			switch {
+			case errors.Is(err, system.ErrInvalidRedisUsername):
+				message = "Redis username must start with a letter and contain only letters, numbers, dashes, or underscores."
+			case errors.Is(err, system.ErrInvalidRedisPassword):
+				message = "Redis password cannot be empty or contain spaces."
+			case errors.Is(err, system.ErrInvalidRedisPort):
+				message = "Redis port must be between 1 and 65535."
+			}
+			data.RequestError = "Redis connection test failed: " + message
+			a.recordAudit(r.Context(), "redis.test_connection", data.RedisUsername, "failure", map[string]any{"port": port, "error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Redis connection test succeeded."
+		a.recordAudit(r.Context(), "redis.test_connection", data.RedisUsername, "success", map[string]any{"port": port})
+		data.RedisPassword = ""
+	default:
+		data.RequestError = "Invalid Redis action."
+	}
+
+	refreshedStatus, err := a.redis.Inspect()
+	if err == nil {
+		data.RedisStatus = refreshedStatus
+		if data.RedisUsername == "" {
+			data.RedisUsername = refreshedStatus.Username
+		}
+		if strings.TrimSpace(r.FormValue("redis_port")) == "" {
+			if refreshedStatus.Port > 0 {
+				data.RedisPort = strconv.Itoa(refreshedStatus.Port)
+			} else {
+				data.RedisPort = "6379"
+			}
+		}
+		if strings.TrimSpace(r.FormValue("redis_max_memory_mb")) == "" {
+			data.RedisMaxMemoryMB = strconv.FormatInt(refreshedStatus.MaxMemoryBytes/(1024*1024), 10)
+		}
+		if strings.TrimSpace(r.FormValue("redis_eviction_policy")) == "" {
+			data.RedisEvictionPolicy = firstNonEmpty(refreshedStatus.EvictionPolicy, "noeviction")
+		}
+	}
+
+	a.render(r.Context(), w, r.URL.Path, "redis.html", data)
+}
+
+func (a *App) handleRedisLogs(w http.ResponseWriter, r *http.Request) {
+	status, inspectErr := a.redis.Inspect()
+	data := TemplateData{
+		Title:          "Redis logs",
+		DatabaseStatus: a.databaseStatus(r.Context()),
+		Metrics:        a.metrics.Snapshot(),
+		RedisStatus:    status,
+		RedisLogLines:  "200",
+	}
+	if inspectErr != nil {
+		data.RequestError = "Redis status could not be loaded: " + inspectErr.Error()
+	}
+
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			data.RequestError = "The submitted Redis logs form could not be parsed."
+			a.render(r.Context(), w, r.URL.Path, "redis_logs.html", data)
+			return
+		}
+		if lines := strings.TrimSpace(r.FormValue("redis_log_lines")); lines != "" {
+			data.RedisLogLines = lines
+		}
+	}
+
+	lines, err := strconv.Atoi(strings.TrimSpace(data.RedisLogLines))
+	if err != nil || lines <= 0 {
+		lines = 200
+		data.RedisLogLines = "200"
+	}
+	output, logsErr := a.redis.Logs(lines)
+	data.CommandOutput = output
+	if logsErr != nil {
+		data.RequestError = "Redis logs could not be loaded: " + logsErr.Error()
+	} else {
+		data.SuccessMessage = "Redis logs loaded successfully."
+	}
+	a.render(r.Context(), w, r.URL.Path, "redis_logs.html", data)
+}
+
 func (a *App) handleLogs(w http.ResponseWriter, r *http.Request) {
 	logs := []domain.AuditLog{}
 	if a.store != nil {

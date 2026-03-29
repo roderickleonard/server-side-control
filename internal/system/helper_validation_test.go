@@ -18,6 +18,11 @@ func TestValidateHelperAction(t *testing.T) {
 		{name: "allowed tls", action: "nginx.enable_tls", wantErr: false},
 		{name: "allowed site delete", action: "nginx.delete_site", wantErr: false},
 		{name: "allowed php version listing", action: "php.list_versions", wantErr: false},
+		{name: "allowed redis inspect", action: "redis.inspect", wantErr: false},
+		{name: "allowed redis configure", action: "redis.configure", wantErr: false},
+		{name: "allowed redis start", action: "redis.start", wantErr: false},
+		{name: "allowed redis test connection", action: "redis.test_connection", wantErr: false},
+		{name: "allowed redis logs", action: "redis.logs", wantErr: false},
 		{name: "blocked arbitrary shell", action: "shell.exec", wantErr: true},
 	}
 

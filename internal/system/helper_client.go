@@ -99,6 +99,8 @@ type helperPM2Manager struct{ client *HelperClient }
 
 type helperPHPManager struct{ client *HelperClient }
 
+type helperRedisManager struct{ client *HelperClient }
+
 func NewHelperUserManager(client *HelperClient) UserManager {
 	return &helperUserManager{client: client}
 }
@@ -129,6 +131,10 @@ func NewHelperPM2Manager(client *HelperClient) PM2Manager {
 
 func NewHelperPHPManager(client *HelperClient) PHPManager {
 	return &helperPHPManager{client: client}
+}
+
+func NewHelperRedisManager(client *HelperClient) RedisManager {
+	return &helperRedisManager{client: client}
 }
 
 func (m *helperUserManager) CreateLinuxUser(username string, createHome bool) error {
@@ -361,4 +367,38 @@ func (m *helperPHPManager) ListAvailableVersions() ([]string, error) {
 	var versions []string
 	_, err := m.client.Call(context.Background(), "php.list_versions", map[string]any{}, &versions)
 	return versions, err
+}
+
+func (m *helperRedisManager) Inspect() (RedisStatus, error) {
+	var status RedisStatus
+	_, err := m.client.Call(context.Background(), "redis.inspect", map[string]any{}, &status)
+	return status, err
+}
+
+func (m *helperRedisManager) Install() (string, error) {
+	return m.client.Call(context.Background(), "redis.install", map[string]any{}, nil)
+}
+
+func (m *helperRedisManager) Configure(spec RedisConfigSpec) (string, error) {
+	return m.client.Call(context.Background(), "redis.configure", spec, nil)
+}
+
+func (m *helperRedisManager) Start() (string, error) {
+	return m.client.Call(context.Background(), "redis.start", map[string]any{}, nil)
+}
+
+func (m *helperRedisManager) Stop() (string, error) {
+	return m.client.Call(context.Background(), "redis.stop", map[string]any{}, nil)
+}
+
+func (m *helperRedisManager) Restart() (string, error) {
+	return m.client.Call(context.Background(), "redis.restart", map[string]any{}, nil)
+}
+
+func (m *helperRedisManager) TestConnection(spec RedisPingSpec) (string, error) {
+	return m.client.Call(context.Background(), "redis.test_connection", spec, nil)
+}
+
+func (m *helperRedisManager) Logs(lines int) (string, error) {
+	return m.client.Call(context.Background(), "redis.logs", map[string]any{"lines": lines}, nil)
 }

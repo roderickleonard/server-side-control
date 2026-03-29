@@ -256,6 +256,45 @@ type PHPManager interface {
 	ListAvailableVersions() ([]string, error)
 }
 
+type RedisStatus struct {
+	Installed   bool   `json:"installed"`
+	Active      bool   `json:"active"`
+	Enabled     bool   `json:"enabled"`
+	ServiceName string `json:"service_name"`
+	Version     string `json:"version"`
+	ConfigPath  string `json:"config_path"`
+	ACLFilePath string `json:"acl_file_path"`
+	Username    string `json:"username"`
+	Port        int    `json:"port"`
+	MaxMemoryBytes int64  `json:"max_memory_bytes"`
+	EvictionPolicy string `json:"eviction_policy"`
+}
+
+type RedisConfigSpec struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Port     int    `json:"port"`
+	MaxMemoryBytes int64  `json:"max_memory_bytes"`
+	EvictionPolicy string `json:"eviction_policy"`
+}
+
+type RedisPingSpec struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Port     int    `json:"port"`
+}
+
+type RedisManager interface {
+	Inspect() (RedisStatus, error)
+	Install() (string, error)
+	Configure(spec RedisConfigSpec) (string, error)
+	Start() (string, error)
+	Stop() (string, error)
+	Restart() (string, error)
+	TestConnection(spec RedisPingSpec) (string, error)
+	Logs(lines int) (string, error)
+}
+
 type CronJob struct {
 	ID            string `json:"id"`
 	Schedule      string `json:"schedule"`

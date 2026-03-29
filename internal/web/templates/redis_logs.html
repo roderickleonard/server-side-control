@@ -1,0 +1,61 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <span class="eyebrow">Redis logs</span>
+        <h2>Redis Service Logs</h2>
+        <p class="lead">Inspect recent Redis service output from the panel. Logs are read from systemd journal and fall back to the Redis log file when needed.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+</section>
+{{end}}
+
+<section class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-journal-code" style="color:var(--accent);margin-right:6px;"></i>Load logs</h3>
+        <form method="post" class="stack-form">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Line count</span>
+                    <input type="text" name="redis_log_lines" value="{{.RedisLogLines}}" placeholder="200">
+                </label>
+                <div class="generated-path-card">
+                    <span class="sidebar-panel-label">Redis service</span>
+                    <strong>{{if .RedisStatus.ServiceName}}{{.RedisStatus.ServiceName}}{{else}}redis-server{{end}}</strong>
+                    <small>{{if .RedisStatus.Active}}Currently running{{else}}Currently stopped{{end}}</small>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Refresh logs</button>
+                <a class="btn btn-outline-secondary" href="/redis">Back to Redis</a>
+            </div>
+        </form>
+    </article>
+    <article class="panel">
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current behavior</h3>
+        <ul>
+            <li>The panel tries `journalctl -u redis-server` first.</li>
+            <li>If journal access is unavailable, it falls back to `/var/log/redis/redis-server.log`.</li>
+            <li>The line count is capped server-side to keep the panel responsive.</li>
+        </ul>
+    </article>
+</section>
+
+{{if .CommandOutput}}
+<section class="grid single">
+    <article class="panel">
+        <h3><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Redis log output</h3>
+        <pre class="command-output">{{.CommandOutput}}</pre>
+    </article>
+</section>
+{{end}}
+{{end}}

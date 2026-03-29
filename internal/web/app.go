@@ -33,6 +33,7 @@ type App struct {
 	gitAuth   system.GitAuthManager
 	pm2       system.PM2Manager
 	php       system.PHPManager
+	redis     system.RedisManager
 	helper    *system.HelperClient
 	auth      auth.Authenticator
 	sessions  *auth.SessionManager
@@ -138,6 +139,13 @@ type TemplateData struct {
 	PanelProxyConfigPath string
 	PanelProxyConfig string
 	PanelTLSStatus domain.PanelTLSStatus
+	RedisStatus  system.RedisStatus
+	RedisUsername string
+	RedisPort     string
+	RedisPassword string
+	RedisMaxMemoryMB string
+	RedisEvictionPolicy string
+	RedisLogLines string
 	DatabaseRestoreSQL string
 	GeneratedSecret string
 	ResultPath     string
@@ -209,6 +217,7 @@ func New(cfg config.Config, logger *slog.Logger, dataStore *store.Store, metrics
 		gitAuth:  system.NewHelperGitAuthManager(helperClient),
 		pm2:      system.NewHelperPM2Manager(helperClient),
 		php:      system.NewHelperPHPManager(helperClient),
+		redis:    system.NewHelperRedisManager(helperClient),
 		helper:   helperClient,
 		auth:     authenticator,
 		sessions: sessions,
@@ -245,6 +254,8 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/settings/passkeys/begin", a.handlePasskeyRegisterBegin)
 	a.router.HandleFunc("/settings/passkeys/finish", a.handlePasskeyRegisterFinish)
 	a.router.HandleFunc("/php", a.handlePHP)
+	a.router.HandleFunc("/redis", a.handleRedis)
+	a.router.HandleFunc("/redis/logs", a.handleRedisLogs)
 	a.router.HandleFunc("/deploys", a.handleDeploys)
 	a.router.HandleFunc("/processes", a.handleProcesses)
 	a.router.HandleFunc("/logs", a.handleLogs)
@@ -264,6 +275,7 @@ func (a *App) nav() []NavItem {
 		{Label: "Sites", Path: "/sites"},
 		{Label: "Settings", Path: "/settings"},
 		{Label: "PHP", Path: "/php"},
+		{Label: "Redis", Path: "/redis"},
 		{Label: "Deploys", Path: "/deploys"},
 		{Label: "Processes", Path: "/processes"},
 		{Label: "Logs", Path: "/logs"},
