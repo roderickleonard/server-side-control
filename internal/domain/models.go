@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/kaganyegin/server-side-control/internal/system"
+)
 
 type PanelUser struct {
 	ID          int64
@@ -73,8 +77,28 @@ type SiteSubdomain struct {
 	Runtime         string
 	UpstreamURL     string
 	PHPVersion      string
+	RepositoryURL   string
+	BranchName      string
+	GitCredentialProtocol string
+	GitCredentialUsername string
+	PostDeployCommand string
+	AutoDeployEnabled bool
+	AutoDeployBranch string
+	AutoDeploySecret string
+	AutoDeployCommand string
+	AutoDeployNotifyEmail string
 	RootDirectory   string
 	NginxConfigPath string
+	AutoDeployWebhookURL string
+	DeploymentReleases []DeploymentRelease
+	GitAuthStatus system.GitAuthStatus
+	LatestWebhookAudit AuditLog
+	MovePreviewFrom string
+	MovePreviewTo string
+	MovePreviewTargetExists bool
+	MovePreviewTargetEmpty bool
+	MovePreviewTargetGitRepo bool
+	MovePreviewTargetState string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }

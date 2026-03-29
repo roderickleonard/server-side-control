@@ -31,6 +31,7 @@ type Config struct {
 	NginxBinary       string
 	NginxAvailableDir string
 	NginxEnabledDir   string
+	SubdomainRootBaseDir string
 	CertbotBinary     string
 	HelperBinary      string
 }
@@ -63,6 +64,7 @@ func Load() (Config, error) {
 		NginxBinary:       getenv("PANEL_NGINX_BINARY", "nginx"),
 		NginxAvailableDir: getenv("PANEL_NGINX_AVAILABLE_DIR", "/etc/nginx/sites-available"),
 		NginxEnabledDir:   getenv("PANEL_NGINX_ENABLED_DIR", "/etc/nginx/sites-enabled"),
+		SubdomainRootBaseDir: getenv("PANEL_SUBDOMAIN_ROOT_BASE", ""),
 		CertbotBinary:     getenv("PANEL_CERTBOT_BINARY", "certbot"),
 		HelperBinary:      getenv("PANEL_HELPER_BINARY", "/usr/local/bin/server-side-control-helper"),
 	}
@@ -106,6 +108,7 @@ func (c Config) ToEnv() string {
 		fmt.Sprintf("PANEL_NGINX_BINARY=%s", c.NginxBinary),
 		fmt.Sprintf("PANEL_NGINX_AVAILABLE_DIR=%s", c.NginxAvailableDir),
 		fmt.Sprintf("PANEL_NGINX_ENABLED_DIR=%s", c.NginxEnabledDir),
+		fmt.Sprintf("PANEL_SUBDOMAIN_ROOT_BASE=%s", c.SubdomainRootBaseDir),
 		fmt.Sprintf("PANEL_CERTBOT_BINARY=%s", c.CertbotBinary),
 		fmt.Sprintf("PANEL_HELPER_BINARY=%s", c.HelperBinary),
 	}, "\n") + "\n"

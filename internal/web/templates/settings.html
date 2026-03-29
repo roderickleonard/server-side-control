@@ -55,6 +55,10 @@
                     <span>Panel service name</span>
                     <input type="text" name="panel_service_name" value="{{.PanelServiceName}}" placeholder="server-side-control" required>
                 </label>
+                <label class="span-2">
+                    <span>Subdomain root base directory</span>
+                    <input type="text" name="subdomain_root_base_dir" value="{{.SubdomainRootBaseDir}}" placeholder="Leave empty to place subdomains next to each site root">
+                </label>
             </div>
             <div class="form-actions">
                 <button type="submit">Save panel settings</button>
@@ -64,6 +68,7 @@
             <li>Use `127.0.0.1:8080` when Nginx will proxy requests to the panel.</li>
             <li>Changing the listen address requires restarting the panel service.</li>
             <li>Before TLS is enabled, keep the base URL on `http://...`; switch it to `https://...` after the certificate is active.</li>
+            <li>If subdomain root base is set, every managed subdomain is created under that directory instead of next to the main site root.</li>
         </ul>
     </article>
     <article class="panel">

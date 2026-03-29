@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -202,6 +203,12 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		previousCommit string
 		appendRepoState bool
 	)
+	targetDirectory := site.RootDirectory
+	targetUser := site.OwnerLinuxUser
+	targetLabel := site.Name
+	credentialPreferenceSubdomainID := int64(0)
+	credentialPreferenceProtocol := ""
+	credentialPreferenceUsername := ""
 	switch action {
 	case "sync_repository":
 		repositoryURL := strings.TrimSpace(r.FormValue("repository_url"))
@@ -229,6 +236,161 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		if status, inspectErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser}); inspectErr == nil {
 			previousCommit = strings.TrimSpace(status.CurrentCommit)
 		}
+	case "sync_subdomain_repository":
+		subdomainID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subdomain_id")), 10, 64)
+		if err != nil || subdomainID <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subdomain id is required"})
+			return
+		}
+		subdomains, listErr := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if listErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load subdomains"})
+			return
+		}
+		subdomain, ok := findSiteSubdomain(subdomains, subdomainID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "subdomain could not be found"})
+			return
+		}
+		if strings.TrimSpace(subdomain.RepositoryURL) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subdomain repository url is required"})
+			return
+		}
+		targetDirectory = subdomain.RootDirectory
+		targetLabel = subdomain.FullDomain
+		helperAction = "deploy.run"
+		payload = system.DeploySpec{
+			RepositoryURL:     subdomain.RepositoryURL,
+			Branch:            firstNonEmpty(subdomain.BranchName, "main"),
+			TargetDirectory:   subdomain.RootDirectory,
+			RunAsUser:         targetUser,
+			PostDeployCommand: subdomain.PostDeployCommand,
+		}
+		auditAction = "deploy.subdomain_sync"
+		label = "git sync " + subdomain.FullDomain
+		auditMeta = map[string]any{"repository_url": subdomain.RepositoryURL, "branch": firstNonEmpty(subdomain.BranchName, "main"), "run_as_user": targetUser, "target_directory": subdomain.RootDirectory, "subdomain_id": subdomain.ID}
+		appendRepoState = true
+		if status, inspectErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: subdomain.RootDirectory, RunAsUser: targetUser}); inspectErr == nil {
+			previousCommit = strings.TrimSpace(status.CurrentCommit)
+		}
+	case "run_subdomain_git_command":
+		subdomainID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subdomain_id")), 10, 64)
+		if err != nil || subdomainID <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subdomain id is required"})
+			return
+		}
+		command := strings.TrimSpace(r.FormValue("git_custom_command"))
+		if command == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "custom git command is required"})
+			return
+		}
+		if err := system.ValidateGitCommand(command); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "custom git command must be a single safe git command"})
+			return
+		}
+		subdomains, listErr := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if listErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load subdomains"})
+			return
+		}
+		subdomain, ok := findSiteSubdomain(subdomains, subdomainID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "subdomain could not be found"})
+			return
+		}
+		targetDirectory = subdomain.RootDirectory
+		targetLabel = subdomain.FullDomain
+		helperAction = "deploy.run_custom_git_command"
+		payload = system.GitCommandSpec{User: targetUser, WorkingDirectory: subdomain.RootDirectory, Command: command}
+		auditAction = "deploy.subdomain_custom_git_command"
+		label = command + " · " + subdomain.FullDomain
+		auditMeta = map[string]any{"run_as_user": targetUser, "target_directory": subdomain.RootDirectory, "command": command, "subdomain_id": subdomain.ID}
+		appendRepoState = true
+		if status, inspectErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: subdomain.RootDirectory, RunAsUser: targetUser}); inspectErr == nil {
+			previousCommit = strings.TrimSpace(status.CurrentCommit)
+		}
+	case "generate_subdomain_deploy_key":
+		subdomainID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subdomain_id")), 10, 64)
+		if err != nil || subdomainID <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subdomain id is required"})
+			return
+		}
+		subdomains, listErr := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if listErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load subdomains"})
+			return
+		}
+		subdomain, ok := findSiteSubdomain(subdomains, subdomainID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "subdomain could not be found"})
+			return
+		}
+		targetLabel = subdomain.FullDomain
+		helperAction = "git_auth.ensure_deploy_key"
+		payload = system.GitDeployKeySpec{User: site.OwnerLinuxUser, SiteName: subdomain.FullDomain, RepositoryURL: firstNonEmpty(strings.TrimSpace(r.FormValue("repository_url")), subdomain.RepositoryURL)}
+		auditAction = "git_auth.subdomain.ensure_deploy_key"
+		label = "generate deploy key " + subdomain.FullDomain
+		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "subdomain_id": subdomain.ID}
+	case "trust_subdomain_git_host":
+		subdomainID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subdomain_id")), 10, 64)
+		if err != nil || subdomainID <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subdomain id is required"})
+			return
+		}
+		host := strings.TrimSpace(r.FormValue("credential_host"))
+		if host == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "git host is required"})
+			return
+		}
+		subdomains, listErr := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if listErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load subdomains"})
+			return
+		}
+		subdomain, ok := findSiteSubdomain(subdomains, subdomainID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "subdomain could not be found"})
+			return
+		}
+		targetLabel = subdomain.FullDomain
+		helperAction = "git_auth.trust_host"
+		payload = system.GitHostTrustSpec{User: site.OwnerLinuxUser, Host: host}
+		auditAction = "git_auth.subdomain.trust_host"
+		label = "trust host " + host + " · " + subdomain.FullDomain
+		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "host": host, "subdomain_id": subdomain.ID}
+	case "store_subdomain_git_credential":
+		subdomainID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subdomain_id")), 10, 64)
+		if err != nil || subdomainID <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subdomain id is required"})
+			return
+		}
+		protocol := strings.TrimSpace(r.FormValue("credential_protocol"))
+		host := strings.TrimSpace(r.FormValue("credential_host"))
+		username := strings.TrimSpace(r.FormValue("credential_username"))
+		password := r.FormValue("credential_password")
+		if host == "" || username == "" || strings.TrimSpace(password) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "credential host, username, and password are required"})
+			return
+		}
+		subdomains, listErr := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if listErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load subdomains"})
+			return
+		}
+		subdomain, ok := findSiteSubdomain(subdomains, subdomainID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "subdomain could not be found"})
+			return
+		}
+		targetLabel = subdomain.FullDomain
+		helperAction = "git_auth.store_credential"
+		payload = system.GitCredentialSpec{User: site.OwnerLinuxUser, Protocol: protocol, Host: host, Username: username, Password: password}
+		auditAction = "git_auth.subdomain.store_credential"
+		label = "store git credentials · " + subdomain.FullDomain
+		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "protocol": protocol, "host": host, "username": username, "subdomain_id": subdomain.ID}
+		credentialPreferenceSubdomainID = subdomain.ID
+		credentialPreferenceProtocol = protocol
+		credentialPreferenceUsername = username
 	case "run_custom_git_command":
 		command := strings.TrimSpace(r.FormValue("git_custom_command"))
 		if command == "" {
@@ -361,7 +523,7 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		for key, value := range auditMeta {
 			failureMeta[key] = value
 		}
-		a.recordAudit(r.Context(), auditAction, site.Name, "failure", failureMeta)
+		a.recordAudit(r.Context(), auditAction, targetLabel, "failure", failureMeta)
 		_, _ = io.WriteString(streamWriter, "\n\n[command failed]\n")
 		return
 	}
@@ -369,9 +531,12 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 	for key, value := range auditMeta {
 		successMeta[key] = value
 	}
-	a.recordAudit(r.Context(), auditAction, site.Name, "success", successMeta)
+	a.recordAudit(r.Context(), auditAction, targetLabel, "success", successMeta)
+	if credentialPreferenceSubdomainID > 0 && a.store != nil {
+		_ = a.store.UpdateSiteSubdomainGitCredentialPreferences(r.Context(), site.ID, credentialPreferenceSubdomainID, credentialPreferenceProtocol, credentialPreferenceUsername)
+	}
 	if appendRepoState {
-		if status, inspectErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser}); inspectErr == nil && status.IsGitRepo {
+		if status, inspectErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: targetDirectory, RunAsUser: targetUser}); inspectErr == nil && status.IsGitRepo {
 			_, _ = io.WriteString(streamWriter, "\n")
 			if strings.TrimSpace(status.Branch) != "" {
 				_, _ = io.WriteString(streamWriter, "Branch: "+strings.TrimSpace(status.Branch)+"\n")

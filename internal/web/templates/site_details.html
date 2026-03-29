@@ -925,7 +925,7 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
                 <h3>Site-specific subdomain routing</h3>
             </div>
         </div>
-        <p class="muted details-note">Create subdomains like service.{{.SelectedSite.DomainName}} with their own runtime mode, upstream, PHP version, and root path.</p>
+        <p class="muted details-note">Create subdomains like service.{{.SelectedSite.DomainName}} with their own runtime mode, separate folder name, repository sync, and webhook-based auto deploy.</p>
         <form method="post" class="stack-form">
             <input type="hidden" name="details_action" value="add_subdomain">
             <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
@@ -950,23 +950,45 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
                     <span>PHP version</span>
                     <input type="text" name="subdomain_php_version" value="{{.SubdomainPHPVersion}}" placeholder="8.3">
                 </label>
-                <label class="span-2">
-                    <span>Root directory</span>
-                    <input type="text" name="subdomain_root_directory" value="{{.SubdomainRootDirectory}}" placeholder="Defaults to {{.SelectedSite.RootDirectory}}/subdomains/name">
+                <label>
+                    <span>Folder name</span>
+                    <input type="text" name="subdomain_directory_name" value="{{.SubdomainDirectoryName}}" placeholder="service-app" required>
+                </label>
+                <label>
+                    <span>Repository URL</span>
+                    <input type="text" name="subdomain_repository_url" value="{{.SubdomainRepositoryURL}}" placeholder="git@github.com:org/repo.git">
+                </label>
+                <label>
+                    <span>Branch</span>
+                    <input type="text" name="subdomain_branch" value="{{.SubdomainBranch}}" placeholder="main">
+                </label>
+                <label>
+                    <span>Post-deploy command</span>
+                    <input type="text" name="subdomain_post_deploy_command" value="{{.SubdomainPostDeployCommand}}" placeholder="composer install --no-dev">
+                </label>
+                <label class="checkbox-row">
+                    <input type="checkbox" name="subdomain_auto_deploy_enabled" value="1" {{if .SubdomainAutoDeployEnabled}}checked{{end}}>
+                    <span>Enable auto deploy webhook</span>
+                </label>
+                <label>
+                    <span>Auto deploy branch</span>
+                    <input type="text" name="subdomain_auto_deploy_branch" value="{{.SubdomainAutoDeployBranch}}" placeholder="main">
                 </label>
             </div>
+            <p class="muted details-note">Subdomain root is created outside the main site directory{{if .SubdomainRootBaseDir}}, under {{.SubdomainRootBaseDir}}{{else}}, alongside {{.SelectedSite.RootDirectory}}{{end}}.</p>
             <div class="form-actions">
                 <button type="submit">Add subdomain</button>
             </div>
         </form>
         {{if .SiteSubdomains}}
-        <div class="table-card" style="margin-top:18px;">
+        <div class="table-card" style="margin-top:18px;overflow-x:auto;">
             <table class="table table-theme">
                 <thead>
                     <tr>
                         <th>Domain</th>
                         <th>Mode</th>
                         <th>Root / Upstream</th>
+                        <th>Deploy</th>
                         <th>Config</th>
                         <th>Actions</th>
                     </tr>
@@ -977,9 +999,209 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
                         <td>{{.FullDomain}}</td>
                         <td>{{.Runtime}}</td>
                         <td>{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}{{.RootDirectory}}{{end}}</td>
+                        <td style="min-width:340px;">
+                            <form method="post" class="stack-form compact-form" style="margin-top:0;gap:8px;">
+                                <input type="hidden" name="details_action" value="save_subdomain_deploy">
+                                <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                <input type="hidden" name="subdomain_id" value="{{.ID}}">
+                                <label>
+                                    <span>Repository URL</span>
+                                    <input type="text" name="subdomain_repository_url" value="{{.RepositoryURL}}" placeholder="git@github.com:org/repo.git">
+                                </label>
+                                <div class="form-grid two-up">
+                                    <label>
+                                        <span>Branch</span>
+                                        <input type="text" name="subdomain_branch" value="{{if .BranchName}}{{.BranchName}}{{else}}main{{end}}" placeholder="main">
+                                    </label>
+                                    <label>
+                                        <span>Auto deploy branch</span>
+                                        <input type="text" name="subdomain_auto_deploy_branch" value="{{if .AutoDeployBranch}}{{.AutoDeployBranch}}{{else if .BranchName}}{{.BranchName}}{{else}}main{{end}}" placeholder="main">
+                                    </label>
+                                </div>
+                                <label>
+                                    <span>Post-deploy command</span>
+                                    <input type="text" name="subdomain_post_deploy_command" value="{{.PostDeployCommand}}" placeholder="npm install && npm run build">
+                                </label>
+                                <label>
+                                    <span>Auto deploy command</span>
+                                    <input type="text" name="subdomain_auto_deploy_command" value="{{.AutoDeployCommand}}" placeholder="systemctl restart app">
+                                </label>
+                                <label>
+                                    <span>Notify email</span>
+                                    <input type="email" name="subdomain_auto_deploy_notify_email" value="{{.AutoDeployNotifyEmail}}" placeholder="ops@example.com">
+                                </label>
+                                <label>
+                                    <span>Webhook secret</span>
+                                    <input type="text" name="subdomain_auto_deploy_secret" value="{{.AutoDeploySecret}}" placeholder="Generated when enabled or rotated">
+                                </label>
+                                <label class="checkbox-row compact">
+                                    <input type="checkbox" name="subdomain_auto_deploy_enabled" value="1" {{if .AutoDeployEnabled}}checked{{end}}>
+                                    <span>Enable auto deploy</span>
+                                </label>
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Save deploy</button>
+                                </div>
+                            </form>
+                            <form method="post" class="stack-form compact-form" style="margin-top:8px;gap:8px;">
+                                <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                <input type="hidden" name="subdomain_id" value="{{.ID}}">
+                                <label>
+                                    <span>Move to folder name</span>
+                                    <input type="text" name="subdomain_directory_name" value="{{.Subdomain}}" placeholder="service-app">
+                                </label>
+                                <div class="form-actions">
+                                    <button type="submit" name="details_action" value="move_subdomain_root_preview" class="btn btn-sm btn-outline-secondary">Preview move</button>
+                                    <button type="submit" name="details_action" value="move_subdomain_root" class="btn btn-sm btn-outline-secondary">Move root</button>
+                                </div>
+                            </form>
+                            {{if .MovePreviewTo}}
+                            <div class="details-note" style="margin-top:8px;word-break:break-all;">
+                                <strong>Preview:</strong> {{.MovePreviewFrom}} -> {{.MovePreviewTo}}
+                            </div>
+                            <div class="site-delete-summary details-summary" style="margin-top:8px;">
+                                <div><strong>Target exists</strong><span>{{if .MovePreviewTargetExists}}Yes{{else}}No{{end}}</span></div>
+                                <div><strong>Target empty</strong><span>{{if .MovePreviewTargetExists}}{{if .MovePreviewTargetEmpty}}Yes{{else}}No{{end}}{{else}}-{{end}}</span></div>
+                                <div><strong>Git repo</strong><span>{{if .MovePreviewTargetGitRepo}}Yes{{else}}No{{end}}</span></div>
+                                <div><strong>Status</strong><span>{{if .MovePreviewTargetState}}{{.MovePreviewTargetState}}{{else}}-{{end}}</span></div>
+                            </div>
+                            {{end}}
+                            <form method="post" class="inline-form" style="margin-top:8px;">
+                                <input type="hidden" name="details_action" value="rotate_subdomain_auto_deploy_secret">
+                                <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                <input type="hidden" name="subdomain_id" value="{{.ID}}">
+                                <input type="hidden" name="subdomain_repository_url" value="{{.RepositoryURL}}">
+                                <input type="hidden" name="subdomain_branch" value="{{.BranchName}}">
+                                <input type="hidden" name="subdomain_post_deploy_command" value="{{.PostDeployCommand}}">
+                                <input type="hidden" name="subdomain_auto_deploy_branch" value="{{.AutoDeployBranch}}">
+                                <input type="hidden" name="subdomain_auto_deploy_command" value="{{.AutoDeployCommand}}">
+                                <input type="hidden" name="subdomain_auto_deploy_notify_email" value="{{.AutoDeployNotifyEmail}}">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Rotate webhook secret</button>
+                            </form>
+                            <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" style="margin-top:8px;gap:8px;">
+                                <input type="hidden" name="details_action" value="run_subdomain_git_command">
+                                <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                <input type="hidden" name="subdomain_id" value="{{.ID}}">
+                                <label>
+                                    <span>Custom git command</span>
+                                    <input type="text" name="git_custom_command" value="" placeholder="git status">
+                                </label>
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Run git command</button>
+                                </div>
+                            </form>
+                            <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1" style="margin-top:8px;">
+                                <input type="hidden" name="details_action" value="generate_subdomain_deploy_key">
+                                <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                <input type="hidden" name="subdomain_id" value="{{.ID}}">
+                                <input type="hidden" name="repository_url" value="{{.RepositoryURL}}">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Generate deploy key</button>
+                            </form>
+                            <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1" style="margin-top:8px;gap:8px;">
+                                <input type="hidden" name="details_action" value="trust_subdomain_git_host">
+                                <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                <input type="hidden" name="subdomain_id" value="{{.ID}}">
+                                <label>
+                                    <span>Git host</span>
+                                    <input type="text" name="credential_host" value="{{.GitAuthStatus.RepositoryHost}}" placeholder="github.com">
+                                </label>
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Trust host</button>
+                                </div>
+                            </form>
+                            <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1" style="margin-top:8px;gap:8px;">
+                                <input type="hidden" name="details_action" value="store_subdomain_git_credential">
+                                <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                <input type="hidden" name="subdomain_id" value="{{.ID}}">
+                                <div class="form-grid two-up">
+                                    <label>
+                                        <span>Protocol</span>
+                                        <input type="text" name="credential_protocol" value="{{if .GitCredentialProtocol}}{{.GitCredentialProtocol}}{{else if .GitAuthStatus.RepositoryProtocol}}{{.GitAuthStatus.RepositoryProtocol}}{{else}}https{{end}}" placeholder="https">
+                                    </label>
+                                    <label>
+                                        <span>Host</span>
+                                        <input type="text" name="credential_host" value="{{.GitAuthStatus.RepositoryHost}}" placeholder="github.com">
+                                    </label>
+                                    <label>
+                                        <span>Username</span>
+                                        <input type="text" name="credential_username" value="{{.GitCredentialUsername}}" placeholder="git username">
+                                    </label>
+                                    <label>
+                                        <span>Password / token</span>
+                                        <input type="password" name="credential_password" value="" placeholder="personal access token">
+                                    </label>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Store credential</button>
+                                </div>
+                            </form>
+                            {{if .AutoDeployWebhookURL}}
+                            <div class="details-note" style="margin-top:8px;word-break:break-all;">
+                                <strong>Webhook:</strong> {{.AutoDeployWebhookURL}}
+                            </div>
+                            {{end}}
+                            <div class="site-delete-summary details-summary" style="margin-top:10px;">
+                                <div><strong>Deploy key</strong><span>{{if .GitAuthStatus.DeployKeyReady}}Ready{{else}}Missing{{end}}</span></div>
+                                <div><strong>Known host</strong><span>{{if .GitAuthStatus.KnownHostTrusted}}Trusted{{else}}Not trusted{{end}}</span></div>
+                                <div><strong>Credential</strong><span>{{if .GitAuthStatus.CredentialConfigured}}Configured{{else}}Missing{{end}}</span></div>
+                                <div><strong>Git host</strong><span>{{if .GitAuthStatus.RepositoryHost}}{{.GitAuthStatus.RepositoryHost}}{{else}}-{{end}}</span></div>
+                                <div><strong>Last webhook</strong><span>{{if .LatestWebhookAudit.Action}}{{.LatestWebhookAudit.Outcome}} at {{.LatestWebhookAudit.CreatedAt.Format "2006-01-02 15:04:05"}}{{else}}-{{end}}</span></div>
+                                <div><strong>Webhook details</strong><span>{{if .LatestWebhookAudit.Metadata}}{{.LatestWebhookAudit.Metadata}}{{else}}-{{end}}</span></div>
+                            </div>
+                            {{if .DeploymentReleases}}
+                            {{$subdomainID := .ID}}
+                            {{$subdomainDomain := .FullDomain}}
+                            {{$subdomainPostDeploy := .PostDeployCommand}}
+                            <div class="table-card" style="margin-top:12px;">
+                                <table class="table table-theme">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Action</th>
+                                            <th>Status</th>
+                                            <th>Commit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {{range $relIndex, $release := .DeploymentReleases}}
+                                        <tr style="cursor:pointer;" onclick="var d=document.getElementById('sub-rel-{{$.SelectedSite.ID}}-{{$subdomainID}}-{{$relIndex}}');if(d){d.classList.toggle('hidden')}">
+                                            <td>{{$release.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                                            <td>{{$release.Action}}</td>
+                                            <td><span class="badge subtle-badge">{{$release.Status}}</span></td>
+                                            <td class="text-break">{{$release.CommitSHA}}</td>
+                                        </tr>
+                                        {{if or $release.PreviousCommitSHA $release.Output}}
+                                        <tr id="sub-rel-{{$.SelectedSite.ID}}-{{$subdomainID}}-{{$relIndex}}" class="table-note-row hidden">
+                                            <td colspan="4">
+                                                {{if $release.PreviousCommitSHA}}<p class="small text-secondary" style="margin:4px 0;">Previous: {{$release.PreviousCommitSHA}}</p>{{end}}
+                                                {{if $release.Output}}<pre class="command-output mt-0">{{$release.Output}}</pre>{{end}}
+                                                {{if $release.CommitSHA}}
+                                                <form method="post" class="inline-form subdomain-rollback-form" style="margin-top:8px;" data-subdomain-domain="{{$subdomainDomain}}" data-commit-sha="{{$release.CommitSHA}}">
+                                                    <input type="hidden" name="details_action" value="rollback_subdomain_release">
+                                                    <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                                    <input type="hidden" name="subdomain_id" value="{{$subdomainID}}">
+                                                    <input type="hidden" name="release_commit_sha" value="{{$release.CommitSHA}}">
+                                                    <input type="hidden" name="rollback_post_deploy_command" value="{{$subdomainPostDeploy}}">
+                                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Rollback to this commit</button>
+                                                </form>
+                                                {{end}}
+                                            </td>
+                                        </tr>
+                                        {{end}}
+                                        {{end}}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {{end}}
+                        </td>
                         <td>{{.NginxConfigPath}}</td>
                         <td>
                             <div class="stack-cluster">
+                                <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
+                                    <input type="hidden" name="details_action" value="sync_subdomain_repository">
+                                    <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                    <input type="hidden" name="subdomain_id" value="{{.ID}}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Clone / pull</button>
+                                </form>
                                 <form method="post" class="stack-form compact-form" style="margin-top:0;gap:8px;">
                                     <input type="hidden" name="details_action" value="enable_subdomain_tls">
                                     <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
@@ -1021,6 +1243,20 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
 {{template "deploy_history" .}}
 </div>
 
+<dialog id="subdomain-rollback-dialog" class="panel" style="max-width:520px;width:calc(100% - 32px);border:1px solid rgba(148,163,184,0.25);background:#0f172a;color:#e5e7eb;">
+    <form method="dialog" class="stack-form" style="margin-top:0;">
+        <div>
+            <span class="eyebrow">Confirm rollback</span>
+            <h3 style="margin:6px 0 0;">Rollback subdomain release</h3>
+        </div>
+        <p id="subdomain-rollback-dialog-text" class="muted details-note" style="margin:0;"></p>
+        <div class="form-actions">
+            <button value="cancel" class="btn btn-sm btn-outline-secondary">Cancel</button>
+            <button value="confirm" id="subdomain-rollback-confirm" class="btn btn-sm btn-outline-secondary">Rollback</button>
+        </div>
+    </form>
+</dialog>
+
 <script src="/static/vendor/xterm/xterm.min.js"></script>
 <script src="/static/vendor/xterm/xterm-addon-fit.min.js"></script>
 <script>
@@ -1045,6 +1281,8 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     const sshTerminalStatus = document.getElementById('ssh-terminal-status');
     const sshTerminalConnect = document.getElementById('ssh-terminal-connect');
     const sshTerminalDisconnect = document.getElementById('ssh-terminal-disconnect');
+    const subdomainRollbackDialog = document.getElementById('subdomain-rollback-dialog');
+    const subdomainRollbackDialogText = document.getElementById('subdomain-rollback-dialog-text');
     if (!tabNav || !runtimeForm || !customForm || !outputSection || !outputBody || !outputPre || !outputStatus || !outputToggle || !commandSelect || !commandId || !commandName || !commandNodeVersion || !commandBody || !commandRun || !commandClear) {
         return;
     }
@@ -1164,6 +1402,8 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
 
     const tabButtons = Array.from(tabNav.querySelectorAll('[data-tab]'));
     const tabPanels = Array.from(document.querySelectorAll('[data-site-tab]'));
+    const subdomainRollbackForms = Array.from(document.querySelectorAll('.subdomain-rollback-form'));
+    let pendingRollbackForm = null;
 
     function activateTab(tabName) {
         tabButtons.forEach((button) => {
@@ -1407,6 +1647,40 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
             event.preventDefault();
             streamForm(form, form.dataset.streamEndpoint || '/sites/details/action-stream', form.dataset.reloadOnSuccess === '1');
         });
+    });
+
+    subdomainRollbackForms.forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            if (form.dataset.rollbackConfirmed === '1') {
+                form.dataset.rollbackConfirmed = '0';
+                return;
+            }
+            event.preventDefault();
+            const domain = form.dataset.subdomainDomain || 'this subdomain';
+            const commit = form.dataset.commitSha || 'the selected commit';
+            if (!subdomainRollbackDialog || typeof subdomainRollbackDialog.showModal !== 'function') {
+                if (window.confirm('Rollback ' + domain + ' to commit ' + commit + '?')) {
+                    form.dataset.rollbackConfirmed = '1';
+                    form.requestSubmit();
+                }
+                return;
+            }
+            pendingRollbackForm = form;
+            if (subdomainRollbackDialogText) {
+                subdomainRollbackDialogText.textContent = 'Rollback ' + domain + ' to commit ' + commit + '? This will change the active release for that subdomain.';
+            }
+            subdomainRollbackDialog.showModal();
+        });
+    });
+
+    subdomainRollbackDialog?.addEventListener('close', () => {
+        if (subdomainRollbackDialog.returnValue !== 'confirm' || !pendingRollbackForm) {
+            pendingRollbackForm = null;
+            return;
+        }
+        pendingRollbackForm.dataset.rollbackConfirmed = '1';
+        pendingRollbackForm.requestSubmit();
+        pendingRollbackForm = null;
     });
 
     setOutputVisibility(!outputBody.classList.contains('hidden'));

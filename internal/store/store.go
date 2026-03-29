@@ -98,6 +98,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("ensure site_subdomains table: %w", err)
 	}
 
+	if err := s.ensureSiteSubdomainsDeployColumns(ctx); err != nil {
+		return fmt.Errorf("ensure site_subdomains deploy columns: %w", err)
+	}
+
 	if err := s.ensureNginxConfigRevisionsTable(ctx); err != nil {
 		return fmt.Errorf("ensure nginx_config_revisions table: %w", err)
 	}
@@ -344,6 +348,16 @@ func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {
 			runtime VARCHAR(32) NOT NULL,
 			upstream_url VARCHAR(255) NOT NULL DEFAULT '',
 			php_version VARCHAR(32) NOT NULL DEFAULT '',
+			repository_url VARCHAR(255) NOT NULL DEFAULT '',
+			branch_name VARCHAR(191) NOT NULL DEFAULT '',
+			git_credential_protocol VARCHAR(32) NOT NULL DEFAULT '',
+			git_credential_username VARCHAR(191) NOT NULL DEFAULT '',
+			post_deploy_command TEXT NOT NULL,
+			auto_deploy_enabled TINYINT(1) NOT NULL DEFAULT 0,
+			auto_deploy_branch VARCHAR(191) NOT NULL DEFAULT '',
+			auto_deploy_secret VARCHAR(255) NOT NULL DEFAULT '',
+			auto_deploy_command TEXT NOT NULL,
+			auto_deploy_notify_email VARCHAR(255) NOT NULL DEFAULT '',
 			root_directory VARCHAR(255) NOT NULL DEFAULT '',
 			nginx_config_path VARCHAR(255) NOT NULL DEFAULT '',
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -353,6 +367,50 @@ func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {
 			CONSTRAINT fk_site_subdomains_site FOREIGN KEY (site_id) REFERENCES managed_sites(id) ON DELETE CASCADE
 		)`)
 	return err
+}
+
+func (s *Store) ensureSiteSubdomainsDeployColumns(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	columns := []struct {
+		name      string
+		statement string
+	}{
+		{name: "repository_url", statement: `ALTER TABLE site_subdomains ADD COLUMN repository_url VARCHAR(255) NOT NULL DEFAULT '' AFTER php_version`},
+		{name: "branch_name", statement: `ALTER TABLE site_subdomains ADD COLUMN branch_name VARCHAR(191) NOT NULL DEFAULT '' AFTER repository_url`},
+		{name: "git_credential_protocol", statement: `ALTER TABLE site_subdomains ADD COLUMN git_credential_protocol VARCHAR(32) NOT NULL DEFAULT '' AFTER branch_name`},
+		{name: "git_credential_username", statement: `ALTER TABLE site_subdomains ADD COLUMN git_credential_username VARCHAR(191) NOT NULL DEFAULT '' AFTER git_credential_protocol`},
+		{name: "post_deploy_command", statement: `ALTER TABLE site_subdomains ADD COLUMN post_deploy_command TEXT NOT NULL AFTER git_credential_username`},
+		{name: "auto_deploy_enabled", statement: `ALTER TABLE site_subdomains ADD COLUMN auto_deploy_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER post_deploy_command`},
+		{name: "auto_deploy_branch", statement: `ALTER TABLE site_subdomains ADD COLUMN auto_deploy_branch VARCHAR(191) NOT NULL DEFAULT '' AFTER auto_deploy_enabled`},
+		{name: "auto_deploy_secret", statement: `ALTER TABLE site_subdomains ADD COLUMN auto_deploy_secret VARCHAR(255) NOT NULL DEFAULT '' AFTER auto_deploy_branch`},
+		{name: "auto_deploy_command", statement: `ALTER TABLE site_subdomains ADD COLUMN auto_deploy_command TEXT NOT NULL AFTER auto_deploy_secret`},
+		{name: "auto_deploy_notify_email", statement: `ALTER TABLE site_subdomains ADD COLUMN auto_deploy_notify_email VARCHAR(255) NOT NULL DEFAULT '' AFTER auto_deploy_command`},
+	}
+	for _, column := range columns {
+		var count int
+		err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM information_schema.columns
+			WHERE table_schema = DATABASE()
+			  AND table_name = 'site_subdomains'
+			  AND column_name = ?
+		`, column.name).Scan(&count)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.statement); err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) ensureNginxConfigRevisionsTable(ctx context.Context) error {

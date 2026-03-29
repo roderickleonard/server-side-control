@@ -279,6 +279,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		PanelListenAddr: a.cfg.ListenAddr,
 		PanelBaseURL:    a.cfg.BaseURL,
 		PanelServiceName: firstNonEmpty(a.cfg.ServiceName, "server-side-control"),
+		SubdomainRootBaseDir: strings.TrimSpace(a.cfg.SubdomainRootBaseDir),
 		SMTPHost:        a.cfg.SMTPHost,
 		SMTPPort:        firstNonEmpty(a.cfg.SMTPPort, "587"),
 		SMTPUsername:    a.cfg.SMTPUsername,
@@ -332,6 +333,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	data.PanelDomain = strings.TrimSpace(r.FormValue("panel_domain"))
 	data.PanelTLSEmail = strings.TrimSpace(r.FormValue("panel_tls_email"))
 	data.PanelServiceName = firstNonEmpty(strings.TrimSpace(r.FormValue("panel_service_name")), data.PanelServiceName)
+	data.SubdomainRootBaseDir = firstNonEmpty(strings.TrimSpace(r.FormValue("subdomain_root_base_dir")), data.SubdomainRootBaseDir)
 	data.SMTPHost = strings.TrimSpace(r.FormValue("smtp_host"))
 	data.SMTPPort = firstNonEmpty(strings.TrimSpace(r.FormValue("smtp_port")), "587")
 	data.SMTPUsername = strings.TrimSpace(r.FormValue("smtp_username"))
@@ -453,6 +455,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		updatedCfg.ListenAddr = data.PanelListenAddr
 		updatedCfg.BaseURL = data.PanelBaseURL
 		updatedCfg.ServiceName = data.PanelServiceName
+		updatedCfg.SubdomainRootBaseDir = data.SubdomainRootBaseDir
 		updatedCfg.SMTPHost = data.SMTPHost
 		updatedCfg.SMTPPort = data.SMTPPort
 		updatedCfg.SMTPUsername = data.SMTPUsername
@@ -746,6 +749,8 @@ func siteDetailTabForAction(action string) string {
 	switch action {
 	case "sync_repository", "generate_deploy_key", "trust_git_host", "store_git_credential", "save_auto_deploy", "rotate_auto_deploy_secret":
 		return "deploy"
+	case "sync_subdomain_repository", "run_subdomain_git_command", "save_subdomain_deploy", "rotate_subdomain_auto_deploy_secret", "move_subdomain_root", "move_subdomain_root_preview", "rollback_subdomain_release", "generate_subdomain_deploy_key", "trust_subdomain_git_host", "store_subdomain_git_credential":
+		return "domains"
 	case "run_custom_git_command":
 		return "deploy"
 	case "run_ssh_command":
@@ -1047,6 +1052,15 @@ type helperSiteFileEntry struct {
 	Size  int64  `json:"size"`
 }
 
+type subdomainMovePreview struct {
+	From        string
+	To          string
+	TargetExists bool
+	TargetEmpty bool
+	TargetGitRepo bool
+	TargetState string
+}
+
 func buildAutoDeployWebhookURL(baseURL string, siteName string, secret string) string {
 	baseURL = strings.TrimSpace(baseURL)
 	siteName = strings.TrimSpace(siteName)
@@ -1198,17 +1212,52 @@ func subdomainConfigName(siteName string, fullDomain string) string {
 	return name
 }
 
-func buildSiteSubdomain(site domain.ManagedSite, label string, mode string, upstreamURL string, phpVersion string, rootDirectory string) (domain.SiteSubdomain, system.SiteSpec, error) {
+func sanitizeSubdomainDirectoryName(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	var buffer []rune
+	lastSeparator := false
+	for _, ch := range value {
+		switch {
+		case ch >= 'a' && ch <= 'z', ch >= '0' && ch <= '9':
+			buffer = append(buffer, ch)
+			lastSeparator = false
+		case ch == '-', ch == '_', ch == '.':
+			if len(buffer) == 0 || lastSeparator {
+				continue
+			}
+			buffer = append(buffer, '-')
+			lastSeparator = true
+		}
+	}
+	return strings.Trim(string(buffer), "-. ")
+}
+
+	func buildManagedSubdomainRootDirectory(site domain.ManagedSite, baseDirectory string, directoryName string) string {
+	directoryName = sanitizeSubdomainDirectoryName(directoryName)
+	if directoryName == "" {
+		directoryName = sanitizeSubdomainDirectoryName(site.Name + "-subdomain")
+	}
+	baseDirectory = strings.TrimSpace(baseDirectory)
+	if baseDirectory == "" {
+		baseDirectory = filepath.Dir(filepath.Clean(strings.TrimSpace(site.RootDirectory)))
+	}
+	if baseDirectory == "." || baseDirectory == "/" || baseDirectory == "" {
+		baseDirectory = filepath.Join("/home", strings.TrimSpace(site.OwnerLinuxUser))
+	}
+	return filepath.Join(baseDirectory, directoryName)
+}
+
+func buildSiteSubdomain(site domain.ManagedSite, baseDirectory string, label string, mode string, upstreamURL string, phpVersion string, directoryName string) (domain.SiteSubdomain, system.SiteSpec, error) {
 	label = sanitizeSubdomainLabel(label)
 	if label == "" {
 		return domain.SiteSubdomain{}, system.SiteSpec{}, errors.New("Subdomain label is required.")
 	}
 	fullDomain := label + "." + strings.TrimSpace(site.DomainName)
 	mode = firstNonEmpty(strings.TrimSpace(mode), "reverse_proxy")
-	rootDirectory = strings.TrimSpace(rootDirectory)
-	if rootDirectory == "" {
-		rootDirectory = filepath.Join(site.RootDirectory, "subdomains", label)
-	}
+	rootDirectory := buildManagedSubdomainRootDirectory(site, baseDirectory, firstNonEmpty(strings.TrimSpace(directoryName), label))
 	upstreamURL = strings.TrimSpace(upstreamURL)
 	phpVersion = strings.TrimSpace(phpVersion)
 	spec := system.SiteSpec{
@@ -1232,6 +1281,85 @@ func buildSiteSubdomain(site domain.ManagedSite, label string, mode string, upst
 	return record, spec, nil
 }
 
+func findSiteSubdomain(items []domain.SiteSubdomain, subdomainID int64) (domain.SiteSubdomain, bool) {
+	for _, item := range items {
+		if item.ID == subdomainID {
+			return item, true
+		}
+	}
+	return domain.SiteSubdomain{}, false
+}
+
+func buildSubdomainAutoDeployWebhookURL(baseURL string, siteName string, subdomainID int64, secret string) string {
+	baseURL = strings.TrimSpace(baseURL)
+	siteName = strings.TrimSpace(siteName)
+	secret = strings.TrimSpace(secret)
+	if baseURL == "" || siteName == "" || secret == "" || subdomainID <= 0 {
+		return ""
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return ""
+	}
+	parsed.Path = "/webhooks/site-deploy"
+	query := parsed.Query()
+	query.Set("site", siteName)
+	query.Set("subdomain_id", strconv.FormatInt(subdomainID, 10))
+	query.Set("secret", secret)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
+func shellSingleQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func buildSubdomainSiteSpec(site domain.ManagedSite, subdomain domain.SiteSubdomain, rootDirectory string) system.SiteSpec {
+	rootDirectory = firstNonEmpty(strings.TrimSpace(rootDirectory), subdomain.RootDirectory)
+	return system.SiteSpec{
+		Name:           subdomainConfigName(site.Name, subdomain.FullDomain),
+		OwnerLinuxUser: site.OwnerLinuxUser,
+		Domain:         subdomain.FullDomain,
+		Mode:           subdomain.Runtime,
+		RootDirectory:  rootDirectory,
+		UpstreamURL:    subdomain.UpstreamURL,
+		PHPVersion:     subdomain.PHPVersion,
+	}
+}
+
+func (a *App) inspectSubdomainMovePreview(ctx context.Context, site domain.ManagedSite, subdomain domain.SiteSubdomain, directoryName string) subdomainMovePreview {
+	preview := subdomainMovePreview{
+		From: subdomain.RootDirectory,
+		To:   buildManagedSubdomainRootDirectory(site, a.cfg.SubdomainRootBaseDir, firstNonEmpty(directoryName, subdomain.Subdomain)),
+	}
+	status, inspectErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: preview.To, RunAsUser: site.OwnerLinuxUser})
+	if inspectErr == nil {
+		preview.TargetExists = status.DirectoryExists
+		preview.TargetGitRepo = status.IsGitRepo
+	}
+	var entries []helperSiteFileEntry
+	if _, err := a.helper.Call(ctx, "files.list_dir", map[string]string{"path": preview.To}, &entries); err == nil {
+		preview.TargetExists = true
+		preview.TargetEmpty = len(entries) == 0
+	} else if !preview.TargetExists {
+		preview.TargetState = "Target does not exist yet."
+	}
+	if preview.TargetExists {
+		switch {
+		case preview.TargetGitRepo:
+			preview.TargetState = "Target exists and already contains a git repository."
+		case preview.TargetEmpty:
+			preview.TargetState = "Target exists and is empty."
+		default:
+			preview.TargetState = "Target exists and is not empty."
+		}
+	}
+	return preview
+}
+
 func (a *App) handleSiteDeployWebhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1251,8 +1379,37 @@ func (a *App) handleSiteDeployWebhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "site not found", http.StatusNotFound)
 		return
 	}
-	if !site.AutoDeployEnabled || site.AutoDeploySecret == "" {
-		a.recordAudit(r.Context(), "deploy.webhook", site.Name, "failure", map[string]any{"reason": "auto_deploy_disabled"})
+	subdomainID, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("subdomain_id")), 10, 64)
+	targetName := site.Name
+	targetDirectory := site.RootDirectory
+	targetBranch := firstNonEmpty(site.AutoDeployBranch, "main")
+	targetSecret := strings.TrimSpace(site.AutoDeploySecret)
+	targetCommand := strings.TrimSpace(site.AutoDeployCommand)
+	targetNotifyEmail := strings.TrimSpace(site.AutoDeployNotifyEmail)
+	autoDeployEnabled := site.AutoDeployEnabled
+	var webhookSubdomain domain.SiteSubdomain
+	if subdomainID > 0 {
+		subdomains, listErr := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if listErr != nil {
+			http.Error(w, "subdomain lookup failed", http.StatusInternalServerError)
+			return
+		}
+		var ok bool
+		webhookSubdomain, ok = findSiteSubdomain(subdomains, subdomainID)
+		if !ok {
+			http.Error(w, "subdomain not found", http.StatusNotFound)
+			return
+		}
+		targetName = webhookSubdomain.FullDomain
+		targetDirectory = webhookSubdomain.RootDirectory
+		targetBranch = firstNonEmpty(webhookSubdomain.AutoDeployBranch, webhookSubdomain.BranchName, "main")
+		targetSecret = strings.TrimSpace(webhookSubdomain.AutoDeploySecret)
+		targetCommand = strings.TrimSpace(webhookSubdomain.AutoDeployCommand)
+		targetNotifyEmail = strings.TrimSpace(webhookSubdomain.AutoDeployNotifyEmail)
+		autoDeployEnabled = webhookSubdomain.AutoDeployEnabled
+	}
+	if !autoDeployEnabled || targetSecret == "" {
+		a.recordAudit(r.Context(), "deploy.webhook", targetName, "failure", map[string]any{"reason": "auto_deploy_disabled", "subdomain_id": subdomainID})
 		http.Error(w, "auto deploy disabled", http.StatusForbidden)
 		return
 	}
@@ -1261,53 +1418,59 @@ func (a *App) handleSiteDeployWebhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	authMode, ok := verifyWebhookSecret(r, body, site.AutoDeploySecret)
+	authMode, ok := verifyWebhookSecret(r, body, targetSecret)
 	if !ok {
-		a.recordAudit(r.Context(), "deploy.webhook", site.Name, "failure", map[string]any{"reason": "invalid_secret", "auth_mode": authMode})
+		a.recordAudit(r.Context(), "deploy.webhook", targetName, "failure", map[string]any{"reason": "invalid_secret", "auth_mode": authMode, "subdomain_id": subdomainID})
 		http.Error(w, "invalid secret", http.StatusForbidden)
 		return
 	}
 	incomingBranch := buildWebhookBranch(body)
 	provider := firstNonEmpty(strings.TrimSpace(r.Header.Get("X-GitHub-Event")), strings.TrimSpace(r.Header.Get("X-Gitlab-Event")), strings.TrimSpace(r.Header.Get("X-Gitea-Event")), "generic")
-	configuredBranch := firstNonEmpty(site.AutoDeployBranch, "main")
+	configuredBranch := targetBranch
 	if incomingBranch != "" && configuredBranch != "" && incomingBranch != configuredBranch {
-		a.recordAudit(r.Context(), "deploy.webhook", site.Name, "ignored", map[string]any{"reason": "branch_mismatch", "incoming_branch": incomingBranch, "branch": configuredBranch, "provider": provider, "auth_mode": authMode})
+		a.recordAudit(r.Context(), "deploy.webhook", targetName, "ignored", map[string]any{"reason": "branch_mismatch", "incoming_branch": incomingBranch, "branch": configuredBranch, "provider": provider, "auth_mode": authMode, "subdomain_id": subdomainID})
 		writeJSON(w, http.StatusAccepted, map[string]any{"status": "ignored", "reason": "branch_mismatch", "branch": incomingBranch})
 		return
 	}
-	repositoryStatus, inspectErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser})
+	repositoryStatus, inspectErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: targetDirectory, RunAsUser: site.OwnerLinuxUser})
 	if inspectErr != nil || strings.TrimSpace(repositoryStatus.RemoteURL) == "" {
-		a.recordAudit(r.Context(), "deploy.webhook", site.Name, "failure", map[string]any{"reason": "repository_not_ready", "provider": provider, "auth_mode": authMode})
+		a.recordAudit(r.Context(), "deploy.webhook", targetName, "failure", map[string]any{"reason": "repository_not_ready", "provider": provider, "auth_mode": authMode, "subdomain_id": subdomainID})
 		http.Error(w, "site repository is not ready for auto deploy", http.StatusPreconditionFailed)
 		return
 	}
-	a.recordAudit(r.Context(), "deploy.webhook", site.Name, "queued", map[string]any{"branch": configuredBranch, "incoming_branch": incomingBranch, "provider": provider, "auth_mode": authMode})
-	go func(site domain.ManagedSite, repositoryURL string, branch string) {
+	a.recordAudit(r.Context(), "deploy.webhook", targetName, "queued", map[string]any{"branch": configuredBranch, "incoming_branch": incomingBranch, "provider": provider, "auth_mode": authMode, "subdomain_id": subdomainID})
+	go func(site domain.ManagedSite, subdomain domain.SiteSubdomain, repositoryURL string, branch string, targetLabel string, deployDirectory string, notifyEmail string, postDeployCommand string, subdomainID int64) {
 		ctx := context.Background()
 		result, deployErr := a.deploys.Deploy(system.DeploySpec{
 			RepositoryURL:     repositoryURL,
 			Branch:            branch,
-			TargetDirectory:   site.RootDirectory,
+			TargetDirectory:   deployDirectory,
 			RunAsUser:         site.OwnerLinuxUser,
-			PostDeployCommand: strings.TrimSpace(site.AutoDeployCommand),
+			PostDeployCommand: postDeployCommand,
 		})
+		notifySite := site
+		notifySite.Name = targetLabel
+		if subdomainID > 0 {
+			notifySite.DomainName = subdomain.FullDomain
+		}
+		notifySite.AutoDeployNotifyEmail = notifyEmail
 		if deployErr != nil {
-			a.recordAudit(ctx, "deploy.webhook", site.Name, "failure", map[string]any{"branch": branch, "error": deployErr.Error(), "provider": provider, "auth_mode": authMode})
-			_ = sendAutoDeployResultEmail(a.cfg, site, branch, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser, Action: "deploy", Status: "failure", Output: ""}, deployErr)
+			a.recordAudit(ctx, "deploy.webhook", targetLabel, "failure", map[string]any{"branch": branch, "error": deployErr.Error(), "provider": provider, "auth_mode": authMode, "subdomain_id": subdomainID})
+			_ = sendAutoDeployResultEmail(a.cfg, notifySite, branch, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: deployDirectory, RunAsUser: site.OwnerLinuxUser, Action: "deploy", Status: "failure", Output: ""}, deployErr)
 			return
 		}
 		if a.store != nil {
-			_ = a.store.CreateDeployment(ctx, domain.Deployment{SiteID: site.ID, RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser, LastStatus: "success", LastOutput: result.Output})
-			_ = a.store.CreateDeploymentRelease(ctx, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser, Action: result.Action, Status: "success", CommitSHA: result.CommitSHA, PreviousCommitSHA: result.PreviousCommitSHA, Output: result.Output})
+			_ = a.store.CreateDeployment(ctx, domain.Deployment{SiteID: site.ID, RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: deployDirectory, RunAsUser: site.OwnerLinuxUser, LastStatus: "success", LastOutput: result.Output})
+			_ = a.store.CreateDeploymentRelease(ctx, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: deployDirectory, RunAsUser: site.OwnerLinuxUser, Action: result.Action, Status: "success", CommitSHA: result.CommitSHA, PreviousCommitSHA: result.PreviousCommitSHA, Output: result.Output})
 		}
-		metadata := map[string]any{"branch": branch, "action": result.Action, "provider": provider, "auth_mode": authMode}
+		metadata := map[string]any{"branch": branch, "action": result.Action, "provider": provider, "auth_mode": authMode, "subdomain_id": subdomainID}
 		if incomingBranch != "" {
 			metadata["incoming_branch"] = incomingBranch
 		}
-		a.recordAudit(ctx, "deploy.webhook", site.Name, "success", metadata)
-		_ = sendAutoDeployResultEmail(a.cfg, site, branch, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: site.RootDirectory, RunAsUser: site.OwnerLinuxUser, Action: result.Action, Status: "success", CommitSHA: result.CommitSHA, PreviousCommitSHA: result.PreviousCommitSHA, Output: result.Output}, nil)
-	}(site, repositoryStatus.RemoteURL, configuredBranch)
-	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued", "site": site.Name, "branch": configuredBranch})
+		a.recordAudit(ctx, "deploy.webhook", targetLabel, "success", metadata)
+		_ = sendAutoDeployResultEmail(a.cfg, notifySite, branch, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: deployDirectory, RunAsUser: site.OwnerLinuxUser, Action: result.Action, Status: "success", CommitSHA: result.CommitSHA, PreviousCommitSHA: result.PreviousCommitSHA, Output: result.Output}, nil)
+	}(site, webhookSubdomain, repositoryStatus.RemoteURL, configuredBranch, targetName, targetDirectory, targetNotifyEmail, targetCommand, subdomainID)
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "queued", "site": targetName, "branch": configuredBranch, "subdomain_id": subdomainID})
 }
 
 func (a *App) handlePlaceholder(title string) http.HandlerFunc {
@@ -2213,9 +2376,20 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		PM2Arguments:        strings.TrimSpace(r.FormValue("process_arguments")),
 		SubdomainLabel:      strings.TrimSpace(r.FormValue("subdomain_label")),
 		SubdomainMode:       firstNonEmpty(strings.TrimSpace(r.FormValue("subdomain_mode")), "reverse_proxy"),
+		SubdomainDirectoryName: strings.TrimSpace(r.FormValue("subdomain_directory_name")),
 		SubdomainUpstreamURL: strings.TrimSpace(r.FormValue("subdomain_upstream_url")),
 		SubdomainPHPVersion: strings.TrimSpace(r.FormValue("subdomain_php_version")),
 		SubdomainRootDirectory: strings.TrimSpace(r.FormValue("subdomain_root_directory")),
+		SubdomainRepositoryURL: strings.TrimSpace(r.FormValue("subdomain_repository_url")),
+		SubdomainBranch: strings.TrimSpace(r.FormValue("subdomain_branch")),
+		SubdomainGitCredentialProtocol: strings.TrimSpace(r.FormValue("subdomain_git_credential_protocol")),
+		SubdomainGitCredentialUsername: strings.TrimSpace(r.FormValue("subdomain_git_credential_username")),
+		SubdomainPostDeployCommand: r.FormValue("subdomain_post_deploy_command"),
+		SubdomainAutoDeployEnabled: r.FormValue("subdomain_auto_deploy_enabled") == "1",
+		SubdomainAutoDeployBranch: strings.TrimSpace(r.FormValue("subdomain_auto_deploy_branch")),
+		SubdomainAutoDeploySecret: strings.TrimSpace(r.FormValue("subdomain_auto_deploy_secret")),
+		SubdomainAutoDeployCommand: r.FormValue("subdomain_auto_deploy_command"),
+		SubdomainAutoDeployNotifyEmail: strings.TrimSpace(r.FormValue("subdomain_auto_deploy_notify_email")),
 		SubdomainTLSEmail:   strings.TrimSpace(r.FormValue("subdomain_tls_email")),
 		RuntimeCommandName:  strings.TrimSpace(r.FormValue("runtime_command_name")),
 		RuntimeCommandNodeVersion: strings.TrimSpace(r.FormValue("runtime_command_node_version")),
@@ -2535,11 +2709,27 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		a.recordAudit(r.Context(), "site.auto_deploy.rotate_secret", site.Name, "success", nil)
 		successMessage = "Auto deploy secret rotated."
 	case "add_subdomain":
-		subdomainRecord, siteSpec, err := buildSiteSubdomain(site, data.SubdomainLabel, data.SubdomainMode, data.SubdomainUpstreamURL, data.SubdomainPHPVersion, data.SubdomainRootDirectory)
+		if data.SubdomainAutoDeployEnabled && data.SubdomainAutoDeploySecret == "" {
+			secret, err := randomPassword(32)
+			if err != nil {
+				data.RequestError = "Could not generate subdomain auto deploy secret."
+				break
+			}
+			data.SubdomainAutoDeploySecret = secret
+		}
+		subdomainRecord, siteSpec, err := buildSiteSubdomain(site, a.cfg.SubdomainRootBaseDir, data.SubdomainLabel, data.SubdomainMode, data.SubdomainUpstreamURL, data.SubdomainPHPVersion, data.SubdomainDirectoryName)
 		if err != nil {
 			data.RequestError = err.Error()
 			break
 		}
+		subdomainRecord.RepositoryURL = data.SubdomainRepositoryURL
+		subdomainRecord.BranchName = firstNonEmpty(data.SubdomainBranch, "main")
+		subdomainRecord.PostDeployCommand = data.SubdomainPostDeployCommand
+		subdomainRecord.AutoDeployEnabled = data.SubdomainAutoDeployEnabled
+		subdomainRecord.AutoDeployBranch = firstNonEmpty(data.SubdomainAutoDeployBranch, subdomainRecord.BranchName, "main")
+		subdomainRecord.AutoDeploySecret = data.SubdomainAutoDeploySecret
+		subdomainRecord.AutoDeployCommand = data.SubdomainAutoDeployCommand
+		subdomainRecord.AutoDeployNotifyEmail = data.SubdomainAutoDeployNotifyEmail
 		configPath, err := a.nginx.ApplySite(siteSpec)
 		if err != nil {
 			data.RequestError = err.Error()
@@ -2553,8 +2743,153 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		a.recordAudit(r.Context(), "site.subdomain.create", subdomainRecord.FullDomain, "success", map[string]any{"mode": subdomainRecord.Runtime})
 		successMessage = "Subdomain applied successfully."
 		data.SubdomainLabel = ""
+		data.SubdomainDirectoryName = ""
 		data.SubdomainUpstreamURL = ""
 		data.SubdomainPHPVersion = ""
+		data.SubdomainRepositoryURL = ""
+		data.SubdomainBranch = ""
+		data.SubdomainPostDeployCommand = ""
+		data.SubdomainAutoDeployEnabled = false
+		data.SubdomainAutoDeployBranch = ""
+		data.SubdomainAutoDeploySecret = ""
+		data.SubdomainAutoDeployCommand = ""
+		data.SubdomainAutoDeployNotifyEmail = ""
+	case "save_subdomain_deploy":
+		subdomains, err := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if err != nil {
+			data.RequestError = "Could not load subdomains."
+			break
+		}
+		subdomain, ok := findSiteSubdomain(subdomains, data.SubdomainDeleteID)
+		if !ok {
+			data.RequestError = "Subdomain could not be found."
+			break
+		}
+		if data.SubdomainAutoDeployEnabled && data.SubdomainAutoDeploySecret == "" {
+			secret, err := randomPassword(32)
+			if err != nil {
+				data.RequestError = "Could not generate subdomain auto deploy secret."
+				break
+			}
+			data.SubdomainAutoDeploySecret = secret
+		}
+		if err := a.store.UpdateSiteSubdomainDeploy(r.Context(), site.ID, subdomain.ID, data.SubdomainRepositoryURL, firstNonEmpty(data.SubdomainBranch, "main"), data.SubdomainPostDeployCommand, data.SubdomainAutoDeployEnabled, firstNonEmpty(data.SubdomainAutoDeployBranch, data.SubdomainBranch, "main"), data.SubdomainAutoDeploySecret, data.SubdomainAutoDeployCommand, data.SubdomainAutoDeployNotifyEmail); err != nil {
+			data.RequestError = "Could not save subdomain deploy settings: " + err.Error()
+			break
+		}
+		a.recordAudit(r.Context(), "site.subdomain.deploy.save", subdomain.FullDomain, "success", map[string]any{"enabled": data.SubdomainAutoDeployEnabled, "branch": firstNonEmpty(data.SubdomainAutoDeployBranch, data.SubdomainBranch, "main")})
+		successMessage = "Subdomain deploy settings saved."
+	case "rotate_subdomain_auto_deploy_secret":
+		subdomains, err := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if err != nil {
+			data.RequestError = "Could not load subdomains."
+			break
+		}
+		subdomain, ok := findSiteSubdomain(subdomains, data.SubdomainDeleteID)
+		if !ok {
+			data.RequestError = "Subdomain could not be found."
+			break
+		}
+		secret, err := randomPassword(32)
+		if err != nil {
+			data.RequestError = "Could not rotate subdomain auto deploy secret."
+			break
+		}
+		data.SubdomainAutoDeploySecret = secret
+		if err := a.store.UpdateSiteSubdomainDeploy(r.Context(), site.ID, subdomain.ID, firstNonEmpty(data.SubdomainRepositoryURL, subdomain.RepositoryURL), firstNonEmpty(data.SubdomainBranch, subdomain.BranchName, "main"), firstNonEmpty(data.SubdomainPostDeployCommand, subdomain.PostDeployCommand), data.SubdomainAutoDeployEnabled || subdomain.AutoDeployEnabled, firstNonEmpty(data.SubdomainAutoDeployBranch, subdomain.AutoDeployBranch, subdomain.BranchName, "main"), secret, firstNonEmpty(data.SubdomainAutoDeployCommand, subdomain.AutoDeployCommand), firstNonEmpty(data.SubdomainAutoDeployNotifyEmail, subdomain.AutoDeployNotifyEmail)); err != nil {
+			data.RequestError = "Could not rotate subdomain auto deploy secret: " + err.Error()
+			break
+		}
+		a.recordAudit(r.Context(), "site.subdomain.deploy.rotate_secret", subdomain.FullDomain, "success", nil)
+		successMessage = "Subdomain auto deploy secret rotated."
+	case "move_subdomain_root_preview":
+		subdomains, err := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if err != nil {
+			data.RequestError = "Could not load subdomains."
+			break
+		}
+		subdomain, ok := findSiteSubdomain(subdomains, data.SubdomainDeleteID)
+		if !ok {
+			data.RequestError = "Subdomain could not be found."
+			break
+		}
+		preview := a.inspectSubdomainMovePreview(r.Context(), site, subdomain, firstNonEmpty(data.SubdomainDirectoryName, subdomain.Subdomain))
+		data.PreviewSubdomainID = subdomain.ID
+		data.SubdomainMovePreviewFrom = preview.From
+		data.SubdomainMovePreviewTo = preview.To
+		data.SubdomainMovePreviewTargetExists = preview.TargetExists
+		data.SubdomainMovePreviewTargetEmpty = preview.TargetEmpty
+		data.SubdomainMovePreviewTargetGitRepo = preview.TargetGitRepo
+		data.SubdomainMovePreviewTargetState = preview.TargetState
+		successMessage = "Move preview updated."
+	case "move_subdomain_root":
+		subdomains, err := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if err != nil {
+			data.RequestError = "Could not load subdomains."
+			break
+		}
+		subdomain, ok := findSiteSubdomain(subdomains, data.SubdomainDeleteID)
+		if !ok {
+			data.RequestError = "Subdomain could not be found."
+			break
+		}
+		newRoot := buildManagedSubdomainRootDirectory(site, a.cfg.SubdomainRootBaseDir, firstNonEmpty(data.SubdomainDirectoryName, subdomain.Subdomain))
+		if filepath.Clean(newRoot) == filepath.Clean(subdomain.RootDirectory) {
+			data.RequestError = "Subdomain root is already set to that directory."
+			break
+		}
+		moveScript := "set -e; mkdir -p $(dirname " + shellSingleQuote(newRoot) + "); if [ -e " + shellSingleQuote(newRoot) + " ]; then echo 'Destination already exists'; exit 1; fi; if [ -e " + shellSingleQuote(subdomain.RootDirectory) + " ]; then mv " + shellSingleQuote(subdomain.RootDirectory) + " " + shellSingleQuote(newRoot) + "; else mkdir -p " + shellSingleQuote(newRoot) + "; fi"
+		output, actionErr := a.helper.Call(r.Context(), "runtime.run_shell_command", system.ShellCommandSpec{User: site.OwnerLinuxUser, WorkingDirectory: filepath.Dir(subdomain.RootDirectory), CommandBody: moveScript}, nil)
+		if actionErr != nil {
+			data.RequestError = "Could not move subdomain root: " + actionErr.Error()
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "site.subdomain.root.move", subdomain.FullDomain, "failure", map[string]any{"from": subdomain.RootDirectory, "to": newRoot, "error": actionErr.Error()})
+			break
+		}
+		siteSpec := buildSubdomainSiteSpec(site, subdomain, newRoot)
+		configPath, actionErr := a.nginx.ApplySite(siteSpec)
+		if actionErr != nil {
+			data.RequestError = "Subdomain files moved but Nginx config could not be updated: " + actionErr.Error()
+			data.CommandOutput = output
+			break
+		}
+		if err := a.store.UpdateSiteSubdomainLocation(r.Context(), site.ID, subdomain.ID, newRoot, configPath); err != nil {
+			data.RequestError = "Subdomain root moved but store update failed: " + err.Error()
+			data.CommandOutput = output
+			break
+		}
+		data.CommandOutput = output
+		a.recordAudit(r.Context(), "site.subdomain.root.move", subdomain.FullDomain, "success", map[string]any{"from": subdomain.RootDirectory, "to": newRoot})
+		successMessage = "Subdomain root directory moved successfully."
+	case "rollback_subdomain_release":
+		subdomains, err := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if err != nil {
+			data.RequestError = "Could not load subdomains."
+			break
+		}
+		subdomain, ok := findSiteSubdomain(subdomains, data.SubdomainDeleteID)
+		if !ok {
+			data.RequestError = "Subdomain could not be found."
+			break
+		}
+		releaseCommit := strings.TrimSpace(r.FormValue("release_commit_sha"))
+		if releaseCommit == "" {
+			data.RequestError = "Release commit is required for rollback."
+			break
+		}
+		result, actionErr := a.deploys.Rollback(system.RollbackSpec{TargetDirectory: subdomain.RootDirectory, RunAsUser: site.OwnerLinuxUser, ReleaseCommitSHA: releaseCommit, PostDeployCommand: firstNonEmpty(strings.TrimSpace(r.FormValue("rollback_post_deploy_command")), subdomain.PostDeployCommand)})
+		if actionErr != nil {
+			data.RequestError = actionErr.Error()
+			data.CommandOutput = result.Output
+			a.recordAudit(r.Context(), "deploy.subdomain_rollback", subdomain.FullDomain, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "commit_sha": releaseCommit, "error": actionErr.Error(), "subdomain_id": subdomain.ID})
+			break
+		}
+		if a.store != nil {
+			_ = a.store.CreateDeploymentRelease(r.Context(), domain.DeploymentRelease{RepositoryURL: subdomain.RepositoryURL, BranchName: "rollback", TargetDirectory: subdomain.RootDirectory, RunAsUser: site.OwnerLinuxUser, Action: result.Action, Status: "success", CommitSHA: result.CommitSHA, PreviousCommitSHA: result.PreviousCommitSHA, Output: result.Output})
+		}
+		data.CommandOutput = result.Output
+		a.recordAudit(r.Context(), "deploy.subdomain_rollback", subdomain.FullDomain, "success", map[string]any{"run_as_user": site.OwnerLinuxUser, "commit_sha": releaseCommit, "subdomain_id": subdomain.ID})
+		successMessage = "Subdomain rollback completed successfully."
 	case "delete_subdomain":
 		subdomains, err := a.store.ListSiteSubdomains(r.Context(), site.ID)
 		if err != nil {
@@ -3052,6 +3387,7 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.DatabaseStatus = a.databaseStatus(r.Context())
 	data.Metrics = a.metrics.Snapshot()
 	data.SelectedSite = site
+	data.SubdomainRootBaseDir = strings.TrimSpace(a.cfg.SubdomainRootBaseDir)
 	if data.SiteDetailTab == "" {
 		data.SiteDetailTab = "overview"
 	}
@@ -3088,6 +3424,28 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	}
 	if data.SubdomainMode == "" {
 		data.SubdomainMode = "reverse_proxy"
+	}
+	for index := range data.SiteSubdomains {
+		if strings.TrimSpace(data.SiteSubdomains[index].AutoDeployBranch) == "" {
+			data.SiteSubdomains[index].AutoDeployBranch = firstNonEmpty(data.SiteSubdomains[index].BranchName, "main")
+		}
+		data.SiteSubdomains[index].AutoDeployWebhookURL = buildSubdomainAutoDeployWebhookURL(requestExternalBaseURL(r, a.cfg.BaseURL), site.Name, data.SiteSubdomains[index].ID, data.SiteSubdomains[index].AutoDeploySecret)
+		data.SiteSubdomains[index].DeploymentReleases = a.listSiteDeploymentReleases(r, data.SiteSubdomains[index].RootDirectory, site.OwnerLinuxUser)
+		if gitAuthStatus, err := a.gitAuths.Inspect(system.GitAuthInspectSpec{User: site.OwnerLinuxUser, SiteName: data.SiteSubdomains[index].FullDomain, RepositoryURL: data.SiteSubdomains[index].RepositoryURL}); err == nil {
+			data.SiteSubdomains[index].GitAuthStatus = gitAuthStatus
+		}
+		if entry, err := a.store.GetLatestAuditLogByActionAndTarget(r.Context(), "deploy.webhook", data.SiteSubdomains[index].FullDomain); err == nil {
+			entry.Metadata = summarizeAuditMetadata(entry.Metadata)
+			data.SiteSubdomains[index].LatestWebhookAudit = entry
+		}
+		if data.PreviewSubdomainID == data.SiteSubdomains[index].ID {
+			data.SiteSubdomains[index].MovePreviewFrom = data.SubdomainMovePreviewFrom
+			data.SiteSubdomains[index].MovePreviewTo = data.SubdomainMovePreviewTo
+			data.SiteSubdomains[index].MovePreviewTargetExists = data.SubdomainMovePreviewTargetExists
+			data.SiteSubdomains[index].MovePreviewTargetEmpty = data.SubdomainMovePreviewTargetEmpty
+			data.SiteSubdomains[index].MovePreviewTargetGitRepo = data.SubdomainMovePreviewTargetGitRepo
+			data.SiteSubdomains[index].MovePreviewTargetState = data.SubdomainMovePreviewTargetState
+		}
 	}
 	if data.CronFilter == "" {
 		data.CronFilter = "site"

@@ -130,6 +130,7 @@ type TemplateData struct {
 	PanelListenAddr string
 	PanelBaseURL string
 	PanelServiceName string
+	SubdomainRootBaseDir string
 	PanelDomain string
 	PanelTLSEmail string
 	SMTPHost string
@@ -164,9 +165,27 @@ type TemplateData struct {
 	SiteSubdomains []domain.SiteSubdomain
 	SubdomainLabel string
 	SubdomainMode string
+	SubdomainDirectoryName string
 	SubdomainUpstreamURL string
 	SubdomainPHPVersion string
 	SubdomainRootDirectory string
+	SubdomainRepositoryURL string
+	SubdomainBranch string
+	SubdomainGitCredentialProtocol string
+	SubdomainGitCredentialUsername string
+	SubdomainPostDeployCommand string
+	SubdomainAutoDeployEnabled bool
+	SubdomainAutoDeployBranch string
+	SubdomainAutoDeploySecret string
+	SubdomainAutoDeployCommand string
+	SubdomainAutoDeployNotifyEmail string
+	PreviewSubdomainID int64
+	SubdomainMovePreviewFrom string
+	SubdomainMovePreviewTo string
+	SubdomainMovePreviewTargetExists bool
+	SubdomainMovePreviewTargetEmpty bool
+	SubdomainMovePreviewTargetGitRepo bool
+	SubdomainMovePreviewTargetState string
 	SubdomainDeleteID int64
 	SubdomainTLSEmail string
 	RuntimeCommandID int64
