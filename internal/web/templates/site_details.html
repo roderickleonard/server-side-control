@@ -1,5 +1,5 @@
 {{define "content"}}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.5.0/css/xterm.min.css">
+<link rel="stylesheet" href="/static/vendor/xterm/xterm.min.css">
 <section class="hero compact">
     <div>
         <span class="eyebrow">Site details</span>
@@ -63,7 +63,8 @@
                 </label>
                 <label>
                     <span>Working directory</span>
-                    <input type="text" name="ssh_working_directory" value="{{.SSHWorkingDirectory}}" placeholder="{{.SelectedSite.RootDirectory}}" required>
+                    <input type="hidden" name="ssh_working_directory" value="{{.SelectedSite.RootDirectory}}">
+                    <input type="text" value="{{.SelectedSite.RootDirectory}}" disabled>
                 </label>
             </div>
             <label style="margin-top:12px;display:block;">
@@ -86,7 +87,7 @@
         </div>
         <p class="muted details-note">Use this for a persistent interactive shell session in the browser. It runs as {{.SelectedSite.OwnerLinuxUser}} and keeps shell state until you disconnect.</p>
         <div class="form-actions" style="margin-top:12px;">
-            <button type="button" id="ssh-terminal-connect">Connect terminal</button>
+            <button type="button" class="btn btn-sm btn-secondary" id="ssh-terminal-connect">Connect terminal</button>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="ssh-terminal-disconnect">Disconnect</button>
         </div>
         <div id="ssh-terminal-status" class="muted details-note" style="margin-top:10px;">Terminal disconnected.</div>
@@ -1054,8 +1055,8 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
 {{template "deploy_history" .}}
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/xterm@5.5.0/lib/xterm.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script src="/static/vendor/xterm/xterm.min.js"></script>
+<script src="/static/vendor/xterm/xterm-addon-fit.min.js"></script>
 <script>
 (function () {
     const tabNav = document.getElementById('site-tab-nav');
