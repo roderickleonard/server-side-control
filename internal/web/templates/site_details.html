@@ -43,41 +43,7 @@
     </article>
 </section>
 
-<section class="grid" data-site-tab="ssh">
-    <article class="panel">
-        <div class="section-head">
-            <div>
-                <span class="eyebrow">SSH console</span>
-                <h3>Run commands as {{.SelectedSite.OwnerLinuxUser}}</h3>
-            </div>
-            <span class="badge subtle-badge">Live stream</span>
-        </div>
-        <p class="muted details-note">This runs shell commands on the server as the site owner user directly from the browser. Default working directory is the site root.</p>
-        <form method="post" class="stack-form site-action-stream-form" id="site-ssh-console-form" data-stream-endpoint="/sites/details/action-stream">
-            <input type="hidden" name="details_action" value="run_ssh_command">
-            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
-            <div class="form-grid two-up">
-                <label>
-                    <span>Linux user</span>
-                    <input type="text" value="{{.SelectedSite.OwnerLinuxUser}}" disabled>
-                </label>
-                <label>
-                    <span>Working directory</span>
-                    <input type="hidden" name="ssh_working_directory" value="{{.SelectedSite.RootDirectory}}">
-                    <input type="text" value="{{.SelectedSite.RootDirectory}}" disabled>
-                </label>
-            </div>
-            <label style="margin-top:12px;display:block;">
-                <span>Command</span>
-                <textarea name="ssh_command_body" id="ssh-command-body" rows="8" spellcheck="false" placeholder="pwd&#10;ls -la&#10;php artisan migrate --force">{{.SSHCommandBody}}</textarea>
-            </label>
-            <p class="muted details-note">History: use ArrowUp and ArrowDown on an empty line to cycle previous commands for this site.</p>
-            <div class="form-actions">
-                <button type="submit">Run in browser console</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="ssh-command-clear">Clear</button>
-            </div>
-        </form>
-    </article>
+<section class="grid single" data-site-tab="ssh">
     <article class="panel">
         <h3><i class="bi bi-shield-lock" style="color:var(--accent);margin-right:6px;"></i>Interactive terminal</h3>
         <div class="site-delete-summary details-summary">
@@ -1075,9 +1041,6 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     const commandBody = document.getElementById('runtime-command-body');
     const commandRun = document.getElementById('runtime-custom-run');
     const commandClear = document.getElementById('runtime-command-clear');
-    const sshForm = document.getElementById('site-ssh-console-form');
-    const sshCommandBody = document.getElementById('ssh-command-body');
-    const sshCommandClear = document.getElementById('ssh-command-clear');
     const sshTerminalMount = document.getElementById('ssh-terminal');
     const sshTerminalStatus = document.getElementById('ssh-terminal-status');
     const sshTerminalConnect = document.getElementById('ssh-terminal-connect');
@@ -1085,79 +1048,6 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     if (!tabNav || !runtimeForm || !customForm || !outputSection || !outputBody || !outputPre || !outputStatus || !outputToggle || !commandSelect || !commandId || !commandName || !commandNodeVersion || !commandBody || !commandRun || !commandClear) {
         return;
     }
-
-    const sshHistoryKey = 'ssc:ssh-history:{{.SelectedSite.Name}}';
-    let sshHistory = [];
-    let sshHistoryIndex = -1;
-    try {
-        sshHistory = JSON.parse(window.localStorage.getItem(sshHistoryKey) || '[]');
-        if (!Array.isArray(sshHistory)) {
-            sshHistory = [];
-        }
-    } catch {
-        sshHistory = [];
-    }
-
-    function saveSSHHistory(commandText) {
-        const text = (commandText || '').trim();
-        if (!text) {
-            return;
-        }
-        sshHistory = sshHistory.filter((entry) => entry !== text);
-        sshHistory.push(text);
-        if (sshHistory.length > 50) {
-            sshHistory = sshHistory.slice(-50);
-        }
-        sshHistoryIndex = sshHistory.length;
-        window.localStorage.setItem(sshHistoryKey, JSON.stringify(sshHistory));
-    }
-
-    function setSSHHistory(direction) {
-        if (!sshCommandBody || sshHistory.length === 0) {
-            return;
-        }
-        sshHistoryIndex += direction;
-        if (sshHistoryIndex < 0) {
-            sshHistoryIndex = 0;
-        }
-        if (sshHistoryIndex >= sshHistory.length) {
-            sshHistoryIndex = sshHistory.length;
-            sshCommandBody.value = '';
-            return;
-        }
-        sshCommandBody.value = sshHistory[sshHistoryIndex] || '';
-    }
-
-    if (sshCommandBody) {
-        sshHistoryIndex = sshHistory.length;
-        sshCommandBody.addEventListener('keydown', (event) => {
-            const value = sshCommandBody.value || '';
-            const start = sshCommandBody.selectionStart || 0;
-            const end = sshCommandBody.selectionEnd || 0;
-            if (start !== end) {
-                return;
-            }
-            const before = value.slice(0, start);
-            const after = value.slice(end);
-            if (event.key === 'ArrowUp' && !before.includes('\n')) {
-                event.preventDefault();
-                setSSHHistory(-1);
-                sshCommandBody.selectionStart = sshCommandBody.selectionEnd = sshCommandBody.value.length;
-            }
-            if (event.key === 'ArrowDown' && !after.includes('\n')) {
-                event.preventDefault();
-                setSSHHistory(1);
-                sshCommandBody.selectionStart = sshCommandBody.selectionEnd = sshCommandBody.value.length;
-            }
-        });
-    }
-
-    sshCommandClear?.addEventListener('click', () => {
-        if (sshCommandBody) {
-            sshCommandBody.value = '';
-            sshCommandBody.focus();
-        }
-    });
 
     let sshTerminal = null;
     let sshFitAddon = null;
@@ -1211,8 +1101,7 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
         }
         terminal.clear();
         sshFitAddon.fit();
-        const cwdInput = sshForm ? sshForm.querySelector('input[name="ssh_working_directory"]') : null;
-        const cwd = cwdInput ? encodeURIComponent(cwdInput.value || '{{.SelectedSite.RootDirectory}}') : encodeURIComponent('{{.SelectedSite.RootDirectory}}');
+        const cwd = encodeURIComponent('{{.SelectedSite.RootDirectory}}');
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const socketURL = protocol + '//' + window.location.host + '/sites/details/terminal-ws?name={{.SelectedSite.Name}}&cwd=' + cwd + '&cols=' + terminal.cols + '&rows=' + terminal.rows;
         sshSocket = new WebSocket(socketURL);
@@ -1516,9 +1405,6 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     siteActionForms.forEach((form) => {
         form.addEventListener('submit', (event) => {
             event.preventDefault();
-            if (form === sshForm && sshCommandBody) {
-                saveSSHHistory(sshCommandBody.value);
-            }
             streamForm(form, form.dataset.streamEndpoint || '/sites/details/action-stream', form.dataset.reloadOnSuccess === '1');
         });
     });
