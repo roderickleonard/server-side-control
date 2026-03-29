@@ -50,6 +50,16 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	action := strings.TrimSpace(r.FormValue("details_action"))
+	targetDirectory := site.RootDirectory
+	targetLabel := site.Name
+	if subdomainID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subdomain_id")), 10, 64); err == nil && subdomainID > 0 {
+		if subdomains, listErr := a.store.ListSiteSubdomains(r.Context(), site.ID); listErr == nil {
+			if subdomain, ok := findSiteSubdomain(subdomains, subdomainID); ok {
+				targetDirectory = subdomain.RootDirectory
+				targetLabel = subdomain.FullDomain
+			}
+		}
+	}
 	var (
 		helperAction string
 		payload      any
@@ -63,7 +73,7 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 		helperAction = "runtime.run_npm_install"
 		payload = system.NPMInstallSpec{
 			User:             site.OwnerLinuxUser,
-			WorkingDirectory: site.RootDirectory,
+			WorkingDirectory: targetDirectory,
 			NodeVersion:      nodeVersion,
 			CI:               ci,
 		}
@@ -82,7 +92,7 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 		helperAction = "runtime.run_npm_script"
 		payload = system.NPMScriptSpec{
 			User:             site.OwnerLinuxUser,
-			WorkingDirectory: site.RootDirectory,
+			WorkingDirectory: targetDirectory,
 			ScriptName:       scriptName,
 			NodeVersion:      nodeVersion,
 		}
@@ -97,7 +107,7 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 		helperAction = "runtime.run_custom_command"
 		payload = system.CustomRuntimeCommandSpec{
 			User:             site.OwnerLinuxUser,
-			WorkingDirectory: site.RootDirectory,
+			WorkingDirectory: targetDirectory,
 			CommandBody:      commandBody,
 			NodeVersion:      strings.TrimSpace(r.FormValue("runtime_command_node_version")),
 		}
@@ -166,11 +176,11 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 	err = cmd.Wait()
 	wg.Wait()
 	if err != nil {
-		a.recordAudit(r.Context(), auditAction, site.Name, "failure", map[string]any{"label": label, "error": err.Error()})
+		a.recordAudit(r.Context(), auditAction, targetLabel, "failure", map[string]any{"label": label, "error": err.Error()})
 		_, _ = io.WriteString(streamWriter, "\n\n[command failed]\n")
 		return
 	}
-	a.recordAudit(r.Context(), auditAction, site.Name, "success", map[string]any{"label": label})
+	a.recordAudit(r.Context(), auditAction, targetLabel, "success", map[string]any{"label": label})
 	_, _ = io.WriteString(streamWriter, "\n\n[command completed]\n")
 }
 

@@ -1196,6 +1196,7 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
                         <td>{{.NginxConfigPath}}</td>
                         <td>
                             <div class="stack-cluster">
+                                <a href="/sites/subdomains/details?name={{$.SelectedSite.Name}}&subdomain_id={{.ID}}" class="btn btn-sm btn-outline-secondary">Details</a>
                                 <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
                                     <input type="hidden" name="details_action" value="sync_subdomain_repository">
                                     <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">

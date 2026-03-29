@@ -1,0 +1,993 @@
+{{define "content"}}
+<link rel="stylesheet" href="/static/vendor/xterm/xterm.min.css">
+<section class="hero compact">
+    <div>
+        <span class="eyebrow">Subdomain details</span>
+        <h2>{{.SelectedSubdomain.FullDomain}}</h2>
+        <p class="lead">Parent site: {{.SelectedSite.Name}}. Deploy, runtime, SSH, files, TLS and Nginx controls for this subdomain.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+    {{if .ResultPath}}
+    <div class="alert success">Target path: <strong>{{.ResultPath}}</strong></div>
+    {{end}}
+    {{if .CommitSHA}}
+    <div class="alert success">Current commit: <strong>{{.CommitSHA}}</strong></div>
+    {{end}}
+    {{if .PreviousCommitSHA}}
+    <div class="alert success">Previous commit: <strong>{{.PreviousCommitSHA}}</strong></div>
+    {{end}}
+</section>
+{{end}}
+
+<section class="grid single">
+    <article class="panel">
+        <div class="site-tab-nav" id="site-tab-nav" data-active-tab="{{.SiteDetailTab}}">
+            <button type="button" class="site-tab-btn" data-tab="overview">Overview</button>
+            <button type="button" class="site-tab-btn" data-tab="deploy">Deploy</button>
+            <button type="button" class="site-tab-btn" data-tab="runtime">Runtime</button>
+            <button type="button" class="site-tab-btn" data-tab="ssh">SSH</button>
+            <button type="button" class="site-tab-btn" data-tab="files">Files</button>
+            <button type="button" class="site-tab-btn" data-tab="settings">Settings</button>
+        </div>
+    </article>
+</section>
+
+<section class="grid single" data-site-tab="overview">
+    <article class="panel">
+        <div class="site-delete-summary details-summary">
+            <div><strong>Domain</strong><span>{{.SelectedSubdomain.FullDomain}}</span></div>
+            <div><strong>Mode</strong><span>{{.SelectedSubdomain.Runtime}}</span></div>
+            <div><strong>Root</strong><span>{{.SelectedSubdomain.RootDirectory}}</span></div>
+            <div><strong>Nginx config</strong><span>{{if .SelectedSubdomain.NginxConfigPath}}{{.SelectedSubdomain.NginxConfigPath}}{{else}}-{{end}}</span></div>
+            <div><strong>Owner</strong><span>{{.SelectedSite.OwnerLinuxUser}}</span></div>
+            <div><strong>Branch</strong><span>{{if .RepositoryStatus.Branch}}{{.RepositoryStatus.Branch}}{{else if .SubdomainBranch}}{{.SubdomainBranch}}{{else}}main{{end}}</span></div>
+            <div><strong>Git repo</strong><span>{{if .RepositoryStatus.IsGitRepo}}Yes{{else}}No{{end}}</span></div>
+            <div><strong>Remote</strong><span>{{if .RepositoryStatus.RemoteURL}}{{.RepositoryStatus.RemoteURL}}{{else if .SubdomainRepositoryURL}}{{.SubdomainRepositoryURL}}{{else}}-{{end}}</span></div>
+            <div><strong>Deploy key</strong><span>{{if .GitAuthStatus.DeployKeyReady}}Ready{{else}}Missing{{end}}</span></div>
+            <div><strong>Known host</strong><span>{{if .GitAuthStatus.KnownHostTrusted}}Trusted{{else}}Not trusted{{end}}</span></div>
+            <div><strong>Credential</strong><span>{{if .GitAuthStatus.CredentialConfigured}}Configured{{else}}Missing{{end}}</span></div>
+            <div><strong>Webhook</strong><span>{{if .SubdomainAutoDeployEnabled}}Enabled{{else}}Disabled{{end}}</span></div>
+        </div>
+        <div class="details-note" style="margin-top:12px;">
+            <a href="/sites/details?name={{.SelectedSite.Name}}&tab=domains">Return to parent site domains tab</a>
+        </div>
+    </article>
+    {{if .LatestWebhookAudit.Action}}
+    <article class="panel">
+        <h3>Latest webhook</h3>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Outcome</strong><span>{{.LatestWebhookAudit.Outcome}}</span></div>
+            <div><strong>When</strong><span>{{.LatestWebhookAudit.CreatedAt.Format "2006-01-02 15:04:05"}}</span></div>
+            <div><strong>Details</strong><span>{{if .LatestWebhookAudit.Metadata}}{{.LatestWebhookAudit.Metadata}}{{else}}-{{end}}</span></div>
+        </div>
+    </article>
+    {{end}}
+</section>
+
+<section class="grid single" data-site-tab="deploy">
+    <article class="panel">
+        <h3>Deploy</h3>
+        <div class="stack-cluster">
+            <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
+                <input type="hidden" name="details_action" value="sync_subdomain_repository">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <button type="submit" class="btn btn-sm btn-secondary">Clone / pull</button>
+            </form>
+        </div>
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;gap:10px;">
+            <input type="hidden" name="details_action" value="save_subdomain_deploy">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Repository URL</span>
+                    <input type="text" name="subdomain_repository_url" value="{{.SubdomainRepositoryURL}}" placeholder="git@github.com:org/repo.git">
+                </label>
+                <label>
+                    <span>Branch</span>
+                    <input type="text" name="subdomain_branch" value="{{.SubdomainBranch}}" placeholder="main">
+                </label>
+                <label>
+                    <span>Post deploy command</span>
+                    <input type="text" name="subdomain_post_deploy_command" value="{{.SubdomainPostDeployCommand}}" placeholder="npm install && npm run build">
+                </label>
+                <label>
+                    <span>Auto deploy branch</span>
+                    <input type="text" name="subdomain_auto_deploy_branch" value="{{.SubdomainAutoDeployBranch}}" placeholder="main">
+                </label>
+                <label>
+                    <span>Auto deploy command</span>
+                    <input type="text" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}" placeholder="Optional webhook command">
+                </label>
+                <label>
+                    <span>Webhook action preset</span>
+                    <select name="subdomain_auto_deploy_preset">
+                        <option value="custom" {{if or (eq .SubdomainAutoDeployPreset "") (eq .SubdomainAutoDeployPreset "custom")}}selected{{end}}>Custom command</option>
+                        <option value="pm2_reload" {{if eq .SubdomainAutoDeployPreset "pm2_reload"}}selected{{end}}>PM2 reload process</option>
+                        <option value="pm2_restart" {{if eq .SubdomainAutoDeployPreset "pm2_restart"}}selected{{end}}>PM2 restart process</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Preset PM2 process</span>
+                    <input type="text" name="subdomain_auto_deploy_pm2_process" value="{{.SubdomainAutoDeployPM2Process}}" placeholder="{{.PM2ProcessName}}">
+                </label>
+                <label>
+                    <span>Notify email</span>
+                    <input type="email" name="subdomain_auto_deploy_notify_email" value="{{.SubdomainAutoDeployNotifyEmail}}" placeholder="ops@example.com">
+                </label>
+                <label>
+                    <span>Webhook secret</span>
+                    <input type="text" name="subdomain_auto_deploy_secret" value="{{.SubdomainAutoDeploySecret}}" placeholder="Generated when enabled or rotated">
+                </label>
+                <label class="checkbox-row compact">
+                    <input type="checkbox" name="subdomain_auto_deploy_enabled" value="1" {{if .SubdomainAutoDeployEnabled}}checked{{end}}>
+                    <span>Enable auto deploy</span>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Save deploy settings</button>
+            </div>
+        </form>
+        <form method="post" class="inline-form" style="margin-top:8px;">
+            <input type="hidden" name="details_action" value="rotate_subdomain_auto_deploy_secret">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <input type="hidden" name="subdomain_repository_url" value="{{.SubdomainRepositoryURL}}">
+            <input type="hidden" name="subdomain_branch" value="{{.SubdomainBranch}}">
+            <input type="hidden" name="subdomain_post_deploy_command" value="{{.SubdomainPostDeployCommand}}">
+            <input type="hidden" name="subdomain_auto_deploy_branch" value="{{.SubdomainAutoDeployBranch}}">
+            <input type="hidden" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}">
+            <input type="hidden" name="subdomain_auto_deploy_notify_email" value="{{.SubdomainAutoDeployNotifyEmail}}">
+            <input type="hidden" name="subdomain_auto_deploy_preset" value="{{.SubdomainAutoDeployPreset}}">
+            <input type="hidden" name="subdomain_auto_deploy_pm2_process" value="{{.SubdomainAutoDeployPM2Process}}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Rotate webhook secret</button>
+        </form>
+        {{if .AutoDeployWebhookURL}}
+        <div class="details-note" style="margin-top:10px;word-break:break-all;">
+            <strong>Webhook URL:</strong> {{.AutoDeployWebhookURL}}
+        </div>
+        {{end}}
+        <div class="site-delete-summary details-summary" style="margin-top:12px;">
+            <div><strong>Deploy key</strong><span>{{if .GitAuthStatus.DeployKeyReady}}Ready{{else}}Missing{{end}}</span></div>
+            <div><strong>Known host</strong><span>{{if .GitAuthStatus.KnownHostTrusted}}Trusted{{else}}Not trusted{{end}}</span></div>
+            <div><strong>Credential</strong><span>{{if .GitAuthStatus.CredentialConfigured}}Configured{{else}}Missing{{end}}</span></div>
+            <div><strong>Git host</strong><span>{{if .GitAuthStatus.RepositoryHost}}{{.GitAuthStatus.RepositoryHost}}{{else}}-{{end}}</span></div>
+        </div>
+        <div class="form-grid two-up" style="margin-top:12px;">
+            <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
+                <input type="hidden" name="details_action" value="generate_subdomain_deploy_key">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <input type="hidden" name="repository_url" value="{{.SubdomainRepositoryURL}}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Generate deploy key</button>
+            </form>
+            <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
+                <input type="hidden" name="details_action" value="trust_subdomain_git_host">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <label>
+                    <span>Git host</span>
+                    <input type="text" name="credential_host" value="{{.GitCredentialHost}}" placeholder="github.com">
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Trust host</button>
+                </div>
+            </form>
+        </div>
+        <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1" style="margin-top:12px;gap:8px;">
+            <input type="hidden" name="details_action" value="store_subdomain_git_credential">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Protocol</span>
+                    <input type="text" name="credential_protocol" value="{{.GitCredentialProtocol}}" placeholder="https">
+                </label>
+                <label>
+                    <span>Host</span>
+                    <input type="text" name="credential_host" value="{{.GitCredentialHost}}" placeholder="github.com">
+                </label>
+                <label>
+                    <span>Username</span>
+                    <input type="text" name="credential_username" value="{{.GitCredentialUsername}}" placeholder="git username">
+                </label>
+                <label>
+                    <span>Password / token</span>
+                    <input type="password" name="credential_password" value="" placeholder="personal access token">
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Store credential</button>
+            </div>
+        </form>
+        <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" style="margin-top:12px;gap:8px;">
+            <input type="hidden" name="details_action" value="run_subdomain_git_command">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <label>
+                <span>Custom git command</span>
+                <input type="text" name="git_custom_command" value="" placeholder="git status">
+            </label>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Run git command</button>
+            </div>
+        </form>
+        {{if .DeploymentReleases}}
+        <div class="table-card" style="margin-top:16px;">
+            <table class="table table-theme">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Action</th>
+                        <th>Status</th>
+                        <th>Commit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range $index, $release := .DeploymentReleases}}
+                    <tr style="cursor:pointer;" onclick="var d=document.getElementById('subdomain-release-{{$index}}');if(d){d.classList.toggle('hidden')}">
+                        <td>{{$release.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                        <td>{{$release.Action}}</td>
+                        <td><span class="badge subtle-badge">{{$release.Status}}</span></td>
+                        <td class="text-break">{{$release.CommitSHA}}</td>
+                    </tr>
+                    <tr id="subdomain-release-{{$index}}" class="table-note-row hidden">
+                        <td colspan="4">
+                            {{if $release.PreviousCommitSHA}}<p class="small text-secondary" style="margin:4px 0;">Previous: {{$release.PreviousCommitSHA}}</p>{{end}}
+                            {{if $release.Output}}<pre class="command-output mt-0">{{$release.Output}}</pre>{{end}}
+                            {{if $release.CommitSHA}}
+                            <form method="post" class="inline-form subdomain-rollback-form" style="margin-top:8px;" data-subdomain-domain="{{$.SelectedSubdomain.FullDomain}}" data-commit-sha="{{$release.CommitSHA}}">
+                                <input type="hidden" name="details_action" value="rollback_subdomain_release">
+                                <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                <input type="hidden" name="subdomain_id" value="{{$.SelectedSubdomain.ID}}">
+                                <input type="hidden" name="release_commit_sha" value="{{$release.CommitSHA}}">
+                                <input type="hidden" name="rollback_post_deploy_command" value="{{$.SubdomainPostDeployCommand}}">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Rollback to this commit</button>
+                            </form>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{end}}
+    </article>
+</section>
+
+<section class="grid single" data-site-tab="runtime">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Node runtime</span>
+                <h3>{{if .RuntimeStatus.NVMInstalled}}Runtime ready{{else}}Runtime not prepared yet{{end}}</h3>
+            </div>
+            <span class="badge subtle-badge">{{if .RuntimeStatus.PM2Installed}}PM2 installed{{else}}PM2 missing{{end}}</span>
+        </div>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Linux user</strong><span>{{.RuntimeStatus.User}}</span></div>
+            <div><strong>Home</strong><span>{{.RuntimeStatus.HomeDirectory}}</span></div>
+            <div><strong>NVM</strong><span>{{if .RuntimeStatus.NVMInstalled}}Installed{{else}}Not installed{{end}}</span></div>
+            <div><strong>Default node</strong><span>{{if .RuntimeStatus.DefaultNodeVersion}}{{.RuntimeStatus.DefaultNodeVersion}}{{else}}-{{end}}</span></div>
+        </div>
+        {{if .RuntimeStatus.InstalledNodeVersions}}
+        <div class="badge-row">
+            {{range .RuntimeStatus.InstalledNodeVersions}}
+            <span class="badge">{{.}}</span>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="muted details-note">No Node versions are installed for this Linux user yet.</p>
+        {{end}}
+        <form id="runtime-npm-actions" class="stack-form compact-form" style="margin-top:16px;">
+            <input type="hidden" id="runtime-npm-action" name="details_action" value="npm_install">
+            <input type="hidden" id="runtime-npm-script-name" name="script_name" value="">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <input type="hidden" name="npm_ci" value="0">
+            <input type="hidden" name="npm_script_node_version" value="{{.NpmScriptNodeVersion}}">
+            <hr style="border:none;border-top:1px solid var(--border);margin:16px 0 12px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="npm_install">npm install</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="npm_install" data-runtime-ci="1">npm ci</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_npm_script" data-runtime-script="build">npm run build</button>
+            </div>
+            {{if .PackageScripts}}
+            <div class="site-delete-summary details-summary" style="margin-top:12px;">
+                {{range .PackageScripts}}
+                <div><strong>{{.}}</strong><span><button type="button" class="btn btn-sm btn-outline-secondary" data-runtime-action="run_npm_script" data-runtime-script="{{.}}">Run</button></span></div>
+                {{end}}
+            </div>
+            {{else}}
+            <p class="muted details-note">No package.json scripts detected in this subdomain root.</p>
+            {{end}}
+        </form>
+        <form id="runtime-custom-form" class="stack-form compact-form" style="margin-top:16px;">
+            <input type="hidden" id="runtime-custom-action" name="details_action" value="save_runtime_command">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <input type="hidden" name="runtime_command_id" id="runtime-command-id" value="{{.RuntimeCommandID}}">
+            <hr style="border:none;border-top:1px solid var(--border);margin:16px 0 12px;">
+            <label>
+                <span>Custom script</span>
+                <select id="runtime-command-select">
+                    <option value="">New profile</option>
+                    {{range .SubdomainRuntimeCommands}}
+                    <option value="{{.ID}}" data-name="{{.Name}}" data-node-version="{{.NodeVersion}}" data-command-body="{{.CommandBody}}">{{.Name}}</option>
+                    {{end}}
+                </select>
+            </label>
+            <div class="form-grid two-up" style="margin-top:12px;">
+                <label>
+                    <span>Profile name</span>
+                    <input type="text" name="runtime_command_name" id="runtime-command-name" value="{{.RuntimeCommandName}}" placeholder="e.g. Build and migrate">
+                </label>
+                <label>
+                    <span>Node version</span>
+                    <input type="text" name="runtime_command_node_version" id="runtime-command-node-version" value="{{.RuntimeCommandNodeVersion}}" placeholder="Use default if empty">
+                </label>
+            </div>
+            <label style="margin-top:12px;display:block;">
+                <span>Custom command</span>
+                <textarea id="runtime-command-body" name="runtime_command_body" rows="5" placeholder="npm run build && npm run start">{{.RuntimeCommandBody}}</textarea>
+            </label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="runtime-custom-run">Run custom command</button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('runtime-custom-action').value='save_runtime_command'">Save profile</button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('runtime-custom-action').value='delete_runtime_command'">Delete selected</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="runtime-command-clear">Clear</button>
+            </div>
+        </form>
+    </article>
+    <article class="panel">
+        <h3>Prepare runtime</h3>
+        <div class="stack-cluster">
+            <form method="post" class="inline-form details-inline-form">
+                <input type="hidden" name="details_action" value="install_nvm">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <button type="submit">Install NVM</button>
+            </form>
+            <form method="post" class="stack-form compact-form">
+                <input type="hidden" name="details_action" value="install_node">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <div class="form-grid two-up">
+                    <label>
+                        <span>Node version</span>
+                        <input type="text" name="node_version" value="{{.RuntimeNodeVersion}}" placeholder="20 or lts/*" required>
+                    </label>
+                    <label class="checkbox-row compact checkbox-align-end">
+                        <input type="checkbox" name="set_default_node" value="1" checked>
+                        <span>Set as default node</span>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit">Install node version</button>
+                </div>
+            </form>
+            <form method="post" class="stack-form compact-form">
+                <input type="hidden" name="details_action" value="install_pm2">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <label>
+                    <span>Node version for PM2</span>
+                    <input type="text" name="pm2_node_version" value="{{.PM2NodeVersion}}" placeholder="Use default if left empty">
+                </label>
+                <div class="form-actions">
+                    <button type="submit">Install PM2</button>
+                </div>
+            </form>
+        </div>
+    </article>
+</section>
+
+<section class="grid single" data-site-tab="runtime">
+    <article class="panel">
+        <h3>Start subdomain with PM2</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="details_action" value="start_pm2">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Process name</span>
+                    <input type="text" name="process_name" value="{{.PM2ProcessName}}" placeholder="{{.SelectedSubdomain.FullDomain}}" required>
+                </label>
+                <label>
+                    <span>Node version</span>
+                    <input type="text" name="pm2_node_version" value="{{.PM2NodeVersion}}" placeholder="20">
+                </label>
+                <label>
+                    <span>Start script</span>
+                    <input type="text" name="script_path" value="{{.PM2ScriptPath}}" placeholder="ecosystem.config.cjs" required>
+                    {{if .EcosystemPort}}<small class="muted" style="display:block;margin-top:4px;">Detected port: <strong>{{.EcosystemPort}}</strong></small>{{end}}
+                </label>
+                <label>
+                    <span>Process arguments</span>
+                    <input type="text" name="process_arguments" value="{{.PM2Arguments}}" placeholder="--port 3000">
+                </label>
+                <label class="span-2">
+                    <span>Working directory</span>
+                    <input type="text" value="{{.SelectedSubdomain.RootDirectory}}" disabled>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Start with PM2</button>
+            </div>
+        </form>
+    </article>
+    <article class="panel">
+        <h3>PM2 process control</h3>
+        <p class="muted details-note" style="margin-bottom:16px;">Enter the PM2 process name and restart, reload, or stop it.</p>
+        <div class="stack-cluster">
+            <form method="post" class="inline-form details-inline-form">
+                <input type="hidden" name="details_action" value="list_pm2">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">List processes</button>
+            </form>
+            <form method="post" class="stack-form compact-form">
+                <input type="hidden" name="details_action" value="restart_pm2">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <label>
+                    <span>Process name</span>
+                    <input type="text" name="process_name" value="{{.PM2ProcessName}}" placeholder="{{.SelectedSubdomain.FullDomain}}" required>
+                </label>
+                <div class="form-actions">
+                    <button type="submit">Restart</button>
+                </div>
+            </form>
+            <form method="post" class="inline-form details-inline-form" style="margin-top:8px;">
+                <input type="hidden" name="details_action" value="reload_pm2">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <input type="hidden" name="process_name" value="{{.PM2ProcessName}}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Reload</button>
+            </form>
+            <form method="post" class="inline-form details-inline-form" style="margin-top:4px;">
+                <input type="hidden" name="details_action" value="stop_pm2">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <input type="hidden" name="process_name" value="{{.PM2ProcessName}}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Stop</button>
+            </form>
+            <form method="post" class="stack-form compact-form" style="margin-top:8px;">
+                <input type="hidden" name="details_action" value="show_pm2_logs">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <div class="form-grid two-up">
+                    <label>
+                        <span>Process name</span>
+                        <input type="text" name="process_name" value="{{.PM2ProcessName}}" placeholder="{{.SelectedSubdomain.FullDomain}}" required>
+                    </label>
+                    <label>
+                        <span>Log lines</span>
+                        <input type="text" name="pm2_log_lines" value="{{.PM2LogLines}}" placeholder="100">
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Show logs</button>
+                </div>
+            </form>
+        </div>
+        {{if .PM2ListOutput}}
+        <div style="margin-top:16px;">
+            <h4 style="margin-bottom:6px;">PM2 process list</h4>
+            <pre class="command-output">{{.PM2ListOutput}}</pre>
+        </div>
+        {{end}}
+        {{if .PM2LogsOutput}}
+        <div style="margin-top:16px;">
+            <h4 style="margin-bottom:6px;">PM2 logs</h4>
+            <pre class="command-output">{{.PM2LogsOutput}}</pre>
+        </div>
+        {{end}}
+    </article>
+</section>
+
+<section class="grid single" data-site-tab="ssh">
+    <article class="panel">
+        <h3>Interactive terminal</h3>
+        <div class="site-delete-summary details-summary">
+            <div><strong>User</strong><span>{{.SelectedSite.OwnerLinuxUser}}</span></div>
+            <div><strong>Default cwd</strong><span>{{.SelectedSubdomain.RootDirectory}}</span></div>
+            <div><strong>Mode</strong><span>PTY over WebSocket</span></div>
+        </div>
+        <div class="form-actions" style="margin-top:12px;">
+            <button type="button" class="btn btn-sm btn-secondary" id="ssh-terminal-connect">Connect terminal</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="ssh-terminal-disconnect">Disconnect</button>
+        </div>
+        <div id="ssh-terminal-status" class="muted details-note" style="margin-top:10px;">Terminal disconnected.</div>
+        <div id="ssh-terminal" style="margin-top:12px;border:1px solid var(--border);border-radius:14px;overflow:hidden;min-height:360px;background:#111827;"></div>
+    </article>
+</section>
+
+<section class="grid single" data-site-tab="files">
+    <article class="panel">
+        <h3>Files</h3>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Root</strong><span>{{.SelectedSubdomain.RootDirectory}}</span></div>
+            <div><strong>Current path</strong><span>{{if .SiteBrowserCurrentPath}}{{.SiteBrowserCurrentPath}}{{else}}/{{end}}</span></div>
+        </div>
+        <div class="form-actions" style="margin-top:12px;">
+            <a class="btn btn-sm btn-outline-secondary" href="/sites/subdomains/details?name={{.SelectedSite.Name}}&subdomain_id={{.SelectedSubdomain.ID}}&tab=files">Root</a>
+            {{if .SiteBrowserParentPath}}
+            <a class="btn btn-sm btn-outline-secondary" href="/sites/subdomains/details?name={{.SelectedSite.Name}}&subdomain_id={{.SelectedSubdomain.ID}}&tab=files&path={{.SiteBrowserParentPath}}">Up</a>
+            {{end}}
+        </div>
+        <div class="table-card" style="margin-top:12px;">
+            <table class="table table-theme">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Size</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .SiteBrowserEntries}}
+                    <tr>
+                        <td>
+                            {{if .IsDir}}
+                            <a href="/sites/subdomains/details?name={{$.SelectedSite.Name}}&subdomain_id={{$.SelectedSubdomain.ID}}&tab=files&path={{.RelativePath}}">{{.Name}}</a>
+                            {{else}}
+                            <a href="/sites/subdomains/details?name={{$.SelectedSite.Name}}&subdomain_id={{$.SelectedSubdomain.ID}}&tab=files&path={{$.SiteBrowserCurrentPath}}&file={{.RelativePath}}">{{.Name}}</a>
+                            {{end}}
+                        </td>
+                        <td>{{if .IsDir}}Directory{{else}}File{{end}}</td>
+                        <td>{{if .IsDir}}-{{else}}{{.Size}}{{end}}</td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="3">No files found.</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{if .SiteBrowserSelectedFile}}
+        <div style="margin-top:16px;">
+            <h4 style="margin-bottom:6px;">{{.SiteBrowserSelectedFile}}</h4>
+            {{if .SiteBrowserFileNotice}}<div class="details-note" style="margin-bottom:8px;">{{.SiteBrowserFileNotice}}</div>{{end}}
+            <pre class="command-output">{{.SiteBrowserFileContent}}</pre>
+        </div>
+        {{end}}
+    </article>
+</section>
+
+<section class="grid single" data-site-tab="settings">
+    <article class="panel">
+        <h3>Settings</h3>
+        <form method="post" class="stack-form compact-form" style="margin-top:0;gap:8px;">
+            <input type="hidden" name="details_action" value="enable_subdomain_tls">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>TLS email</span>
+                    <input type="text" name="subdomain_tls_email" value="{{.SubdomainTLSEmail}}" placeholder="ops@example.com" required>
+                </label>
+                <label class="checkbox-row compact">
+                    <input type="checkbox" name="subdomain_tls_redirect" value="1" checked>
+                    <span>Redirect HTTP to HTTPS</span>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Enable TLS</button>
+            </div>
+        </form>
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;gap:8px;">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <label>
+                <span>Move to folder name</span>
+                <input type="text" name="subdomain_directory_name" value="{{.SubdomainDirectoryName}}" placeholder="service-app">
+            </label>
+            <div class="form-actions">
+                <button type="submit" name="details_action" value="move_subdomain_root_preview" class="btn btn-sm btn-outline-secondary">Preview move</button>
+                <button type="submit" name="details_action" value="move_subdomain_root" class="btn btn-sm btn-outline-secondary">Move root</button>
+            </div>
+        </form>
+        {{if .SelectedSubdomain.MovePreviewTo}}
+        <div class="details-note" style="margin-top:8px;word-break:break-all;">
+            <strong>Preview:</strong> {{.SelectedSubdomain.MovePreviewFrom}} -> {{.SelectedSubdomain.MovePreviewTo}}
+        </div>
+        <div class="site-delete-summary details-summary" style="margin-top:8px;">
+            <div><strong>Target exists</strong><span>{{if .SelectedSubdomain.MovePreviewTargetExists}}Yes{{else}}No{{end}}</span></div>
+            <div><strong>Target empty</strong><span>{{if .SelectedSubdomain.MovePreviewTargetExists}}{{if .SelectedSubdomain.MovePreviewTargetEmpty}}Yes{{else}}No{{end}}{{else}}-{{end}}</span></div>
+            <div><strong>Git repo</strong><span>{{if .SelectedSubdomain.MovePreviewTargetGitRepo}}Yes{{else}}No{{end}}</span></div>
+            <div><strong>Status</strong><span>{{if .SelectedSubdomain.MovePreviewTargetState}}{{.SelectedSubdomain.MovePreviewTargetState}}{{else}}-{{end}}</span></div>
+        </div>
+        {{end}}
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;gap:8px;">
+            <input type="hidden" name="details_action" value="edit_subdomain_env">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <label>
+                <span>.env</span>
+                <textarea name="env_content" rows="10">{{.EnvFileContent}}</textarea>
+            </label>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Save .env</button>
+            </div>
+        </form>
+        {{range .NginxEditors}}
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;gap:8px;">
+            <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{$.SelectedSubdomain.ID}}">
+            <input type="hidden" name="nginx_target_type" value="subdomain">
+            <input type="hidden" name="nginx_target_id" value="{{.TargetID}}">
+            <label>
+                <span>Nginx config</span>
+                <textarea name="nginx_config_content" rows="14">{{.Content}}</textarea>
+            </label>
+            {{if .Notice}}<div class="details-note">{{.Notice}}</div>{{end}}
+            <div class="form-actions">
+                <button type="submit" name="details_action" value="save_nginx_config" class="btn btn-sm btn-outline-secondary">Save config</button>
+                <button type="submit" name="details_action" value="validate_nginx_config" class="btn btn-sm btn-outline-secondary">Validate only</button>
+            </div>
+            {{if .Revisions}}
+            <div class="form-grid two-up">
+                <label>
+                    <span>Revision</span>
+                    <select name="nginx_revision_id">
+                        <option value="">Select a revision</option>
+                        {{range .Revisions}}
+                        <option value="{{.ID}}">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</option>
+                        {{end}}
+                    </select>
+                </label>
+                <div class="form-actions" style="align-self:end;">
+                    <button type="submit" name="details_action" value="rollback_nginx_config" class="btn btn-sm btn-outline-secondary">Rollback selected revision</button>
+                </div>
+            </div>
+            {{end}}
+        </form>
+        {{end}}
+        <form method="post" class="inline-form" style="margin-top:16px;">
+            <input type="hidden" name="details_action" value="delete_subdomain">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Delete subdomain</button>
+        </form>
+    </article>
+</section>
+
+<section class="grid single" id="cmd-output-section">
+    <article class="panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span class="panel-title">Command output</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="cmd-output-toggle">{{if .CommandOutput}}Hide{{else}}Show{{end}}</button>
+        </div>
+        <div id="cmd-output-body"{{if not .CommandOutput}} class="hidden"{{end}}>
+            <div id="cmd-output-status" class="muted details-note" style="margin-bottom:10px;"></div>
+            <pre class="command-output" id="cmd-output-pre">{{.CommandOutput}}</pre>
+        </div>
+    </article>
+</section>
+
+<dialog id="subdomain-rollback-dialog" class="panel" style="max-width:520px;width:calc(100% - 32px);border:1px solid rgba(148,163,184,0.25);background:#0f172a;color:#e5e7eb;">
+    <form method="dialog" class="stack-form" style="margin-top:0;">
+        <div>
+            <span class="eyebrow">Confirm rollback</span>
+            <h3 style="margin:6px 0 0;">Rollback subdomain release</h3>
+        </div>
+        <p id="subdomain-rollback-dialog-text" class="muted details-note" style="margin:0;"></p>
+        <div class="form-actions">
+            <button value="cancel" class="btn btn-sm btn-outline-secondary">Cancel</button>
+            <button value="confirm" id="subdomain-rollback-confirm" class="btn btn-sm btn-outline-secondary">Rollback</button>
+        </div>
+    </form>
+</dialog>
+
+<script src="/static/vendor/xterm/xterm.min.js"></script>
+<script src="/static/vendor/xterm/xterm-addon-fit.min.js"></script>
+<script>
+(function () {
+    const tabNav = document.getElementById('site-tab-nav');
+    const runtimeForm = document.getElementById('runtime-npm-actions');
+    const customForm = document.getElementById('runtime-custom-form');
+    const siteActionForms = Array.from(document.querySelectorAll('.site-action-stream-form'));
+    const outputSection = document.getElementById('cmd-output-section');
+    const outputBody = document.getElementById('cmd-output-body');
+    const outputPre = document.getElementById('cmd-output-pre');
+    const outputStatus = document.getElementById('cmd-output-status');
+    const outputToggle = document.getElementById('cmd-output-toggle');
+    const commandSelect = document.getElementById('runtime-command-select');
+    const commandId = document.getElementById('runtime-command-id');
+    const commandName = document.getElementById('runtime-command-name');
+    const commandNodeVersion = document.getElementById('runtime-command-node-version');
+    const commandBody = document.getElementById('runtime-command-body');
+    const commandRun = document.getElementById('runtime-custom-run');
+    const commandClear = document.getElementById('runtime-command-clear');
+    const sshTerminalMount = document.getElementById('ssh-terminal');
+    const sshTerminalStatus = document.getElementById('ssh-terminal-status');
+    const sshTerminalConnect = document.getElementById('ssh-terminal-connect');
+    const sshTerminalDisconnect = document.getElementById('ssh-terminal-disconnect');
+    const subdomainRollbackDialog = document.getElementById('subdomain-rollback-dialog');
+    const subdomainRollbackDialogText = document.getElementById('subdomain-rollback-dialog-text');
+    if (!tabNav || !runtimeForm || !customForm || !outputSection || !outputBody || !outputPre || !outputStatus || !outputToggle || !commandSelect || !commandId || !commandName || !commandNodeVersion || !commandBody || !commandRun || !commandClear) {
+        return;
+    }
+
+    let sshTerminal = null;
+    let sshFitAddon = null;
+    let sshSocket = null;
+    let pendingRollbackForm = null;
+
+    function setOutputVisibility(isVisible) {
+        outputBody.classList.toggle('hidden', !isVisible);
+        outputToggle.textContent = isVisible ? 'Hide' : 'Show';
+    }
+
+    outputToggle.addEventListener('click', () => {
+        setOutputVisibility(outputBody.classList.contains('hidden'));
+    });
+
+    function resetCustomCommandForm() {
+        commandSelect.value = '';
+        commandId.value = '0';
+        commandName.value = '';
+        commandNodeVersion.value = '{{.RuntimeCommandNodeVersion}}';
+        commandBody.value = '';
+    }
+
+    function applySavedCommand(optionElement) {
+        if (!optionElement || !optionElement.value) {
+            resetCustomCommandForm();
+            return;
+        }
+        commandId.value = optionElement.value;
+        commandName.value = optionElement.dataset.name || '';
+        commandNodeVersion.value = optionElement.dataset.nodeVersion || '';
+        commandBody.value = optionElement.dataset.commandBody || '';
+    }
+
+    function activateTab(tabName) {
+        Array.from(tabNav.querySelectorAll('[data-tab]')).forEach((button) => {
+            button.classList.toggle('active', button.dataset.tab === tabName);
+        });
+        Array.from(document.querySelectorAll('[data-site-tab]')).forEach((panel) => {
+            panel.classList.toggle('hidden', panel.dataset.siteTab !== tabName);
+        });
+        const url = new URL(window.location.href);
+        url.searchParams.set('name', '{{.SelectedSite.Name}}');
+        url.searchParams.set('subdomain_id', '{{.SelectedSubdomain.ID}}');
+        url.searchParams.set('tab', tabName);
+        window.history.replaceState({}, '', url);
+    }
+
+    Array.from(tabNav.querySelectorAll('[data-tab]')).forEach((button) => {
+        button.addEventListener('click', () => activateTab(button.dataset.tab || 'overview'));
+    });
+
+    async function streamBody(endpoint, form) {
+        const payload = new URLSearchParams(new FormData(form));
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body: payload.toString()
+        });
+        if (!response.ok || !response.body) {
+            const text = await response.text();
+            throw new Error(text || 'Command could not be started.');
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+                break;
+            }
+            outputPre.textContent += decoder.decode(value, { stream: true });
+            outputPre.scrollTop = outputPre.scrollHeight;
+        }
+    }
+
+    async function runStream(form, endpoint, reloadOnSuccess) {
+        const buttons = Array.from(form.querySelectorAll('button'));
+        buttons.forEach((button) => { button.disabled = true; });
+        setOutputVisibility(true);
+        outputPre.textContent = '';
+        outputStatus.textContent = 'Running...';
+        outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        try {
+            await streamBody(endpoint, form);
+            if (outputPre.textContent.includes('[command failed]')) {
+                outputStatus.textContent = 'Failed';
+                return;
+            }
+            outputStatus.textContent = reloadOnSuccess ? 'Completed, refreshing...' : 'Completed';
+            if (reloadOnSuccess) {
+                window.setTimeout(() => window.location.reload(), 700);
+            }
+        } catch (error) {
+            outputStatus.textContent = 'Failed';
+            outputPre.textContent += '\n' + String(error);
+        } finally {
+            buttons.forEach((button) => { button.disabled = false; });
+        }
+    }
+
+    runtimeForm.querySelectorAll('[data-runtime-action]').forEach((button) => {
+        button.addEventListener('click', () => {
+            runtimeForm.querySelector('#runtime-npm-action').value = button.dataset.runtimeAction || 'npm_install';
+            runtimeForm.querySelector('#runtime-npm-script-name').value = button.dataset.runtimeScript || '';
+            let ciInput = runtimeForm.querySelector('input[name="npm_ci"]');
+            if (!ciInput) {
+                ciInput = document.createElement('input');
+                ciInput.type = 'hidden';
+                ciInput.name = 'npm_ci';
+                runtimeForm.appendChild(ciInput);
+            }
+            ciInput.value = button.dataset.runtimeCi === '1' ? '1' : '0';
+            runStream(runtimeForm, '/sites/details/runtime-stream', false);
+        });
+    });
+
+    commandSelect.addEventListener('change', () => {
+        applySavedCommand(commandSelect.options[commandSelect.selectedIndex]);
+    });
+
+    commandRun.addEventListener('click', () => {
+        customForm.querySelector('#runtime-custom-action').value = 'run_custom_command';
+        runStream(customForm, '/sites/details/runtime-stream', false);
+        window.setTimeout(() => {
+            customForm.querySelector('#runtime-custom-action').value = 'save_runtime_command';
+        }, 0);
+    });
+
+    commandClear.addEventListener('click', () => {
+        resetCustomCommandForm();
+    });
+
+    siteActionForms.forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            runStream(form, form.dataset.streamEndpoint || '/sites/details/action-stream', form.dataset.reloadOnSuccess === '1');
+        });
+    });
+
+    function updateSSHStatus(text) {
+        if (sshTerminalStatus) {
+            sshTerminalStatus.textContent = text;
+        }
+    }
+
+    function ensureTerminal() {
+        if (sshTerminal || !sshTerminalMount || !window.Terminal || !window.FitAddon) {
+            return sshTerminal;
+        }
+        sshTerminal = new window.Terminal({
+            cursorBlink: true,
+            fontSize: 13,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            theme: { background: '#111827', foreground: '#e5e7eb' },
+            scrollback: 5000
+        });
+        sshFitAddon = new window.FitAddon.FitAddon();
+        sshTerminal.loadAddon(sshFitAddon);
+        sshTerminal.open(sshTerminalMount);
+        sshFitAddon.fit();
+        window.setTimeout(() => sshFitAddon.fit(), 30);
+        return sshTerminal;
+    }
+
+    function disconnectInteractiveTerminal() {
+        if (sshSocket) {
+            sshSocket.close();
+            sshSocket = null;
+        }
+        updateSSHStatus('Terminal disconnected.');
+    }
+
+    function connectInteractiveTerminal() {
+        const terminal = ensureTerminal();
+        if (!terminal || !sshFitAddon) {
+            updateSSHStatus('Terminal library could not be loaded.');
+            return;
+        }
+        if (sshSocket && sshSocket.readyState === WebSocket.OPEN) {
+            terminal.focus();
+            return;
+        }
+        terminal.clear();
+        sshFitAddon.fit();
+        const cwd = encodeURIComponent('{{.SelectedSubdomain.RootDirectory}}');
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socketURL = protocol + '//' + window.location.host + '/sites/details/terminal-ws?name={{.SelectedSite.Name}}&cwd=' + cwd + '&cols=' + terminal.cols + '&rows=' + terminal.rows;
+        sshSocket = new WebSocket(socketURL);
+        sshSocket.binaryType = 'arraybuffer';
+        updateSSHStatus('Connecting interactive terminal...');
+
+        sshSocket.onopen = () => {
+            updateSSHStatus('Interactive terminal connected.');
+            terminal.focus();
+            sshSocket.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }));
+        };
+        sshSocket.onmessage = async (event) => {
+            if (typeof event.data === 'string') {
+                terminal.write(event.data);
+                return;
+            }
+            const text = await new Blob([event.data]).text();
+            terminal.write(text);
+        };
+        sshSocket.onclose = () => {
+            updateSSHStatus('Interactive terminal disconnected.');
+            sshSocket = null;
+        };
+        sshSocket.onerror = () => {
+            updateSSHStatus('Interactive terminal connection failed.');
+        };
+        terminal.onData((data) => {
+            if (sshSocket && sshSocket.readyState === WebSocket.OPEN) {
+                sshSocket.send(JSON.stringify({ type: 'input', data }));
+            }
+        });
+        terminal.onResize((size) => {
+            if (sshSocket && sshSocket.readyState === WebSocket.OPEN) {
+                sshSocket.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
+            }
+        });
+    }
+
+    sshTerminalConnect?.addEventListener('click', connectInteractiveTerminal);
+    sshTerminalDisconnect?.addEventListener('click', disconnectInteractiveTerminal);
+    window.addEventListener('resize', () => {
+        if (!sshFitAddon) {
+            return;
+        }
+        sshFitAddon.fit();
+        if (sshSocket && sshSocket.readyState === WebSocket.OPEN && sshTerminal) {
+            sshSocket.send(JSON.stringify({ type: 'resize', cols: sshTerminal.cols, rows: sshTerminal.rows }));
+        }
+    });
+
+    Array.from(document.querySelectorAll('.subdomain-rollback-form')).forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            if (form.dataset.rollbackConfirmed === '1') {
+                form.dataset.rollbackConfirmed = '0';
+                return;
+            }
+            event.preventDefault();
+            pendingRollbackForm = form;
+            if (subdomainRollbackDialogText) {
+                subdomainRollbackDialogText.textContent = 'Rollback ' + (form.dataset.subdomainDomain || 'this subdomain') + ' to commit ' + (form.dataset.commitSha || '') + '?';
+            }
+            subdomainRollbackDialog?.showModal();
+        });
+    });
+
+    document.getElementById('subdomain-rollback-confirm')?.addEventListener('click', () => {
+        if (!pendingRollbackForm) {
+            return;
+        }
+        pendingRollbackForm.dataset.rollbackConfirmed = '1';
+        pendingRollbackForm.requestSubmit();
+        pendingRollbackForm = null;
+    });
+
+    subdomainRollbackDialog?.addEventListener('close', () => {
+        if (subdomainRollbackDialog.returnValue !== 'confirm') {
+            pendingRollbackForm = null;
+        }
+    });
+
+    activateTab(tabNav.dataset.activeTab || 'overview');
+})();
+</script>
+{{end}}

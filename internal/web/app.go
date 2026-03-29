@@ -99,6 +99,7 @@ type TemplateData struct {
 	SelectedDatabaseEntries []system.DatabaseAccess
 	ManagedSites   []domain.ManagedSite
 	SelectedSite   domain.ManagedSite
+	SelectedSubdomain domain.SiteSubdomain
 	PHPVersions    []string
 	RepositoryStatus system.RepositoryStatus
 	RuntimeStatus  system.RuntimeStatus
@@ -124,6 +125,9 @@ type TemplateData struct {
 	PM2ProcessName string
 	PM2ScriptPath string
 	PM2Arguments string
+	PM2LogLines string
+	PM2ListOutput string
+	PM2LogsOutput string
 	GitCredentialProtocol string
 	GitCredentialHost string
 	GitCredentialUsername string
@@ -162,6 +166,7 @@ type TemplateData struct {
 	PackageScripts []string
 	NpmScriptNodeVersion string
 	SiteRuntimeCommands []domain.SiteRuntimeCommand
+	SubdomainRuntimeCommands []domain.SiteRuntimeCommand
 	SiteSubdomains []domain.SiteSubdomain
 	SubdomainLabel string
 	SubdomainMode string
@@ -179,6 +184,8 @@ type TemplateData struct {
 	SubdomainAutoDeploySecret string
 	SubdomainAutoDeployCommand string
 	SubdomainAutoDeployNotifyEmail string
+	SubdomainAutoDeployPreset string
+	SubdomainAutoDeployPM2Process string
 	PreviewSubdomainID int64
 	SubdomainMovePreviewFrom string
 	SubdomainMovePreviewTo string
@@ -270,6 +277,7 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/databases/details", a.handleDatabaseDetails)
 	a.router.HandleFunc("/sites", a.handleSites)
 	a.router.HandleFunc("/sites/details", a.handleSiteDetails)
+	a.router.HandleFunc("/sites/subdomains/details", a.handleSubdomainDetails)
 	a.router.HandleFunc("/sites/details/runtime-stream", a.handleSiteRuntimeStream)
 	a.router.HandleFunc("/sites/details/action-stream", a.handleSiteActionStream)
 	a.router.HandleFunc("/sites/details/terminal-ws", a.handleSiteTerminalWS)
@@ -347,6 +355,8 @@ func templateFilesForPage(page string) []string {
 	case "deploys.html":
 		files = append(files, "templates/deploy_history.html")
 	case "site_details.html":
+		files = append(files, "templates/deploy_history.html")
+	case "subdomain_details.html":
 		files = append(files, "templates/deploy_history.html")
 	}
 

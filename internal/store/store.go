@@ -98,6 +98,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("ensure site_subdomains table: %w", err)
 	}
 
+	if err := s.ensureSubdomainRuntimeCommandsTable(ctx); err != nil {
+		return fmt.Errorf("ensure subdomain_runtime_commands table: %w", err)
+	}
+
 	if err := s.ensureSiteSubdomainsDeployColumns(ctx); err != nil {
 		return fmt.Errorf("ensure site_subdomains deploy columns: %w", err)
 	}
@@ -293,6 +297,25 @@ func (s *Store) ensureSiteRuntimeCommandsTable(ctx context.Context) error {
 			INDEX idx_site_runtime_commands_site_id (site_id),
 			CONSTRAINT fk_site_runtime_commands_site FOREIGN KEY (site_id) REFERENCES managed_sites(id) ON DELETE CASCADE
 		)`)
+	return err
+}
+
+func (s *Store) ensureSubdomainRuntimeCommandsTable(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS subdomain_runtime_commands (
+			id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			subdomain_id BIGINT NOT NULL,
+			name VARCHAR(191) NOT NULL,
+			command_body TEXT NOT NULL,
+			node_version VARCHAR(64) NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			INDEX idx_subdomain_runtime_commands_subdomain_id (subdomain_id),
+			CONSTRAINT fk_subdomain_runtime_commands_subdomain FOREIGN KEY (subdomain_id) REFERENCES site_subdomains(id) ON DELETE CASCADE
+		)`) 
 	return err
 }
 

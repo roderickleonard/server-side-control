@@ -62,6 +62,7 @@ type AuditLog struct {
 type SiteRuntimeCommand struct {
 	ID          int64     `json:"id"`
 	SiteID      int64     `json:"site_id"`
+	SubdomainID int64     `json:"subdomain_id"`
 	Name        string    `json:"name"`
 	CommandBody string    `json:"command_body"`
 	NodeVersion string    `json:"node_version"`

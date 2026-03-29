@@ -766,6 +766,60 @@ func siteDetailTabForAction(action string) string {
 	}
 }
 
+func subdomainDetailTabForAction(action string) string {
+	switch action {
+	case "sync_subdomain_repository", "run_subdomain_git_command", "save_subdomain_deploy", "rotate_subdomain_auto_deploy_secret", "rollback_subdomain_release", "generate_subdomain_deploy_key", "trust_subdomain_git_host", "store_subdomain_git_credential":
+		return "deploy"
+	case "npm_install", "run_npm_script", "run_custom_command", "install_nvm", "install_node", "install_pm2", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "list_pm2", "show_pm2_logs", "save_runtime_command", "delete_runtime_command":
+		return "runtime"
+	case "enable_subdomain_tls", "move_subdomain_root", "move_subdomain_root_preview", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "edit_subdomain_env", "delete_subdomain":
+		return "settings"
+	default:
+		return "overview"
+	}
+}
+
+func autoDeployCommandFromPreset(preset string, processName string, fallback string) string {
+	switch strings.TrimSpace(preset) {
+	case "pm2_restart":
+		if strings.TrimSpace(processName) == "" {
+			return fallback
+		}
+		return "pm2 restart " + shellSingleQuote(strings.TrimSpace(processName))
+	case "pm2_reload":
+		if strings.TrimSpace(processName) == "" {
+			return fallback
+		}
+		return "pm2 reload " + shellSingleQuote(strings.TrimSpace(processName))
+	default:
+		return fallback
+	}
+}
+
+func detectAutoDeployPreset(command string) (string, string) {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return "custom", ""
+	}
+	for _, prefix := range []struct {
+		preset string
+		value  string
+	}{
+		{preset: "pm2_restart", value: "pm2 restart "},
+		{preset: "pm2_reload", value: "pm2 reload "},
+	} {
+		if !strings.HasPrefix(trimmed, prefix.value) {
+			continue
+		}
+		processName := strings.TrimSpace(strings.TrimPrefix(trimmed, prefix.value))
+		processName = strings.Trim(processName, "'")
+		if processName != "" {
+			return prefix.preset, processName
+		}
+	}
+	return "custom", ""
+}
+
 func describeCronNextRun(schedule string, now time.Time) string {
 	nextRun, err := nextCronRun(schedule, now)
 	if err != nil {
@@ -3204,6 +3258,457 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 	a.renderSiteDetails(w, r, site, repositoryStatus, runtimeStatus, gitAuthStatus, releases, data)
 }
 
+func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
+	if a.store == nil {
+		http.Redirect(w, r, "/sites", http.StatusSeeOther)
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	siteName := strings.TrimSpace(r.URL.Query().Get("name"))
+	subdomainIDRaw := strings.TrimSpace(r.URL.Query().Get("subdomain_id"))
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "invalid form", http.StatusBadRequest)
+			return
+		}
+		siteName = firstNonEmpty(strings.TrimSpace(r.FormValue("site_name")), siteName)
+		subdomainIDRaw = firstNonEmpty(strings.TrimSpace(r.FormValue("subdomain_id")), subdomainIDRaw)
+	}
+	if siteName == "" || subdomainIDRaw == "" {
+		http.Redirect(w, r, "/sites", http.StatusSeeOther)
+		return
+	}
+	subdomainID, err := strconv.ParseInt(subdomainIDRaw, 10, 64)
+	if err != nil || subdomainID <= 0 {
+		http.Redirect(w, r, "/sites/details?name="+url.QueryEscape(siteName)+"&tab=domains", http.StatusSeeOther)
+		return
+	}
+
+	site, err := a.store.GetManagedSiteByName(r.Context(), siteName)
+	if err != nil {
+		http.Redirect(w, r, "/sites", http.StatusSeeOther)
+		return
+	}
+	subdomains, err := a.store.ListSiteSubdomains(r.Context(), site.ID)
+	if err != nil {
+		a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+			Title:          "Sites",
+			DatabaseStatus: a.databaseStatus(r.Context()),
+			Metrics:        a.metrics.Snapshot(),
+			LinuxUsers:     a.listLinuxUsers(),
+			ManagedSites:   a.listManagedSites(r),
+			PHPVersions:    a.listPHPVersions(),
+			RequestError:   "Subdomains could not be loaded: " + err.Error(),
+		})
+		return
+	}
+	subdomain, ok := findSiteSubdomain(subdomains, subdomainID)
+	if !ok {
+		http.Redirect(w, r, "/sites/details?name="+url.QueryEscape(siteName)+"&tab=domains", http.StatusSeeOther)
+		return
+	}
+
+	inspectState := func(current domain.SiteSubdomain) (system.RepositoryStatus, system.RuntimeStatus, system.GitAuthStatus, []domain.DeploymentRelease, error) {
+		repositoryStatus, statusErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: current.RootDirectory, RunAsUser: site.OwnerLinuxUser})
+		runtimeStatus, runtimeErr := a.runtime.Inspect(system.RuntimeInspectSpec{User: site.OwnerLinuxUser})
+		repositoryURL := firstNonEmpty(current.RepositoryURL, repositoryStatus.RemoteURL)
+		gitAuthStatus, gitAuthErr := a.gitAuth.Inspect(system.GitAuthInspectSpec{User: site.OwnerLinuxUser, SiteName: current.FullDomain, RepositoryURL: repositoryURL})
+		releases := a.listSiteDeploymentReleases(r, current.RootDirectory, site.OwnerLinuxUser)
+		if statusErr != nil {
+			return repositoryStatus, runtimeStatus, gitAuthStatus, releases, fmt.Errorf("repository status could not be inspected: %w", statusErr)
+		}
+		if runtimeErr != nil {
+			return repositoryStatus, runtimeStatus, gitAuthStatus, releases, fmt.Errorf("runtime status could not be inspected: %w", runtimeErr)
+		}
+		if gitAuthErr != nil {
+			return repositoryStatus, runtimeStatus, gitAuthStatus, releases, fmt.Errorf("git auth status could not be inspected: %w", gitAuthErr)
+		}
+		return repositoryStatus, runtimeStatus, gitAuthStatus, releases, nil
+	}
+
+	repositoryStatus, runtimeStatus, gitAuthStatus, releases, inspectErr := inspectState(subdomain)
+	if r.Method == http.MethodGet {
+		data := TemplateData{SiteDetailTab: firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("tab")), "overview")}
+		if inspectErr != nil {
+			data.RequestError = inspectErr.Error()
+		}
+		a.renderSubdomainDetails(w, r, site, subdomain, repositoryStatus, runtimeStatus, gitAuthStatus, releases, data)
+		return
+	}
+
+	action := strings.TrimSpace(r.FormValue("details_action"))
+	if action == "" {
+		a.renderSubdomainDetails(w, r, site, subdomain, repositoryStatus, runtimeStatus, gitAuthStatus, releases, TemplateData{RequestError: "Invalid subdomain details action."})
+		return
+	}
+	data := TemplateData{
+		SiteDetailTab:                   subdomainDetailTabForAction(action),
+		SubdomainDeleteID:               subdomain.ID,
+		SubdomainDirectoryName:          strings.TrimSpace(r.FormValue("subdomain_directory_name")),
+		SubdomainRepositoryURL:          strings.TrimSpace(r.FormValue("subdomain_repository_url")),
+		SubdomainBranch:                 strings.TrimSpace(r.FormValue("subdomain_branch")),
+		SubdomainGitCredentialProtocol:  strings.TrimSpace(r.FormValue("subdomain_git_credential_protocol")),
+		SubdomainGitCredentialUsername:  strings.TrimSpace(r.FormValue("subdomain_git_credential_username")),
+		SubdomainPostDeployCommand:      r.FormValue("subdomain_post_deploy_command"),
+		SubdomainAutoDeployEnabled:      r.FormValue("subdomain_auto_deploy_enabled") == "1",
+		SubdomainAutoDeployBranch:       strings.TrimSpace(r.FormValue("subdomain_auto_deploy_branch")),
+		SubdomainAutoDeploySecret:       strings.TrimSpace(r.FormValue("subdomain_auto_deploy_secret")),
+		SubdomainAutoDeployCommand:      r.FormValue("subdomain_auto_deploy_command"),
+		SubdomainAutoDeployNotifyEmail:  strings.TrimSpace(r.FormValue("subdomain_auto_deploy_notify_email")),
+		SubdomainAutoDeployPreset:       firstNonEmpty(strings.TrimSpace(r.FormValue("subdomain_auto_deploy_preset")), "custom"),
+		SubdomainAutoDeployPM2Process:   strings.TrimSpace(r.FormValue("subdomain_auto_deploy_pm2_process")),
+		SubdomainTLSEmail:               strings.TrimSpace(r.FormValue("subdomain_tls_email")),
+		NginxConfigContent:              r.FormValue("nginx_config_content"),
+		RuntimeNodeVersion:              strings.TrimSpace(r.FormValue("npm_script_node_version")),
+		PM2NodeVersion:                  strings.TrimSpace(r.FormValue("pm2_node_version")),
+		PM2ProcessName:                  firstNonEmpty(strings.TrimSpace(r.FormValue("process_name")), subdomain.FullDomain),
+		PM2ScriptPath:                   strings.TrimSpace(r.FormValue("script_path")),
+		PM2Arguments:                    strings.TrimSpace(r.FormValue("process_arguments")),
+		PM2LogLines:                     firstNonEmpty(strings.TrimSpace(r.FormValue("pm2_log_lines")), "100"),
+		RuntimeCommandName:              strings.TrimSpace(r.FormValue("runtime_command_name")),
+		RuntimeCommandNodeVersion:       strings.TrimSpace(r.FormValue("runtime_command_node_version")),
+		RuntimeCommandBody:              r.FormValue("env_content"),
+		GitCredentialProtocol:           firstNonEmpty(strings.TrimSpace(r.FormValue("credential_protocol")), firstNonEmpty(subdomain.GitCredentialProtocol, gitAuthStatus.RepositoryProtocol, "https")),
+		GitCredentialHost:               firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
+		GitCredentialUsername:           firstNonEmpty(strings.TrimSpace(r.FormValue("credential_username")), subdomain.GitCredentialUsername),
+	}
+	data.RuntimeCommandBody = firstNonEmpty(r.FormValue("runtime_command_body"), data.RuntimeCommandBody)
+	if commandID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("runtime_command_id")), 10, 64); err == nil {
+		data.RuntimeCommandID = commandID
+	}
+	data.SubdomainAutoDeployCommand = autoDeployCommandFromPreset(data.SubdomainAutoDeployPreset, firstNonEmpty(data.SubdomainAutoDeployPM2Process, data.PM2ProcessName, subdomain.FullDomain), data.SubdomainAutoDeployCommand)
+	var nginxRevisionID int64
+	if revisionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("nginx_revision_id")), 10, 64); err == nil {
+		nginxRevisionID = revisionID
+	}
+
+	successMessage := ""
+	switch action {
+	case "install_nvm":
+		output, actionErr := a.runtime.InstallNVM(site.OwnerLinuxUser)
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			break
+		}
+		data.CommandOutput = output
+		successMessage = "NVM was installed for the site owner successfully."
+	case "install_node":
+		output, actionErr := a.runtime.InstallNode(system.NodeInstallSpec{User: site.OwnerLinuxUser, Version: strings.TrimSpace(r.FormValue("node_version")), SetDefault: r.FormValue("set_default_node") == "1"})
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			break
+		}
+		data.CommandOutput = output
+		successMessage = "Node version was installed successfully for the site owner."
+	case "install_pm2":
+		output, actionErr := a.runtime.InstallPM2(system.PM2InstallSpec{User: site.OwnerLinuxUser, NodeVersion: data.PM2NodeVersion})
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			break
+		}
+		data.CommandOutput = output
+		successMessage = "PM2 was installed successfully for the site owner."
+	case "start_pm2":
+		output, actionErr := a.runtime.StartPM2(system.PM2StartSpec{User: site.OwnerLinuxUser, WorkingDirectory: subdomain.RootDirectory, ProcessName: data.PM2ProcessName, ScriptPath: data.PM2ScriptPath, Arguments: data.PM2Arguments, NodeVersion: data.PM2NodeVersion})
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			break
+		}
+		data.CommandOutput = output
+		successMessage = "PM2 process was started for this subdomain successfully."
+	case "restart_pm2":
+		output, actionErr := a.pm2.Restart(site.OwnerLinuxUser, data.PM2ProcessName)
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			break
+		}
+		data.CommandOutput = output
+		successMessage = "PM2 process restarted successfully."
+	case "reload_pm2":
+		output, actionErr := a.pm2.Reload(site.OwnerLinuxUser, data.PM2ProcessName)
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			break
+		}
+		data.CommandOutput = output
+		successMessage = "PM2 process reloaded successfully."
+	case "stop_pm2":
+		output, actionErr := a.pm2.Stop(site.OwnerLinuxUser, data.PM2ProcessName)
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.CommandOutput = output
+			break
+		}
+		data.CommandOutput = output
+		successMessage = "PM2 process stopped successfully."
+	case "list_pm2":
+		output, actionErr := a.pm2.List(site.OwnerLinuxUser)
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.PM2ListOutput = output
+			break
+		}
+		data.PM2ListOutput = output
+		successMessage = "PM2 process list loaded successfully."
+	case "show_pm2_logs":
+		lines, _ := strconv.Atoi(data.PM2LogLines)
+		output, actionErr := a.pm2.Logs(site.OwnerLinuxUser, data.PM2ProcessName, lines)
+		if actionErr != nil {
+			data.RequestError = runtimeErrorMessage(actionErr)
+			data.PM2LogsOutput = output
+			break
+		}
+		data.PM2LogsOutput = output
+		successMessage = "PM2 logs loaded successfully."
+	case "save_runtime_command":
+		if strings.TrimSpace(data.RuntimeCommandName) == "" {
+			data.RequestError = "Profile name is required."
+			break
+		}
+		if strings.TrimSpace(data.RuntimeCommandBody) == "" {
+			data.RequestError = "Custom command cannot be empty."
+			break
+		}
+		if data.RuntimeCommandNodeVersion == "" {
+			data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
+		}
+		commandID, err := a.store.UpsertSubdomainRuntimeCommand(r.Context(), domain.SiteRuntimeCommand{ID: data.RuntimeCommandID, SubdomainID: subdomain.ID, Name: data.RuntimeCommandName, CommandBody: data.RuntimeCommandBody, NodeVersion: data.RuntimeCommandNodeVersion})
+		if err != nil {
+			data.RequestError = "Could not save runtime command profile: " + err.Error()
+			break
+		}
+		data.RuntimeCommandID = commandID
+		successMessage = fmt.Sprintf("Runtime command profile \"%s\" saved.", data.RuntimeCommandName)
+	case "delete_runtime_command":
+		if data.RuntimeCommandID <= 0 {
+			data.RequestError = "Select a saved profile to delete."
+			break
+		}
+		if err := a.store.DeleteSubdomainRuntimeCommand(r.Context(), subdomain.ID, data.RuntimeCommandID); err != nil {
+			data.RequestError = "Could not delete runtime command profile: " + err.Error()
+			break
+		}
+		data.RuntimeCommandID = 0
+		data.RuntimeCommandName = ""
+		data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
+		data.RuntimeCommandBody = ""
+		successMessage = "Runtime command profile deleted."
+	case "save_subdomain_deploy":
+		if data.SubdomainAutoDeployPreset != "custom" && strings.TrimSpace(firstNonEmpty(data.SubdomainAutoDeployPM2Process, data.PM2ProcessName, subdomain.FullDomain)) == "" {
+			data.RequestError = "Select a PM2 process name for the webhook preset action."
+			break
+		}
+		if data.SubdomainAutoDeployEnabled && data.SubdomainAutoDeploySecret == "" {
+			secret, secretErr := randomPassword(32)
+			if secretErr != nil {
+				data.RequestError = "Could not generate subdomain auto deploy secret."
+				break
+			}
+			data.SubdomainAutoDeploySecret = secret
+		}
+		if err := a.store.UpdateSiteSubdomainDeploy(r.Context(), site.ID, subdomain.ID, data.SubdomainRepositoryURL, firstNonEmpty(data.SubdomainBranch, repositoryStatus.Branch, subdomain.BranchName, "main"), data.SubdomainPostDeployCommand, data.SubdomainAutoDeployEnabled, firstNonEmpty(data.SubdomainAutoDeployBranch, data.SubdomainBranch, subdomain.AutoDeployBranch, subdomain.BranchName, "main"), data.SubdomainAutoDeploySecret, data.SubdomainAutoDeployCommand, data.SubdomainAutoDeployNotifyEmail); err != nil {
+			data.RequestError = "Could not save subdomain deploy settings: " + err.Error()
+			break
+		}
+		a.recordAudit(r.Context(), "site.subdomain.deploy.save", subdomain.FullDomain, "success", map[string]any{"enabled": data.SubdomainAutoDeployEnabled})
+		successMessage = "Subdomain deploy settings saved."
+	case "rotate_subdomain_auto_deploy_secret":
+		if data.SubdomainAutoDeployPreset != "custom" && strings.TrimSpace(firstNonEmpty(data.SubdomainAutoDeployPM2Process, data.PM2ProcessName, subdomain.FullDomain)) == "" {
+			data.RequestError = "Select a PM2 process name for the webhook preset action."
+			break
+		}
+		secret, secretErr := randomPassword(32)
+		if secretErr != nil {
+			data.RequestError = "Could not rotate subdomain auto deploy secret."
+			break
+		}
+		data.SubdomainAutoDeploySecret = secret
+		if err := a.store.UpdateSiteSubdomainDeploy(r.Context(), site.ID, subdomain.ID, firstNonEmpty(data.SubdomainRepositoryURL, subdomain.RepositoryURL), firstNonEmpty(data.SubdomainBranch, subdomain.BranchName, repositoryStatus.Branch, "main"), firstNonEmpty(data.SubdomainPostDeployCommand, subdomain.PostDeployCommand), data.SubdomainAutoDeployEnabled || subdomain.AutoDeployEnabled, firstNonEmpty(data.SubdomainAutoDeployBranch, subdomain.AutoDeployBranch, subdomain.BranchName, "main"), secret, firstNonEmpty(data.SubdomainAutoDeployCommand, subdomain.AutoDeployCommand), firstNonEmpty(data.SubdomainAutoDeployNotifyEmail, subdomain.AutoDeployNotifyEmail)); err != nil {
+			data.RequestError = "Could not rotate subdomain auto deploy secret: " + err.Error()
+			break
+		}
+		a.recordAudit(r.Context(), "site.subdomain.deploy.rotate_secret", subdomain.FullDomain, "success", nil)
+		successMessage = "Subdomain auto deploy secret rotated."
+	case "move_subdomain_root_preview":
+		preview := a.inspectSubdomainMovePreview(r.Context(), site, subdomain, firstNonEmpty(data.SubdomainDirectoryName, subdomain.Subdomain))
+		data.PreviewSubdomainID = subdomain.ID
+		data.SubdomainMovePreviewFrom = preview.From
+		data.SubdomainMovePreviewTo = preview.To
+		data.SubdomainMovePreviewTargetExists = preview.TargetExists
+		data.SubdomainMovePreviewTargetEmpty = preview.TargetEmpty
+		data.SubdomainMovePreviewTargetGitRepo = preview.TargetGitRepo
+		data.SubdomainMovePreviewTargetState = preview.TargetState
+		successMessage = "Move preview updated."
+	case "move_subdomain_root":
+		newRoot := buildManagedSubdomainRootDirectory(site, a.cfg.SubdomainRootBaseDir, firstNonEmpty(data.SubdomainDirectoryName, subdomain.Subdomain))
+		if filepath.Clean(newRoot) == filepath.Clean(subdomain.RootDirectory) {
+			data.RequestError = "Subdomain root is already set to that directory."
+			break
+		}
+		moveScript := "set -e; mkdir -p $(dirname " + shellSingleQuote(newRoot) + "); if [ -e " + shellSingleQuote(newRoot) + " ]; then echo 'Destination already exists'; exit 1; fi; if [ -e " + shellSingleQuote(subdomain.RootDirectory) + " ]; then mv " + shellSingleQuote(subdomain.RootDirectory) + " " + shellSingleQuote(newRoot) + "; else mkdir -p " + shellSingleQuote(newRoot) + "; fi"
+		output, actionErr := a.helper.Call(r.Context(), "runtime.run_shell_command", system.ShellCommandSpec{User: site.OwnerLinuxUser, WorkingDirectory: filepath.Dir(subdomain.RootDirectory), CommandBody: moveScript}, nil)
+		if actionErr != nil {
+			data.RequestError = "Could not move subdomain root: " + actionErr.Error()
+			data.CommandOutput = output
+			break
+		}
+		siteSpec := buildSubdomainSiteSpec(site, subdomain, newRoot)
+		configPath, actionErr := a.nginx.ApplySite(siteSpec)
+		if actionErr != nil {
+			data.RequestError = "Subdomain files moved but Nginx config could not be updated: " + actionErr.Error()
+			data.CommandOutput = output
+			break
+		}
+		if err := a.store.UpdateSiteSubdomainLocation(r.Context(), site.ID, subdomain.ID, newRoot, configPath); err != nil {
+			data.RequestError = "Subdomain root moved but store update failed: " + err.Error()
+			data.CommandOutput = output
+			break
+		}
+		data.CommandOutput = output
+		successMessage = "Subdomain root directory moved successfully."
+	case "rollback_subdomain_release":
+		releaseCommit := strings.TrimSpace(r.FormValue("release_commit_sha"))
+		if releaseCommit == "" {
+			data.RequestError = "Release commit is required for rollback."
+			break
+		}
+		result, actionErr := a.deploys.Rollback(system.RollbackSpec{TargetDirectory: subdomain.RootDirectory, RunAsUser: site.OwnerLinuxUser, ReleaseCommitSHA: releaseCommit, PostDeployCommand: firstNonEmpty(strings.TrimSpace(r.FormValue("rollback_post_deploy_command")), subdomain.PostDeployCommand)})
+		if actionErr != nil {
+			data.RequestError = actionErr.Error()
+			data.CommandOutput = result.Output
+			break
+		}
+		if a.store != nil {
+			_ = a.store.CreateDeploymentRelease(r.Context(), domain.DeploymentRelease{RepositoryURL: subdomain.RepositoryURL, BranchName: "rollback", TargetDirectory: subdomain.RootDirectory, RunAsUser: site.OwnerLinuxUser, Action: result.Action, Status: "success", CommitSHA: result.CommitSHA, PreviousCommitSHA: result.PreviousCommitSHA, Output: result.Output})
+		}
+		data.CommandOutput = result.Output
+		successMessage = "Subdomain rollback completed successfully."
+	case "enable_subdomain_tls":
+		if data.SubdomainTLSEmail == "" {
+			data.RequestError = "TLS email is required for the subdomain certificate."
+			break
+		}
+		output, actionErr := a.nginx.EnableTLS(system.TLSRequest{Domain: subdomain.FullDomain, Email: data.SubdomainTLSEmail, Redirect: r.FormValue("subdomain_tls_redirect") == "1"})
+		if actionErr != nil {
+			data.RequestError = "Could not enable TLS for subdomain: " + actionErr.Error()
+			data.CommandOutput = output
+			break
+		}
+		data.CommandOutput = output
+		successMessage = "Subdomain TLS enabled successfully."
+	case "edit_subdomain_env":
+		envPath, _, pathErr := resolveSiteBrowserPath(subdomain.RootDirectory, ".env")
+		if pathErr != nil {
+			data.RequestError = "Invalid .env file path."
+			break
+		}
+		if _, err := a.helper.Call(r.Context(), "files.write_env", map[string]string{"path": envPath, "content": r.FormValue("env_content"), "owner": site.OwnerLinuxUser}, nil); err != nil {
+			data.RequestError = "Could not write .env file: " + err.Error()
+			break
+		}
+		a.recordAudit(r.Context(), "site.subdomain.edit_env", subdomain.FullDomain, "success", nil)
+		successMessage = ".env file saved successfully."
+	case "save_nginx_config":
+		configPath, targetLabel, _, subdomainTargetID, err := resolveNginxConfigTarget(site, subdomains, "subdomain", subdomain.ID)
+		if err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		if !isAllowedNginxConfigPath(a.cfg.NginxAvailableDir, configPath) {
+			data.RequestError = "Stored Nginx config path is outside the allowed Nginx config directory."
+			break
+		}
+		if err := a.saveNginxConfigContent(r.Context(), site, subdomainTargetID, configPath, data.NginxConfigContent, true); err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		data.NginxConfigNotice = "Nginx config saved, validated, and reloaded successfully."
+		a.recordAudit(r.Context(), "site.nginx_config.save", targetLabel, "success", map[string]any{"config_path": configPath, "target_type": "subdomain", "subdomain_id": subdomainTargetID})
+		successMessage = "Nginx config updated successfully."
+	case "validate_nginx_config":
+		configPath, targetLabel, _, subdomainTargetID, err := resolveNginxConfigTarget(site, subdomains, "subdomain", subdomain.ID)
+		if err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		output, actionErr := a.helper.Call(r.Context(), "nginx.validate_config", map[string]string{"path": configPath, "content": data.NginxConfigContent}, nil)
+		if actionErr != nil {
+			data.RequestError = "Nginx config validation failed: " + actionErr.Error()
+			break
+		}
+		data.CommandOutput = output
+		data.NginxConfigNotice = "Validation passed. No file was changed."
+		a.recordAudit(r.Context(), "site.nginx_config.validate", targetLabel, "success", map[string]any{"config_path": configPath, "target_type": "subdomain", "subdomain_id": subdomainTargetID})
+		successMessage = "Nginx config validated successfully."
+	case "rollback_nginx_config":
+		configPath, targetLabel, _, subdomainTargetID, err := resolveNginxConfigTarget(site, subdomains, "subdomain", subdomain.ID)
+		if err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		if nginxRevisionID <= 0 {
+			data.RequestError = "Select a saved Nginx config revision to roll back."
+			break
+		}
+		revision, err := a.store.GetNginxConfigRevision(r.Context(), nginxRevisionID, site.ID, subdomainTargetID)
+		if err != nil {
+			data.RequestError = "Could not load Nginx config revision: " + err.Error()
+			break
+		}
+		if revision.ConfigPath != configPath {
+			data.RequestError = "Selected revision does not belong to this Nginx config target."
+			break
+		}
+		data.NginxConfigContent = revision.Content
+		if err := a.saveNginxConfigContent(r.Context(), site, subdomainTargetID, configPath, revision.Content, true); err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		data.NginxConfigNotice = "Selected Nginx config revision was restored successfully."
+		a.recordAudit(r.Context(), "site.nginx_config.rollback", targetLabel, "success", map[string]any{"config_path": configPath, "revision_id": nginxRevisionID, "target_type": "subdomain", "subdomain_id": subdomainTargetID})
+		successMessage = "Nginx config rollback completed successfully."
+	case "delete_subdomain":
+		if err := a.nginx.DeleteSite(system.SiteRemoval{Name: subdomainConfigName(site.Name, subdomain.FullDomain), Domain: subdomain.FullDomain, RootDirectory: subdomain.RootDirectory, ConfigPath: subdomain.NginxConfigPath}); err != nil {
+			data.RequestError = "Could not delete subdomain from Nginx: " + err.Error()
+			break
+		}
+		if err := a.store.DeleteSiteSubdomain(r.Context(), site.ID, subdomain.ID); err != nil {
+			data.RequestError = "Subdomain Nginx config was removed but panel record could not be deleted: " + err.Error()
+			break
+		}
+		a.recordAudit(r.Context(), "site.subdomain.delete", subdomain.FullDomain, "success", nil)
+		http.Redirect(w, r, "/sites/details?name="+url.QueryEscape(site.Name)+"&tab=domains", http.StatusSeeOther)
+		return
+	default:
+		data.RequestError = "Invalid subdomain details action."
+	}
+
+	subdomains, _ = a.store.ListSiteSubdomains(r.Context(), site.ID)
+	subdomain, ok = findSiteSubdomain(subdomains, subdomainID)
+	if !ok {
+		http.Redirect(w, r, "/sites/details?name="+url.QueryEscape(site.Name)+"&tab=domains", http.StatusSeeOther)
+		return
+	}
+	repositoryStatus, runtimeStatus, gitAuthStatus, releases, inspectErr = inspectState(subdomain)
+	if successMessage != "" {
+		data.SuccessMessage = successMessage
+	}
+	if data.RequestError == "" && inspectErr != nil {
+		data.RequestError = inspectErr.Error()
+	}
+	a.renderSubdomainDetails(w, r, site, subdomain, repositoryStatus, runtimeStatus, gitAuthStatus, releases, data)
+}
+
 func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 	users := a.listLinuxUsers()
 	releases := []domain.DeploymentRelease{}
@@ -3606,6 +4111,141 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		data.GitCredentialHost = gitAuthStatus.RepositoryHost
 	}
 	a.render(r.Context(), w, r.URL.Path, "site_details.html", data)
+}
+
+func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, site domain.ManagedSite, subdomain domain.SiteSubdomain, repositoryStatus system.RepositoryStatus, runtimeStatus system.RuntimeStatus, gitAuthStatus system.GitAuthStatus, releases []domain.DeploymentRelease, data TemplateData) {
+	data.Title = subdomain.FullDomain + " details"
+	data.DatabaseStatus = a.databaseStatus(r.Context())
+	data.Metrics = a.metrics.Snapshot()
+	data.SelectedSite = site
+	data.SelectedSubdomain = subdomain
+	data.SubdomainRootBaseDir = strings.TrimSpace(a.cfg.SubdomainRootBaseDir)
+	if data.SiteDetailTab == "" {
+		data.SiteDetailTab = "overview"
+	}
+	data.RepositoryStatus = repositoryStatus
+	data.RuntimeStatus = runtimeStatus
+	data.GitAuthStatus = gitAuthStatus
+	data.DeploymentReleases = releases
+	data.PackageScripts = readPackageJSONScripts(subdomain.RootDirectory)
+	if commands, err := a.store.ListSubdomainRuntimeCommands(r.Context(), subdomain.ID); err == nil {
+		data.SubdomainRuntimeCommands = commands
+	}
+	data.AutoDeployWebhookURL = buildSubdomainAutoDeployWebhookURL(requestExternalBaseURL(r, a.cfg.BaseURL), site.Name, subdomain.ID, firstNonEmpty(data.SubdomainAutoDeploySecret, subdomain.AutoDeploySecret))
+	data.AutoDeployWebhookAuthHint = autoDeployWebhookAuthHint()
+	if len(releases) > 0 {
+		data.LatestDeploymentRelease = releases[0]
+	}
+	if entry, err := a.store.GetLatestAuditLogByActionAndTarget(r.Context(), "deploy.webhook", subdomain.FullDomain); err == nil {
+		entry.Metadata = summarizeAuditMetadata(entry.Metadata)
+		data.LatestWebhookAudit = entry
+	}
+	if data.SubdomainDirectoryName == "" {
+		data.SubdomainDirectoryName = subdomain.Subdomain
+	}
+	if data.SubdomainRepositoryURL == "" {
+		data.SubdomainRepositoryURL = firstNonEmpty(subdomain.RepositoryURL, repositoryStatus.RemoteURL)
+	}
+	if data.SubdomainBranch == "" {
+		data.SubdomainBranch = firstNonEmpty(subdomain.BranchName, repositoryStatus.Branch, "main")
+	}
+	if data.SubdomainPostDeployCommand == "" {
+		data.SubdomainPostDeployCommand = subdomain.PostDeployCommand
+	}
+	data.SubdomainAutoDeployEnabled = data.SubdomainAutoDeployEnabled || subdomain.AutoDeployEnabled
+	data.SubdomainAutoDeployBranch = firstNonEmpty(data.SubdomainAutoDeployBranch, subdomain.AutoDeployBranch, data.SubdomainBranch, "main")
+	data.SubdomainAutoDeploySecret = firstNonEmpty(data.SubdomainAutoDeploySecret, subdomain.AutoDeploySecret)
+	data.SubdomainAutoDeployCommand = firstNonEmpty(data.SubdomainAutoDeployCommand, subdomain.AutoDeployCommand)
+	data.SubdomainAutoDeployNotifyEmail = firstNonEmpty(data.SubdomainAutoDeployNotifyEmail, subdomain.AutoDeployNotifyEmail)
+	if data.SubdomainAutoDeployPreset == "" {
+		data.SubdomainAutoDeployPreset, data.SubdomainAutoDeployPM2Process = detectAutoDeployPreset(data.SubdomainAutoDeployCommand)
+	}
+	data.SubdomainGitCredentialProtocol = firstNonEmpty(data.SubdomainGitCredentialProtocol, subdomain.GitCredentialProtocol, gitAuthStatus.RepositoryProtocol, "https")
+	data.SubdomainGitCredentialUsername = firstNonEmpty(data.SubdomainGitCredentialUsername, subdomain.GitCredentialUsername)
+	data.NpmScriptNodeVersion = firstNonEmpty(data.NpmScriptNodeVersion, runtimeStatus.DefaultNodeVersion)
+	data.RuntimeNodeVersion = firstNonEmpty(data.RuntimeNodeVersion, runtimeStatus.DefaultNodeVersion)
+	data.RuntimeCommandNodeVersion = firstNonEmpty(data.RuntimeCommandNodeVersion, runtimeStatus.DefaultNodeVersion)
+	data.PM2NodeVersion = firstNonEmpty(data.PM2NodeVersion, runtimeStatus.DefaultNodeVersion)
+	data.PM2ProcessName = firstNonEmpty(data.PM2ProcessName, subdomain.FullDomain)
+	data.PM2LogLines = firstNonEmpty(data.PM2LogLines, "100")
+	data.SubdomainAutoDeployPM2Process = firstNonEmpty(data.SubdomainAutoDeployPM2Process, data.PM2ProcessName)
+	data.PM2ScriptPath = firstNonEmpty(data.PM2ScriptPath, "ecosystem.config.cjs")
+	data.GitCredentialProtocol = firstNonEmpty(data.GitCredentialProtocol, data.SubdomainGitCredentialProtocol, gitAuthStatus.RepositoryProtocol, "https")
+	data.GitCredentialHost = firstNonEmpty(data.GitCredentialHost, gitAuthStatus.RepositoryHost)
+	data.GitCredentialUsername = firstNonEmpty(data.GitCredentialUsername, data.SubdomainGitCredentialUsername)
+	data.NginxConfigPath = strings.TrimSpace(subdomain.NginxConfigPath)
+	if data.NginxConfigPath != "" {
+		editor := SiteNginxConfigEditor{TargetType: "subdomain", TargetID: subdomain.ID, Title: subdomain.FullDomain, Domain: subdomain.FullDomain, ConfigPath: data.NginxConfigPath, Notice: data.NginxConfigNotice}
+		if isAllowedNginxConfigPath(a.cfg.NginxAvailableDir, editor.ConfigPath) {
+			var content string
+			if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": editor.ConfigPath, "max_bytes": 1048576}, &content); err == nil {
+				editor.Content = content
+				if strings.Contains(content, "[truncated after ") {
+					editor.Notice = firstNonEmpty(editor.Notice, "Only the first 1 MB of the Nginx config is shown.")
+				}
+			}
+			if data.NginxConfigContent != "" {
+				editor.Content = data.NginxConfigContent
+			}
+			if revisions, err := a.store.ListNginxConfigRevisions(r.Context(), site.ID, subdomain.ID, 8); err == nil {
+				editor.Revisions = revisions
+			}
+		} else {
+			editor.Notice = firstNonEmpty(editor.Notice, "Stored Nginx config path is outside the managed Nginx directory and cannot be edited from the panel.")
+		}
+		data.NginxEditors = append(data.NginxEditors, editor)
+	}
+	browserPath := firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("path")), data.SiteBrowserCurrentPath)
+	if absPath, relPath, err := resolveSiteBrowserPath(subdomain.RootDirectory, browserPath); err == nil {
+		data.SiteBrowserCurrentPath = relPath
+		data.SiteBrowserParentPath = parentRelativePath(relPath)
+		var helperEntries []helperSiteFileEntry
+		if _, err := a.helper.Call(r.Context(), "files.list_dir", map[string]string{"path": absPath}, &helperEntries); err == nil {
+			entries := make([]SiteFileEntry, 0, len(helperEntries))
+			for _, entry := range helperEntries {
+				entries = append(entries, SiteFileEntry{Name: entry.Name, RelativePath: filepath.Join(relPath, entry.Name), IsDir: entry.IsDir, Size: entry.Size})
+			}
+			sort.Slice(entries, func(i int, j int) bool {
+				if entries[i].IsDir != entries[j].IsDir {
+					return entries[i].IsDir
+				}
+				return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
+			})
+			data.SiteBrowserEntries = entries
+		}
+	}
+	selectedFile := strings.TrimSpace(r.URL.Query().Get("file"))
+	if absFile, relFile, err := resolveSiteBrowserPath(subdomain.RootDirectory, selectedFile); err == nil && relFile != "" {
+		data.SiteBrowserSelectedFile = relFile
+		var content string
+		if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": absFile, "max_bytes": 262144}, &content); err == nil {
+			data.SiteBrowserFileContent = content
+			if strings.Contains(content, "[truncated after ") {
+				data.SiteBrowserFileNotice = "Only the first 256 KB is shown."
+			}
+		}
+	}
+	envPath := filepath.Join(subdomain.RootDirectory, ".env")
+	var envContent string
+	if _, err := a.helper.Call(r.Context(), "files.read_env", map[string]string{"path": envPath}, &envContent); err == nil {
+		data.EnvFileContent = envContent
+	}
+	ecosystemPath := filepath.Join(subdomain.RootDirectory, "ecosystem.config.cjs")
+	var ecosystemContent string
+	if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]string{"path": ecosystemPath}, &ecosystemContent); err == nil && ecosystemContent != "" {
+		if port := extractEcosystemPort(ecosystemContent); port != "" {
+			data.EcosystemPort = port
+		}
+	}
+	if data.PreviewSubdomainID == subdomain.ID {
+		data.SelectedSubdomain.MovePreviewFrom = data.SubdomainMovePreviewFrom
+		data.SelectedSubdomain.MovePreviewTo = data.SubdomainMovePreviewTo
+		data.SelectedSubdomain.MovePreviewTargetExists = data.SubdomainMovePreviewTargetExists
+		data.SelectedSubdomain.MovePreviewTargetEmpty = data.SubdomainMovePreviewTargetEmpty
+		data.SelectedSubdomain.MovePreviewTargetGitRepo = data.SubdomainMovePreviewTargetGitRepo
+		data.SelectedSubdomain.MovePreviewTargetState = data.SubdomainMovePreviewTargetState
+	}
+	a.render(r.Context(), w, r.URL.Path, "subdomain_details.html", data)
 }
 
 func extractEcosystemPort(content string) string {
