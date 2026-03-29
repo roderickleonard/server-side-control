@@ -228,9 +228,6 @@ func (m mysqlDatabaseManager) InspectDatabase(spec DatabaseInspectSpec) (Databas
 		return DatabaseDetails{}, ErrInvalidDatabaseName
 	}
 	selectedTable := strings.TrimSpace(spec.TableName)
-	if selectedTable != "" && !mysqlTableNamePattern.MatchString(selectedTable) {
-		return DatabaseDetails{}, ErrInvalidTableName
-	}
 	if spec.Limit <= 0 || spec.Limit > 100 {
 		spec.Limit = 25
 	}
@@ -270,7 +267,7 @@ func (m mysqlDatabaseManager) InspectDatabase(spec DatabaseInspectSpec) (Databas
 	if len(details.Tables) == 0 {
 		return details, nil
 	}
-	if selectedTable == "" {
+	if selectedTable == "" || !databaseTableExists(details.Tables, selectedTable) {
 		selectedTable = details.Tables[0].Name
 	}
 	details.SelectedTable = selectedTable
@@ -326,9 +323,6 @@ func (m mysqlDatabaseManager) currentAccount(ctx context.Context) (string, error
 }
 
 func (m mysqlDatabaseManager) previewTable(ctx context.Context, databaseName string, tableName string, limit int) (DatabaseTablePreview, error) {
-	if !mysqlTableNamePattern.MatchString(tableName) {
-		return DatabaseTablePreview{}, ErrInvalidTableName
-	}
 	columnsQuery := fmt.Sprintf("SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s ORDER BY ordinal_position", mysqlQuoteString(databaseName), mysqlQuoteString(tableName))
 	columnsOutput, err := m.runMySQL(ctx, columnsQuery)
 	if err != nil {
@@ -359,6 +353,15 @@ func (m mysqlDatabaseManager) previewTable(ctx context.Context, databaseName str
 		preview.Rows = append(preview.Rows, strings.Split(line, "\t"))
 	}
 	return preview, scanner.Err()
+}
+
+func databaseTableExists(tables []DatabaseTableSummary, name string) bool {
+	for _, table := range tables {
+		if table.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (m mysqlDatabaseManager) runMySQL(ctx context.Context, statement string) (string, error) {
