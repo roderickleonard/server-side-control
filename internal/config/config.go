@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -26,6 +27,7 @@ type Config struct {
 	SMTPFrom          string
 	SMTPTo            string
 	MySQLAdminDefaultsFile string
+	DatabaseRestoreMaxBytes int64
 	NginxBinary       string
 	NginxAvailableDir string
 	NginxEnabledDir   string
@@ -57,6 +59,7 @@ func Load() (Config, error) {
 		SMTPFrom:          getenv("PANEL_SMTP_FROM", ""),
 		SMTPTo:            getenv("PANEL_SMTP_TO", ""),
 		MySQLAdminDefaultsFile: getenv("PANEL_MYSQL_ADMIN_DEFAULTS_FILE", "/etc/server-side-control/mysql-admin.cnf"),
+		DatabaseRestoreMaxBytes: getenvInt64Bytes("PANEL_DATABASE_RESTORE_MAX_MB", 64) * (1 << 20),
 		NginxBinary:       getenv("PANEL_NGINX_BINARY", "nginx"),
 		NginxAvailableDir: getenv("PANEL_NGINX_AVAILABLE_DIR", "/etc/nginx/sites-available"),
 		NginxEnabledDir:   getenv("PANEL_NGINX_ENABLED_DIR", "/etc/nginx/sites-enabled"),
@@ -99,6 +102,7 @@ func (c Config) ToEnv() string {
 		fmt.Sprintf("PANEL_SMTP_FROM=%s", c.SMTPFrom),
 		fmt.Sprintf("PANEL_SMTP_TO=%s", c.SMTPTo),
 		fmt.Sprintf("PANEL_MYSQL_ADMIN_DEFAULTS_FILE=%s", c.MySQLAdminDefaultsFile),
+		fmt.Sprintf("PANEL_DATABASE_RESTORE_MAX_MB=%d", c.DatabaseRestoreMaxBytes/(1<<20)),
 		fmt.Sprintf("PANEL_NGINX_BINARY=%s", c.NginxBinary),
 		fmt.Sprintf("PANEL_NGINX_AVAILABLE_DIR=%s", c.NginxAvailableDir),
 		fmt.Sprintf("PANEL_NGINX_ENABLED_DIR=%s", c.NginxEnabledDir),
@@ -112,6 +116,18 @@ func getenv(key string, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func getenvInt64Bytes(key string, fallback int64) int64 {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
 }
 
 func loadEnvFile(path string) error {

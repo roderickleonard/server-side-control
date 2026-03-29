@@ -1653,7 +1653,7 @@ func (a *App) handleDatabaseDetails(w http.ResponseWriter, r *http.Request) {
 	databaseName := strings.TrimSpace(r.URL.Query().Get("name"))
 	selectedTable := strings.TrimSpace(r.URL.Query().Get("table"))
 	if r.Method == http.MethodPost {
-		if err := r.ParseMultipartForm(8 << 20); err != nil {
+		if err := r.ParseMultipartForm(a.cfg.DatabaseRestoreMaxBytes); err != nil {
 			http.Error(w, "invalid form", http.StatusBadRequest)
 			return
 		}
@@ -1682,7 +1682,7 @@ func (a *App) handleDatabaseDetails(w http.ResponseWriter, r *http.Request) {
 		action := r.FormValue("database_details_action")
 		switch action {
 		case "restore":
-			tempPath, restoreSQL, err := writeDatabaseRestoreTempFile(r)
+			tempPath, restoreSQL, err := writeDatabaseRestoreTempFile(r, a.cfg.DatabaseRestoreMaxBytes)
 			data.DatabaseRestoreSQL = restoreSQL
 			if err != nil {
 				data.RequestError = err.Error()
@@ -1719,8 +1719,11 @@ func (a *App) handleDatabaseDetails(w http.ResponseWriter, r *http.Request) {
 	a.render(r.Context(), w, r.URL.Path, "database_details.html", data)
 }
 
-func writeDatabaseRestoreTempFile(r *http.Request) (string, string, error) {
-	const maxRestoreBytes = 8 << 20
+func writeDatabaseRestoreTempFile(r *http.Request, maxRestoreBytes int64) (string, string, error) {
+	if maxRestoreBytes <= 0 {
+		maxRestoreBytes = 64 << 20
+	}
+	maxRestoreMB := maxRestoreBytes / (1 << 20)
 	sqlContent := r.FormValue("restore_sql")
 	if strings.TrimSpace(sqlContent) == "" {
 		file, _, err := r.FormFile("restore_file")
@@ -1732,16 +1735,16 @@ func writeDatabaseRestoreTempFile(r *http.Request) (string, string, error) {
 		if err != nil {
 			return "", "", err
 		}
-		if len(content) > maxRestoreBytes {
-			return "", "", errors.New("Restore file is too large. Maximum supported size is 8 MB.")
+		if int64(len(content)) > maxRestoreBytes {
+			return "", "", fmt.Errorf("Restore file is too large. Maximum supported size is %d MB.", maxRestoreMB)
 		}
 		sqlContent = string(content)
 	}
 	if strings.TrimSpace(sqlContent) == "" {
 		return "", "", errors.New("Restore content cannot be empty.")
 	}
-	if len(sqlContent) > maxRestoreBytes {
-		return "", sqlContent, errors.New("Restore SQL is too large. Maximum supported size is 8 MB.")
+	if int64(len(sqlContent)) > maxRestoreBytes {
+		return "", sqlContent, fmt.Errorf("Restore SQL is too large. Maximum supported size is %d MB.", maxRestoreMB)
 	}
 	tempFile, err := os.CreateTemp("", "ssc-db-restore-*.sql")
 	if err != nil {
