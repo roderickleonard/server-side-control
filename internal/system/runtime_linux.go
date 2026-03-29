@@ -317,6 +317,32 @@ func StreamCustomRuntimeCommand(spec CustomRuntimeCommandSpec, stdout io.Writer,
 	return runBashAsUserStream(ctx, spec.User, buildShellWithOptionalNVM(homeDirectory, command), stdout, stderr)
 }
 
+func StreamShellCommand(spec ShellCommandSpec, stdout io.Writer, stderr io.Writer) error {
+	spec.User = strings.TrimSpace(spec.User)
+	spec.WorkingDirectory = strings.TrimSpace(spec.WorkingDirectory)
+	spec.CommandBody = strings.TrimSpace(spec.CommandBody)
+	if !usernamePattern.MatchString(spec.User) {
+		return ErrInvalidRunAsUser
+	}
+	if !filepath.IsAbs(spec.WorkingDirectory) {
+		return ErrInvalidTargetDirectory
+	}
+	if spec.CommandBody == "" {
+		return fmt.Errorf("shell command cannot be empty")
+	}
+	if len(spec.CommandBody) > 16000 {
+		return fmt.Errorf("shell command is too long")
+	}
+	homeDirectory, err := lookupUserHome(spec.User)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	command := "cd " + shellQuote(spec.WorkingDirectory) + " && " + spec.CommandBody
+	return runBashAsUserStream(ctx, spec.User, buildShellWithOptionalNVM(homeDirectory, command), stdout, stderr)
+}
+
 func lookupUserHome(username string) (string, error) {
 	username = strings.TrimSpace(username)
 	if !usernamePattern.MatchString(username) {

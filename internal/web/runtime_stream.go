@@ -279,6 +279,21 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		auditAction = "git_auth.store_credential"
 		label = "store git credentials"
 		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "protocol": protocol, "host": host, "username": username}
+	case "run_ssh_command":
+		workingDirectory := strings.TrimSpace(r.FormValue("ssh_working_directory"))
+		commandBody := r.FormValue("ssh_command_body")
+		if workingDirectory == "" {
+			workingDirectory = site.RootDirectory
+		}
+		if strings.TrimSpace(commandBody) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "shell command is required"})
+			return
+		}
+		helperAction = "runtime.run_shell_command"
+		payload = system.ShellCommandSpec{User: site.OwnerLinuxUser, WorkingDirectory: workingDirectory, CommandBody: commandBody}
+		auditAction = "site.ssh_console"
+		label = "shell as " + site.OwnerLinuxUser
+		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "working_directory": workingDirectory}
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported site action"})
 		return

@@ -36,6 +36,7 @@ var allowedHelperActions = map[string]struct{}{
 	"runtime.run_npm_script": {},
 	"runtime.run_npm_install": {},
 	"runtime.run_custom_command": {},
+	"runtime.run_shell_command": {},
 	"panel.write_env":   {},
 	"panel.apply_proxy": {},
 	"panel.restart_service": {},

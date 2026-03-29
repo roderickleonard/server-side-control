@@ -748,6 +748,8 @@ func siteDetailTabForAction(action string) string {
 		return "deploy"
 	case "run_custom_git_command":
 		return "deploy"
+	case "run_ssh_command":
+		return "ssh"
 	case "install_nvm", "install_node", "install_pm2", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "run_npm_script", "npm_install", "save_runtime_command", "delete_runtime_command":
 		return "runtime"
 	case "enable_tls", "add_subdomain", "delete_subdomain", "enable_subdomain_tls":
@@ -2197,6 +2199,8 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		GitBranch:           firstNonEmpty(strings.TrimSpace(r.FormValue("branch")), branch),
 		GitPostDeployCommand: r.FormValue("post_deploy_command"),
 		GitCustomCommand:   r.FormValue("git_custom_command"),
+		SSHWorkingDirectory: firstNonEmpty(strings.TrimSpace(r.FormValue("ssh_working_directory")), site.RootDirectory),
+		SSHCommandBody: r.FormValue("ssh_command_body"),
 		AutoDeployEnabled:  r.FormValue("auto_deploy_enabled") == "1",
 		AutoDeployBranch:   strings.TrimSpace(r.FormValue("auto_deploy_branch")),
 		AutoDeploySecret:   strings.TrimSpace(r.FormValue("auto_deploy_secret")),

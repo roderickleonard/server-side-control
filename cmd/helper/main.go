@@ -26,6 +26,10 @@ func main() {
 		writeFailure(errors.New("helper must run as root"), "")
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "pty-terminal" {
+		handlePTYMode(os.Args[2:])
+		return
+	}
 	if len(os.Args) > 1 && (os.Args[1] == "stream-runtime" || os.Args[1] == "stream-action") {
 		handleStreamMode()
 		return
@@ -107,6 +111,16 @@ func handleStreamMode() {
 			os.Exit(1)
 		}
 		if err := system.StreamCustomRuntimeCommand(spec, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "runtime.run_shell_command":
+		var spec system.ShellCommandSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode shell command spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamShellCommand(spec, os.Stdout, os.Stderr); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
 			os.Exit(1)
 		}

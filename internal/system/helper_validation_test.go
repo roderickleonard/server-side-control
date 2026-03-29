@@ -12,6 +12,7 @@ func TestValidateHelperAction(t *testing.T) {
 		{name: "allowed deploy inspect", action: "deploy.inspect", wantErr: false},
 		{name: "allowed custom git command", action: "deploy.run_custom_git_command", wantErr: false},
 		{name: "allowed runtime inspect", action: "runtime.inspect", wantErr: false},
+		{name: "allowed shell command", action: "runtime.run_shell_command", wantErr: false},
 		{name: "allowed git auth", action: "git_auth.ensure_deploy_key", wantErr: false},
 		{name: "allowed mysql provisioning", action: "mysql.provision_database", wantErr: false},
 		{name: "allowed mysql inspect", action: "mysql.inspect_database", wantErr: false},

@@ -52,3 +52,7 @@ func StreamNPMInstall(spec NPMInstallSpec, stdout io.Writer, stderr io.Writer) e
 func StreamCustomRuntimeCommand(spec CustomRuntimeCommandSpec, stdout io.Writer, stderr io.Writer) error {
 	return fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
 }
+
+func StreamShellCommand(spec ShellCommandSpec, stdout io.Writer, stderr io.Writer) error {
+	return fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
+}

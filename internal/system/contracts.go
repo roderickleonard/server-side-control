@@ -194,6 +194,12 @@ type CustomRuntimeCommandSpec struct {
 	NodeVersion      string `json:"node_version"`
 }
 
+type ShellCommandSpec struct {
+	User             string `json:"user"`
+	WorkingDirectory string `json:"working_directory"`
+	CommandBody      string `json:"command_body"`
+}
+
 type RuntimeManager interface {
 	Inspect(spec RuntimeInspectSpec) (RuntimeStatus, error)
 	InstallNVM(user string) (string, error)
