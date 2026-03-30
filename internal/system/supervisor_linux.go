@@ -296,7 +296,7 @@ func parseSupervisorPrograms(content string, configPath string, statusMap map[st
 		}
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			if current != nil {
-				current.Status = firstNonEmpty(statusMap[current.Name], current.Status)
+				current.Status = firstNonEmptyString(statusMap[current.Name], current.Status)
 				programs = append(programs, *current)
 			}
 			section := strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
@@ -342,7 +342,7 @@ func parseSupervisorPrograms(content string, configPath string, statusMap map[st
 		}
 	}
 	if current != nil {
-		current.Status = firstNonEmpty(statusMap[current.Name], current.Status)
+		current.Status = firstNonEmptyString(statusMap[current.Name], current.Status)
 		programs = append(programs, *current)
 	}
 	return programs
@@ -448,6 +448,15 @@ func filterEmptyStrings(items []string) []string {
 		result = append(result, strings.TrimSpace(item))
 	}
 	return result
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func tailFile(path string, lines int) (string, error) {
