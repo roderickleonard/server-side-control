@@ -263,11 +263,48 @@ func (a *App) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		alerts = append(alerts, "MySQL connection is not configured yet.")
 	}
 
+	// Pre-compute usage percentages for template (no arithmetic in template)
+	memPct := 0
+	if snapshot.MemoryTotalMB > 0 {
+		memPct = int(snapshot.MemoryUsedMB * 100 / snapshot.MemoryTotalMB)
+	}
+	diskPct := 0
+	if snapshot.DiskTotalGB > 0 {
+		diskPct = int(snapshot.DiskUsedGB * 100 / snapshot.DiskTotalGB)
+	}
+
+	// Recent deploy releases
+	var recentDeploys []domain.DeploymentRelease
+	if a.store != nil {
+		if releases, err := a.store.ListDeploymentReleases(r.Context(), 10); err == nil {
+			recentDeploys = releases
+		}
+	}
+
+	// PM2 processes from all managed site linux users
+	var pm2Entries []DashboardPM2Entry
+	sites := a.listManagedSites(r)
+	seen := make(map[string]bool)
+	for _, site := range sites {
+		user := strings.TrimSpace(site.OwnerLinuxUser)
+		if user == "" || seen[user] {
+			continue
+		}
+		seen[user] = true
+		if listText, listErr := a.pm2.List(user); listErr == nil && strings.TrimSpace(listText) != "" {
+			pm2Entries = append(pm2Entries, DashboardPM2Entry{User: user, ListText: strings.TrimSpace(listText)})
+		}
+	}
+
 	a.render(r.Context(), w, r.URL.Path, "dashboard.html", TemplateData{
-		Title:          "Dashboard",
-		DatabaseStatus: a.databaseStatus(r.Context()),
-		Metrics:        snapshot,
-		Alerts:         alerts,
+		Title:               "Dashboard",
+		DatabaseStatus:      a.databaseStatus(r.Context()),
+		Metrics:             snapshot,
+		Alerts:              alerts,
+		DeploymentReleases:  recentDeploys,
+		DashboardPM2Entries: pm2Entries,
+		DashboardMemPct:     memPct,
+		DashboardDiskPct:    diskPct,
 	})
 }
 

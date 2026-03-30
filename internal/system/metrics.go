@@ -2,6 +2,14 @@ package system
 
 import "time"
 
+type TopProcess struct {
+	PID    int
+	Name   string
+	User   string
+	MemMB  uint64
+	CPUPct float64
+}
+
 type Snapshot struct {
 	Supported      bool
 	Hostname       string
@@ -17,6 +25,7 @@ type Snapshot struct {
 	DiskUsedGB     uint64
 	CollectedAt    time.Time
 	Alerts         []string
+	TopProcesses   []TopProcess
 }
 
 type MetricsCollector interface {

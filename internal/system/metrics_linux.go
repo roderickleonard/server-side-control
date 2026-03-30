@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -40,6 +41,7 @@ func (linuxCollector) Snapshot() Snapshot {
 		DiskTotalGB:   diskTotal,
 		DiskUsedGB:    diskUsed,
 		CollectedAt:   now,
+		TopProcesses:  readTopProcesses(),
 	}
 
 	if diskTotal > 0 && diskUsed*100/diskTotal >= 85 {
@@ -165,4 +167,125 @@ func readOSName() string {
 	}
 
 	return "Linux"
+}
+
+func readTopProcesses() []TopProcess {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+
+	var uptimeSeconds float64
+	if data, err2 := os.ReadFile("/proc/uptime"); err2 == nil {
+		if fields := strings.Fields(string(data)); len(fields) > 0 {
+			uptimeSeconds, _ = strconv.ParseFloat(fields[0], 64)
+		}
+	}
+
+	uidMap := make(map[int]string)
+	if data, err2 := os.ReadFile("/etc/passwd"); err2 == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			parts := strings.SplitN(line, ":", 4)
+			if len(parts) >= 3 {
+				if uid, err3 := strconv.Atoi(parts[2]); err3 == nil {
+					uidMap[uid] = parts[0]
+				}
+			}
+		}
+	}
+
+	var processes []TopProcess
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		pid, err2 := strconv.Atoi(entry.Name())
+		if err2 != nil || pid <= 0 {
+			continue
+		}
+
+		name, memKB, uid := readProcStatus(pid)
+		if name == "" || memKB == 0 {
+			continue
+		}
+
+		cpuPct := readProcCPUPercent(pid, uptimeSeconds)
+		username := uidMap[uid]
+		if username == "" {
+			username = strconv.Itoa(uid)
+		}
+
+		processes = append(processes, TopProcess{
+			PID:    pid,
+			Name:   name,
+			User:   username,
+			MemMB:  memKB / 1024,
+			CPUPct: cpuPct,
+		})
+	}
+
+	sort.Slice(processes, func(i, j int) bool {
+		if processes[i].MemMB != processes[j].MemMB {
+			return processes[i].MemMB > processes[j].MemMB
+		}
+		return processes[i].CPUPct > processes[j].CPUPct
+	})
+
+	if len(processes) > 15 {
+		processes = processes[:15]
+	}
+	return processes
+}
+
+func readProcStatus(pid int) (name string, memKB uint64, uid int) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "Name:\t") {
+			name = strings.TrimSpace(line[6:])
+		} else if strings.HasPrefix(line, "VmRSS:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				memKB, _ = strconv.ParseUint(fields[1], 10, 64)
+			}
+		} else if strings.HasPrefix(line, "Uid:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				uid, _ = strconv.Atoi(fields[1])
+			}
+		}
+	}
+	return
+}
+
+func readProcCPUPercent(pid int, uptimeSeconds float64) float64 {
+	if uptimeSeconds <= 0 {
+		return 0
+	}
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return 0
+	}
+	rawStr := string(data)
+	closeParen := strings.LastIndex(rawStr, ")")
+	if closeParen < 0 {
+		return 0
+	}
+	rest := strings.TrimSpace(rawStr[closeParen+1:])
+	fields := strings.Fields(rest)
+	// After comm: [0]=state [1]=ppid ... [11]=utime [12]=stime ... [19]=starttime
+	if len(fields) < 20 {
+		return 0
+	}
+	utime, _ := strconv.ParseFloat(fields[11], 64)
+	stime, _ := strconv.ParseFloat(fields[12], 64)
+	starttime, _ := strconv.ParseFloat(fields[19], 64)
+	const clkTck = 100.0
+	elapsed := uptimeSeconds - starttime/clkTck
+	if elapsed <= 0 {
+		return 0
+	}
+	return (utime+stime) / clkTck / elapsed * 100
 }

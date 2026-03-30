@@ -73,6 +73,11 @@ type PHPExtensionPresetView struct {
 	Extensions  []string
 }
 
+type DashboardPM2Entry struct {
+	User     string
+	ListText string
+}
+
 type TemplateData struct {
 	Title          string
 	CurrentPath    string
@@ -268,6 +273,9 @@ type TemplateData struct {
 	Alerts         []string
 	Nav            []NavItem
 	Now            time.Time
+	DashboardPM2Entries []DashboardPM2Entry
+	DashboardMemPct     int
+	DashboardDiskPct    int
 }
 
 func New(cfg config.Config, logger *slog.Logger, dataStore *store.Store, metrics system.MetricsCollector, authenticator auth.Authenticator, sessions *auth.SessionManager) (*App, error) {

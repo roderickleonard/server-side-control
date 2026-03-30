@@ -1,67 +1,410 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Dashboard</span>
-        <h2>{{if .Metrics.Hostname}}{{.Metrics.Hostname}}{{else}}Server Dashboard{{end}}</h2>
-        <p class="lead">{{.Metrics.OSName}} &mdash; {{.Metrics.CollectedAt.Format "15:04:05"}}</p>
-    </div>
-    <div class="hero-card">
-        <span>Database</span>
-        <strong>{{.DatabaseStatus}}</strong>
-    </div>
-</section>
+<style>
+/* ── Dashboard extras ──────────────────────────────────────────────────── */
+.dash-header {
+    background: linear-gradient(135deg, #1148a2 0%, #1d6fe8 60%, #2e86ff 100%);
+    border-radius: var(--r-xl);
+    padding: 28px 32px;
+    color: #fff;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+    box-shadow: 0 6px 24px rgba(29,111,232,0.22);
+}
+.dash-header-left h2 {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 4px;
+    line-height: 1.2;
+    color: #fff;
+}
+.dash-header-left p {
+    margin: 0;
+    opacity: 0.8;
+    font-size: 13px;
+}
+.dash-header-badges {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.dash-hbadge {
+    background: rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 80px;
+    gap: 2px;
+}
+.dash-hbadge strong {
+    font-size: 16px;
+    font-weight: 700;
+    display: block;
+}
+.dash-hbadge span {
+    opacity: 0.7;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.stat-bar-wrap {
+    background: var(--surface-alt);
+    border-radius: 4px;
+    height: 5px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+.stat-bar {
+    height: 5px;
+    border-radius: 4px;
+    background: var(--accent);
+    transition: width 0.4s;
+}
+.stat-bar.warn { background: var(--warning); }
+.stat-bar.danger { background: var(--danger); }
+.dash-cards {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+}
+@media (max-width: 1100px) { .dash-cards { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 700px)  { .dash-cards { grid-template-columns: repeat(2, 1fr); } }
+.dash-card {
+    background: var(--surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--r-lg);
+    padding: 16px 18px;
+    position: relative;
+}
+.dash-card-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    margin-bottom: 12px;
+}
+.dash-card-icon.blue  { background: rgba(29,111,232,0.1); color: var(--accent); }
+.dash-card-icon.green { background: rgba(22,163,74,0.1);  color: var(--success); }
+.dash-card-icon.amber { background: rgba(217,119,6,0.1);  color: var(--warning); }
+.dash-card-icon.red   { background: rgba(220,38,38,0.1);  color: var(--danger); }
+.dash-card-icon.purple{ background: rgba(124,58,237,0.1); color: #7c3aed; }
+.dash-card .label { margin-bottom: 4px; }
+.dash-card strong { font-size: 18px; font-weight: 700; color: var(--ink); display: block; line-height: 1.2; }
+.dash-card small  { font-size: 11.5px; color: var(--muted); }
+.dash-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+@media (max-width: 900px) { .dash-two-col { grid-template-columns: 1fr; } }
+.dash-three-col {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+@media (max-width: 900px) { .dash-three-col { grid-template-columns: 1fr; } }
+.status-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+}
+.status-dot.green  { background: var(--success); box-shadow: 0 0 0 2px rgba(22,163,74,.15); }
+.status-dot.red    { background: var(--danger); }
+.status-dot.amber  { background: var(--warning); }
+.status-dot.grey   { background: #9ca3af; }
+.rel-tag {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 20px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.rel-tag.success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
+.rel-tag.failure { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
+.rel-tag.pending { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 13px;
+}
+.info-row:last-child { border-bottom: none; }
+.info-row .key { color: var(--muted); font-weight: 500; }
+.info-row .val { font-weight: 600; color: var(--ink); text-align: right; }
+.pm2-pre {
+    background: #0f172a;
+    color: #c8d8f0;
+    border-radius: var(--r-lg);
+    padding: 14px 16px;
+    font-size: 11.5px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    white-space: pre;
+    overflow-x: auto;
+    line-height: 1.55;
+    margin: 0;
+}
+</style>
 
+{{/* ── Alerts ── */}}
 {{if .Alerts}}
-<section class="alerts">
+<div style="margin-bottom:16px;">
     {{range .Alerts}}
-    <div class="alert">{{.}}</div>
+    <div class="alert" style="margin-bottom:6px;">{{.}}</div>
     {{end}}
-</section>
+</div>
 {{end}}
 
-<section class="cards">
-    <article class="card">
-        <span class="label"><i class="bi bi-clock" style="margin-right:4px;"></i>Uptime</span>
-        <strong>{{.Metrics.Uptime}}</strong>
-        <small>System uptime</small>
-    </article>
-    <article class="card">
-        <span class="label"><i class="bi bi-activity" style="margin-right:4px;"></i>Load</span>
-        <strong>{{printf "%.2f" .Metrics.Load1}}</strong>
-        <small>5 min: {{printf "%.2f" .Metrics.Load5}} &nbsp;·&nbsp; 15 min: {{printf "%.2f" .Metrics.Load15}}</small>
-    </article>
-    <article class="card">
-        <span class="label"><i class="bi bi-memory" style="margin-right:4px;"></i>Memory</span>
-        <strong>{{.Metrics.MemoryUsedMB}} <span style="font-size:13px;font-weight:500;color:var(--muted);">MB</span></strong>
-        <small>of {{.Metrics.MemoryTotalMB}} MB total</small>
-    </article>
-    <article class="card">
-        <span class="label"><i class="bi bi-hdd" style="margin-right:4px;"></i>Disk</span>
-        <strong>{{.Metrics.DiskUsedGB}} <span style="font-size:13px;font-weight:500;color:var(--muted);">GB</span></strong>
-        <small>of {{.Metrics.DiskTotalGB}} GB root</small>
-    </article>
-</section>
+{{/* ── Header banner ── */}}
+<div class="dash-header">
+    <div class="dash-header-left">
+        <h2><i class="bi bi-server" style="margin-right:8px;opacity:.85;"></i>{{if .Metrics.Hostname}}{{.Metrics.Hostname}}{{else}}Server Dashboard{{end}}</h2>
+        <p>{{.Metrics.OSName}} &nbsp;·&nbsp; {{.Metrics.CPUCores}} CPU cores &nbsp;·&nbsp; {{.Metrics.MemoryTotalMB}} MB RAM &nbsp;·&nbsp; {{.Metrics.DiskTotalGB}} GB disk &nbsp;·&nbsp; <span style="opacity:.7;">{{.Metrics.CollectedAt.Format "02 Jan 2006 · 15:04:05"}}</span></p>
+    </div>
+    <div class="dash-header-badges">
+        <div class="dash-hbadge">
+            <strong>{{.Metrics.Uptime}}</strong>
+            <span>Uptime</span>
+        </div>
+        <div class="dash-hbadge">
+            <strong>{{printf "%.2f" .Metrics.Load1}}</strong>
+            <span>Load 1m</span>
+        </div>
+        <div class="dash-hbadge">
+            <strong>{{printf "%.2f" .Metrics.Load5}}</strong>
+            <span>Load 5m</span>
+        </div>
+        <div class="dash-hbadge">
+            <strong>{{printf "%.2f" .Metrics.Load15}}</strong>
+            <span>Load 15m</span>
+        </div>
+    </div>
+</div>
 
-<section class="grid">
-    <article class="panel">
-        <h3><i class="bi bi-check2-circle" style="color:var(--success);"></i>System features</h3>
-        <ul class="feature-list">
-            <li>Go web service with graceful shutdown</li>
-            <li>Interactive installer — env config writer</li>
-            <li>MySQL migration bootstrap</li>
-            <li>Linux metrics collector for Ubuntu hosts</li>
-            <li>Protected panel routes via PAM auth</li>
-        </ul>
-    </article>
-    <article class="panel">
-        <h3><i class="bi bi-tools" style="color:var(--accent);"></i>Panel capabilities</h3>
-        <ul class="feature-list">
-            <li>Linux user provisioning and management</li>
-            <li>MySQL database and user provisioning</li>
-            <li>Nginx vhost management with TLS (Certbot)</li>
-            <li>NVM, Node.js and PM2 process management</li>
-            <li>Git clone, pull and release history</li>
-        </ul>
-    </article>
-</section>
+{{/* ── Stat cards ── */}}
+<div class="dash-cards">
+    <div class="dash-card">
+        <div class="dash-card-icon blue"><i class="bi bi-memory"></i></div>
+        <span class="label">Memory</span>
+        <strong>{{.Metrics.MemoryUsedMB}} <small style="font-size:12px;font-weight:500;color:var(--muted);">/ {{.Metrics.MemoryTotalMB}} MB</small></strong>
+        <small>{{.DashboardMemPct}}% used</small>
+        <div class="stat-bar-wrap"><div class="stat-bar{{if ge .DashboardMemPct 85}} danger{{else if ge .DashboardMemPct 70}} warn{{end}}" data-pct="{{.DashboardMemPct}}"></div></div>
+    </div>
+    <div class="dash-card">
+        <div class="dash-card-icon amber"><i class="bi bi-hdd"></i></div>
+        <span class="label">Disk</span>
+        <strong>{{.Metrics.DiskUsedGB}} <small style="font-size:12px;font-weight:500;color:var(--muted);">/ {{.Metrics.DiskTotalGB}} GB</small></strong>
+        <small>{{.DashboardDiskPct}}% used</small>
+        <div class="stat-bar-wrap"><div class="stat-bar{{if ge .DashboardDiskPct 85}} danger{{else if ge .DashboardDiskPct 70}} warn{{end}}" data-pct="{{.DashboardDiskPct}}"></div></div>
+    </div>
+    <div class="dash-card">
+        <div class="dash-card-icon purple"><i class="bi bi-cpu"></i></div>
+        <span class="label">CPU Cores</span>
+        <strong>{{.Metrics.CPUCores}}</strong>
+        <small>Load avg: {{printf "%.2f" .Metrics.Load1}}</small>
+        <div class="stat-bar-wrap"><div class="stat-bar" data-load="{{printf "%.2f" .Metrics.Load1}}" data-cores="{{.Metrics.CPUCores}}"></div></div>
+    </div>
+    <div class="dash-card">
+        <div class="dash-card-icon green"><i class="bi bi-database-check"></i></div>
+        <span class="label">Database</span>
+        <strong style="font-size:14px;">{{.DatabaseStatus}}</strong>
+        <small>MySQL / MariaDB</small>
+    </div>
+    <div class="dash-card">
+        <div class="dash-card-icon blue"><i class="bi bi-globe2"></i></div>
+        <span class="label">Managed Sites</span>
+        <strong>{{len .ManagedSites}}</strong>
+        <small>Nginx vhosts</small>
+    </div>
+</div>
+
+{{/* ── Two columns: Recent deploys + Server info ── */}}
+<div class="dash-two-col">
+
+    {{/* Recent auto deploys */}}
+    <div class="panel">
+        <h3><i class="bi bi-rocket-takeoff" style="color:var(--accent);"></i>Recent Deploys</h3>
+        {{if .DeploymentReleases}}
+        <div style="overflow-x:auto;">
+        <table class="table-theme" style="width:100%;font-size:12.5px;">
+            <thead>
+                <tr>
+                    <th>Target</th>
+                    <th>Branch</th>
+                    <th>Action</th>
+                    <th>Status</th>
+                    <th>Commit</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody>
+            {{range .DeploymentReleases}}
+            <tr>
+                <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{.TargetDirectory}}">
+                    <span style="color:var(--ink);font-weight:600;">{{.RunAsUser}}</span>
+                    <small style="display:block;color:var(--muted);font-size:10.5px;">{{.BranchName}}</small>
+                </td>
+                <td style="font-family:monospace;font-size:11.5px;color:var(--muted);">{{.BranchName}}</td>
+                <td style="color:var(--muted);font-size:11.5px;">{{if .Action}}{{.Action}}{{else}}deploy{{end}}</td>
+                <td>
+                    <span class="rel-tag {{.Status}}">{{.Status}}</span>
+                </td>
+                <td style="font-family:monospace;font-size:11px;color:var(--muted);">
+                    {{if .CommitSHA}}{{slice .CommitSHA 0 7}}{{else}}&ndash;{{end}}
+                </td>
+                <td style="font-size:11px;color:var(--muted);white-space:nowrap;">{{.CreatedAt.Format "02 Jan 15:04"}}</td>
+            </tr>
+            {{end}}
+            </tbody>
+        </table>
+        </div>
+        {{else}}
+        <p style="color:var(--muted);font-size:13px;text-align:center;padding:24px 0;">No deploy history yet.</p>
+        {{end}}
+        <div style="margin-top:12px;">
+            <a href="/deploys" class="btn btn-sm btn-outline-secondary" style="font-size:12px;">View all deploys &rarr;</a>
+        </div>
+    </div>
+
+    {{/* Server info sidebar */}}
+    <div>
+        <div class="panel" style="margin-bottom:16px;">
+            <h3><i class="bi bi-info-circle" style="color:var(--accent);"></i>Server Info</h3>
+            <div class="info-row"><span class="key">Hostname</span><span class="val">{{if .Metrics.Hostname}}{{.Metrics.Hostname}}{{else}}&ndash;{{end}}</span></div>
+            <div class="info-row"><span class="key">OS</span><span class="val" style="font-size:12px;">{{.Metrics.OSName}}</span></div>
+            <div class="info-row"><span class="key">CPU Cores</span><span class="val">{{.Metrics.CPUCores}}</span></div>
+            <div class="info-row"><span class="key">Total RAM</span><span class="val">{{.Metrics.MemoryTotalMB}} MB</span></div>
+            <div class="info-row"><span class="key">Total Disk</span><span class="val">{{.Metrics.DiskTotalGB}} GB</span></div>
+            <div class="info-row"><span class="key">Uptime</span><span class="val">{{.Metrics.Uptime}}</span></div>
+            <div class="info-row"><span class="key">Load 1/5/15m</span><span class="val">{{printf "%.2f" .Metrics.Load1}} / {{printf "%.2f" .Metrics.Load5}} / {{printf "%.2f" .Metrics.Load15}}</span></div>
+            <div class="info-row"><span class="key">Database</span><span class="val"><span class="status-dot {{if eq .DatabaseStatus "connected"}}green{{else}}red{{end}}"></span>{{.DatabaseStatus}}</span></div>
+        </div>
+
+        {{/* Quick links */}}
+        <div class="panel">
+            <h3><i class="bi bi-lightning" style="color:var(--warning);"></i>Quick Links</h3>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
+                <a href="/sites" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:var(--surface-alt);color:var(--ink);text-decoration:none;font-size:13px;font-weight:500;border:1px solid var(--border-light);">
+                    <i class="bi bi-globe2" style="color:var(--accent);"></i> Managed Sites
+                </a>
+                <a href="/deploys" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:var(--surface-alt);color:var(--ink);text-decoration:none;font-size:13px;font-weight:500;border:1px solid var(--border-light);">
+                    <i class="bi bi-rocket" style="color:var(--accent);"></i> Deployments
+                </a>
+                <a href="/users" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:var(--surface-alt);color:var(--ink);text-decoration:none;font-size:13px;font-weight:500;border:1px solid var(--border-light);">
+                    <i class="bi bi-people" style="color:var(--accent);"></i> Linux Users
+                </a>
+                <a href="/databases" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:var(--surface-alt);color:var(--ink);text-decoration:none;font-size:13px;font-weight:500;border:1px solid var(--border-light);">
+                    <i class="bi bi-database" style="color:var(--accent);"></i> Databases
+                </a>
+                <a href="/processes" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:var(--surface-alt);color:var(--ink);text-decoration:none;font-size:13px;font-weight:500;border:1px solid var(--border-light);">
+                    <i class="bi bi-cpu" style="color:var(--accent);"></i> Processes
+                </a>
+                <a href="/logs" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:var(--surface-alt);color:var(--ink);text-decoration:none;font-size:13px;font-weight:500;border:1px solid var(--border-light);">
+                    <i class="bi bi-journal-code" style="color:var(--accent);"></i> Logs
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{/* ── Top Processes by RAM ── */}}
+{{if .Metrics.TopProcesses}}
+<div class="panel" style="margin-bottom:16px;">
+    <h3><i class="bi bi-bar-chart-line" style="color:var(--danger);"></i>Top Processes &mdash; by Memory</h3>
+    <div style="overflow-x:auto;">
+    <table class="table-theme" style="width:100%;font-size:12.5px;">
+        <thead>
+            <tr>
+                <th>PID</th>
+                <th>Name</th>
+                <th>User</th>
+                <th style="text-align:right;">Memory (MB)</th>
+                <th style="text-align:right;">CPU % (avg)</th>
+                <th>Memory bar</th>
+            </tr>
+        </thead>
+        <tbody>
+        {{range .Metrics.TopProcesses}}
+        <tr>
+            <td style="font-family:monospace;font-size:11.5px;color:var(--muted);">{{.PID}}</td>
+            <td style="font-weight:600;">{{.Name}}</td>
+            <td style="color:var(--muted);font-size:12px;">{{.User}}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600;">{{.MemMB}}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);">{{printf "%.1f" .CPUPct}}%</td>
+            <td style="min-width:100px;">
+                <div class="stat-bar-wrap"><div class="stat-bar" data-mem="{{.MemMB}}"></div></div>
+            </td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+    </div>
+</div>
+{{end}}
+
+{{/* ── PM2 Processes ── */}}
+{{if .DashboardPM2Entries}}
+<div class="panel" style="margin-bottom:16px;">
+    <h3><i class="bi bi-diagram-3" style="color:var(--success);"></i>PM2 Processes</h3>
+    {{range .DashboardPM2Entries}}
+    <div style="margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">
+            <i class="bi bi-person-circle" style="margin-right:4px;"></i>{{.User}}
+        </div>
+        <pre class="pm2-pre">{{.ListText}}</pre>
+    </div>
+    {{end}}
+</div>
+{{end}}
+
+<script>
+(function() {
+    // Apply data-pct bar widths (memory & disk stat cards)
+    document.querySelectorAll('[data-pct]').forEach(function(el) {
+        var pct = parseInt(el.getAttribute('data-pct'), 10) || 0;
+        el.style.width = Math.min(pct, 100) + '%';
+    });
+    // CPU load bar
+    document.querySelectorAll('[data-load]').forEach(function(el) {
+        var load = parseFloat(el.getAttribute('data-load')) || 0;
+        var cores = parseInt(el.getAttribute('data-cores'), 10) || 1;
+        var pct = Math.min(Math.round(load / cores * 100), 100);
+        el.style.width = pct + '%';
+    });
+    // Top process relative memory bars
+    var memBars = document.querySelectorAll('[data-mem]');
+    var maxMem = 0;
+    memBars.forEach(function(el) {
+        var m = parseInt(el.getAttribute('data-mem'), 10) || 0;
+        if (m > maxMem) maxMem = m;
+    });
+    if (maxMem > 0) {
+        memBars.forEach(function(el) {
+            var m = parseInt(el.getAttribute('data-mem'), 10) || 0;
+            el.style.width = Math.round(m * 100 / maxMem) + '%';
+        });
+    }
+})();
+</script>
+
 {{end}}
