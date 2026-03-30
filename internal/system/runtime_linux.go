@@ -154,6 +154,10 @@ func (linuxRuntimeManager) StartPM2(spec PM2StartSpec) (string, error) {
 	if spec.NodeVersion != "" && !nodeVersionPattern.MatchString(spec.NodeVersion) {
 		return "", ErrInvalidNodeVersion
 	}
+	resolvedScriptPath, err := resolvePM2ScriptPath(spec.WorkingDirectory, spec.ScriptPath)
+	if err != nil {
+		return "", err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	pm2Command := ""
@@ -162,12 +166,37 @@ func (linuxRuntimeManager) StartPM2(spec PM2StartSpec) (string, error) {
 	}
 	pm2Command += "cd " + shellQuote(spec.WorkingDirectory)
 	pm2Command += " && pm2 delete " + shellQuote(spec.ProcessName) + " >/dev/null 2>&1 || true"
-	pm2Command += " && pm2 start " + shellQuote(spec.ScriptPath) + " --name " + shellQuote(spec.ProcessName) + " --cwd " + shellQuote(spec.WorkingDirectory)
+	pm2Command += " && pm2 start " + shellQuote(resolvedScriptPath) + " --name " + shellQuote(spec.ProcessName) + " --cwd " + shellQuote(spec.WorkingDirectory)
 	if spec.Arguments != "" {
 		pm2Command += " -- " + shellJoin(strings.Fields(spec.Arguments))
 	}
 	pm2Command += " && pm2 save"
 	return runBashAsUser(ctx, spec.User, buildNVMCommand(homeDirectory, pm2Command))
+}
+
+func resolvePM2ScriptPath(workingDirectory string, scriptPath string) (string, error) {
+	if filepath.IsAbs(scriptPath) {
+		if _, err := os.Stat(scriptPath); err != nil {
+			if os.IsNotExist(err) {
+				return "", fmt.Errorf("PM2 start script was not found: %s", scriptPath)
+			}
+			return "", err
+		}
+		return scriptPath, nil
+	}
+	resolvedPath := filepath.Join(workingDirectory, scriptPath)
+	if _, err := os.Stat(resolvedPath); err == nil {
+		return scriptPath, nil
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	if scriptPath == "ecosystem.config.cjs" {
+		fallbackPath := filepath.Join(workingDirectory, "ecosystem.config.js")
+		if _, err := os.Stat(fallbackPath); err == nil {
+			return "", fmt.Errorf("PM2 start script was not found: %s. Found ecosystem.config.js in the subdomain root; use that file instead", scriptPath)
+		}
+	}
+	return "", fmt.Errorf("PM2 start script was not found: %s", scriptPath)
 }
 
 func (linuxRuntimeManager) RunNPMScript(spec NPMScriptSpec) (string, error) {

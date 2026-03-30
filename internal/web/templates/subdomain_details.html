@@ -32,6 +32,20 @@
 </section>
 {{end}}
 
+{{if .CommandOutput}}
+<section class="grid single">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Command output</span>
+                <h3>Last action output</h3>
+            </div>
+        </div>
+        <pre class="command-output">{{.CommandOutput}}</pre>
+    </article>
+</section>
+{{end}}
+
 <section class="grid single">
     <article class="panel">
         <div class="site-tab-nav" id="site-tab-nav" data-active-tab="{{.SiteDetailTab}}">
