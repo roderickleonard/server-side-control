@@ -1636,8 +1636,12 @@ func (a *App) handleSiteDeployWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		notifySite.AutoDeployNotifyEmail = notifyEmail
 		if deployErr != nil {
+			if a.store != nil {
+				_ = a.store.CreateDeployment(ctx, domain.Deployment{SiteID: site.ID, RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: deployDirectory, RunAsUser: site.OwnerLinuxUser, LastStatus: "failure", LastOutput: result.Output})
+				_ = a.store.CreateDeploymentRelease(ctx, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: deployDirectory, RunAsUser: site.OwnerLinuxUser, Action: firstNonEmpty(result.Action, "deploy"), Status: "failure", CommitSHA: result.CommitSHA, PreviousCommitSHA: result.PreviousCommitSHA, Output: result.Output})
+			}
 			a.recordAudit(ctx, "deploy.webhook", targetLabel, "failure", map[string]any{"branch": branch, "error": deployErr.Error(), "provider": provider, "auth_mode": authMode, "subdomain_id": subdomainID})
-			_ = sendAutoDeployResultEmail(a.cfg, notifySite, branch, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: deployDirectory, RunAsUser: site.OwnerLinuxUser, Action: "deploy", Status: "failure", Output: ""}, deployErr)
+			_ = sendAutoDeployResultEmail(a.cfg, notifySite, branch, domain.DeploymentRelease{RepositoryURL: repositoryURL, BranchName: branch, TargetDirectory: deployDirectory, RunAsUser: site.OwnerLinuxUser, Action: firstNonEmpty(result.Action, "deploy"), Status: "failure", CommitSHA: result.CommitSHA, PreviousCommitSHA: result.PreviousCommitSHA, Output: result.Output}, deployErr)
 			return
 		}
 		if a.store != nil {

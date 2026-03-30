@@ -385,7 +385,7 @@ func runShellAsUser(ctx context.Context, username string, workingDir string, com
 	}
 	shellCommand := "cd " + shellQuote(workingDir) + " && " + command
 	if strings.TrimSpace(nodeVersion) != "" {
-		shellCommand = "nvm use " + shellQuote(strings.TrimSpace(nodeVersion)) + " && " + shellCommand
+		shellCommand = "nvm install " + shellQuote(strings.TrimSpace(nodeVersion)) + " && nvm use " + shellQuote(strings.TrimSpace(nodeVersion)) + " && " + shellCommand
 		shellCommand = buildNVMCommand(homeDirectory, shellCommand)
 	} else {
 		shellCommand = buildShellWithOptionalNVM(homeDirectory, shellCommand)
@@ -406,7 +406,7 @@ func runShellAsUserStream(ctx context.Context, username string, workingDir strin
 	}
 	shellCommand := "cd " + shellQuote(workingDir) + " && " + command
 	if strings.TrimSpace(nodeVersion) != "" {
-		shellCommand = "nvm use " + shellQuote(strings.TrimSpace(nodeVersion)) + " && " + shellCommand
+		shellCommand = "nvm install " + shellQuote(strings.TrimSpace(nodeVersion)) + " && nvm use " + shellQuote(strings.TrimSpace(nodeVersion)) + " && " + shellCommand
 		shellCommand = buildNVMCommand(homeDirectory, shellCommand)
 	} else {
 		shellCommand = buildShellWithOptionalNVM(homeDirectory, shellCommand)
