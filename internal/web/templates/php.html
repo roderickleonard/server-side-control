@@ -2,8 +2,8 @@
 <section class="hero compact">
     <div>
         <span class="eyebrow">PHP</span>
-        <h2>PHP-FPM Version Switching</h2>
-        <p class="lead">Switch the active PHP-FPM version for any managed Nginx site. The config is validated before Nginx is reloaded.</p>
+        <h2>PHP Runtime Management</h2>
+        <p class="lead">Install PHP versions, switch site PHP-FPM sockets, and manage extensions from one place.</p>
     </div>
 </section>
 
@@ -33,7 +33,7 @@
 
 <section class="grid">
     <article class="panel">
-        <h3><i class="bi bi-download" style="color:var(--accent);margin-right:6px;"></i>Install PHP versions</h3>
+        <h3><i class="bi bi-download" style="color:var(--accent);margin-right:6px;"></i>Install PHP Versions</h3>
         <form method="post" class="stack-form compact-form">
             <input type="hidden" name="php_action" value="install_versions">
             {{if .PHPInstallableVersions}}
@@ -42,9 +42,9 @@
                 <label class="checkbox-row compact"><input type="checkbox" name="install_versions" value="{{.}}"><span>PHP {{.}}</span></label>
                 {{end}}
             </div>
-            <p class="muted details-note">Selected versions install `phpX.Y-fpm`, `phpX.Y-cli`, and `phpX.Y-common` on the server.</p>
+            <p class="muted details-note">Selected versions install `phpX.Y-fpm`, `phpX.Y-cli`, and `phpX.Y-common` from the server's apt sources.</p>
             <div class="form-actions">
-                <button type="submit">Install selected PHP versions</button>
+                <button type="submit">Install selected versions</button>
             </div>
             {{else}}
             <p class="muted">No installable PHP versions were detected from the current apt sources.</p>
@@ -52,7 +52,7 @@
         </form>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-arrow-left-right" style="color:var(--accent);margin-right:6px;"></i>Switch version</h3>
+        <h3><i class="bi bi-arrow-left-right" style="color:var(--accent);margin-right:6px;"></i>Switch Site Version</h3>
         <form method="post" class="stack-form">
             <input type="hidden" name="php_action" value="switch_version">
             <div class="form-grid two-up">
@@ -84,13 +84,13 @@
 
 <section class="grid">
     <article class="panel">
-        <h3><i class="bi bi-puzzle" style="color:var(--accent);margin-right:6px;"></i>Install or enable extensions</h3>
-        <form method="post" class="stack-form compact-form">
+        <h3><i class="bi bi-puzzle" style="color:var(--accent);margin-right:6px;"></i>Manage Extensions</h3>
+        <form method="post" class="stack-form compact-form" id="php-extension-form">
+            <input type="hidden" name="php_action" value="install_extensions" id="php-extension-action">
             <div class="form-grid two-up">
-                <input type="hidden" name="php_action" value="install_extensions" id="php-extension-action">
                 <label>
                     <span>PHP version</span>
-                    <select name="extension_version" required>
+                    <select name="extension_version" id="php-extension-version" required>
                         <option value="">Select installed PHP version</option>
                         {{range .PHPVersions}}
                         <option value="{{.}}" {{if eq $.PHPExtensionVersion .}}selected{{end}}>PHP {{.}}</option>
@@ -102,25 +102,44 @@
                     <input type="text" name="php_extension_input" value="{{.PHPExtensionInput}}" placeholder="redis, imagick, xdebug">
                 </label>
             </div>
-            {{if .PHPCommonExtensions}}
+            <div class="form-actions" style="justify-content:flex-start;gap:12px;">
+                <label class="checkbox-row compact"><input type="checkbox" id="php-show-enabled"><span>Show already enabled</span></label>
+                <label class="checkbox-row compact"><input type="checkbox" id="php-show-installed"><span>Show installed but disabled</span></label>
+            </div>
+            {{if .PHPExtensionPresets}}
             <div>
-                <span class="eyebrow">Common extensions</span>
-                <div class="site-delete-summary details-summary" style="margin-top:8px;">
-                    {{range .PHPCommonExtensions}}
-                    <label class="checkbox-row compact"><input type="checkbox" name="php_extensions" value="{{.}}"><span>{{.}}</span></label>
+                <span class="eyebrow">Preset groups</span>
+                <div class="badge-row" style="margin-top:8px;">
+                    {{range .PHPExtensionPresets}}
+                    <button type="button" class="badge" data-extension-preset="{{range $index, $extension := .Extensions}}{{if $index}},{{end}}{{$extension}}{{end}}" title="{{.Description}}">{{.Name}}</button>
                     {{end}}
                 </div>
             </div>
             {{end}}
-            <p class="muted details-note">Install first if the extension package is missing. Enable only if the module already exists for that PHP version.</p>
+            {{if .PHPCommonExtensions}}
+            <div>
+                <span class="eyebrow">Common extensions</span>
+                <div class="site-delete-summary details-summary" style="margin-top:8px;" id="php-extension-common-list">
+                    {{range .PHPCommonExtensions}}
+                    <label class="checkbox-row compact" data-extension-item>
+                        <input type="checkbox" name="php_extensions" value="{{.}}" data-extension="{{.}}">
+                        <span>{{.}}</span>
+                        <small class="muted" data-extension-state></small>
+                    </label>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+            <p class="muted details-note">The list auto-filters by the selected PHP version and hides modules that are already enabled or unavailable for that version. If a selected module is not installed yet, the panel tries to install the matching package before enabling it.</p>
             <div class="form-actions">
                 <button type="submit" onclick="document.getElementById('php-extension-action').value='install_extensions'">Install and enable</button>
-                <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('php-extension-action').value='enable_extensions'">Enable only</button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('php-extension-action').value='enable_extensions'">Enable or install</button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('php-extension-action').value='disable_extensions'">Disable selected</button>
             </div>
         </form>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-code-slash" style="color:var(--muted);margin-right:6px;"></i>Installed PHP versions</h3>
+        <h3><i class="bi bi-code-slash" style="color:var(--muted);margin-right:6px;"></i>Installed PHP Versions</h3>
         {{if .PHPVersions}}
         <div class="badge-row">
             {{range .PHPVersions}}
@@ -133,13 +152,56 @@
         <ul>
             <li>The panel switches the `fastcgi_pass` socket inside the selected site's Nginx config.</li>
             <li>Nginx validation runs before reload and reverts on failure.</li>
+            <li>Only versions detected from the host are shown in switch and extension actions.</li>
         </ul>
     </article>
 </section>
 
 <section class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-list-ul" style="color:var(--accent);margin-right:6px;"></i>Managed PHP sites</h3>
+        <h3><i class="bi bi-sliders" style="color:var(--accent);margin-right:6px;"></i>PHP ini Tuning</h3>
+        <form method="post" class="stack-form compact-form" id="php-ini-form">
+            <input type="hidden" name="php_action" value="update_ini">
+            <div class="form-grid two-up">
+                <label>
+                    <span>PHP version</span>
+                    <select name="ini_version" id="php-ini-version" required>
+                        <option value="">Select installed PHP version</option>
+                        {{range .PHPVersions}}
+                        <option value="{{.}}" {{if eq $.PHPINISelectedVersion .}}selected{{end}}>PHP {{.}}</option>
+                        {{end}}
+                    </select>
+                </label>
+                <div class="muted details-note" style="align-self:end;">Updates both CLI and FPM php.ini files, then restarts php-fpm for the selected version.</div>
+            </div>
+            <div class="form-grid two-up">
+                <label>
+                    <span>memory_limit</span>
+                    <input type="text" name="memory_limit" id="php-ini-memory-limit" value="{{.PHPINIMemoryLimit}}" placeholder="512M" required>
+                </label>
+                <label>
+                    <span>upload_max_filesize</span>
+                    <input type="text" name="upload_max_filesize" id="php-ini-upload-max-filesize" value="{{.PHPINIUploadMaxFilesize}}" placeholder="128M" required>
+                </label>
+                <label>
+                    <span>post_max_size</span>
+                    <input type="text" name="post_max_size" id="php-ini-post-max-size" value="{{.PHPINIPostMaxSize}}" placeholder="128M" required>
+                </label>
+                <label>
+                    <span>max_execution_time</span>
+                    <input type="text" name="max_execution_time" id="php-ini-max-execution-time" value="{{.PHPINIMaxExecutionTime}}" placeholder="120" required>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Save php.ini settings</button>
+            </div>
+        </form>
+    </article>
+</section>
+
+<section class="grid single">
+    <article class="panel">
+        <h3><i class="bi bi-list-ul" style="color:var(--accent);margin-right:6px;"></i>Managed PHP Sites</h3>
         {{if .ManagedSites}}
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">
@@ -153,7 +215,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                        <li>Only versions detected from the host are shown in the switch and extension dropdowns.</li>
+                    {{range .ManagedSites}}
                     <tr>
                         <td class="fw-semibold">{{.Name}}</td>
                         <td>{{.DomainName}}</td>
@@ -173,13 +235,14 @@
 
 <section class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-list-check" style="color:var(--accent);margin-right:6px;"></i>Extensions by PHP version</h3>
+        <h3><i class="bi bi-list-check" style="color:var(--accent);margin-right:6px;"></i>Extensions by PHP Version</h3>
         {{if .PHPExtensionStatuses}}
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">
                 <thead>
                     <tr>
                         <th>PHP</th>
+                        <th>Available package modules</th>
                         <th>Installed modules</th>
                         <th>Enabled modules</th>
                     </tr>
@@ -188,6 +251,7 @@
                     {{range .PHPExtensionStatuses}}
                     <tr>
                         <td class="fw-semibold">PHP {{.Version}}</td>
+                        <td class="text-break">{{if .AvailableModules}}{{range $index, $module := .AvailableModules}}{{if $index}}, {{end}}{{$module}}{{end}}{{else}}-{{end}}</td>
                         <td class="text-break">{{if .InstalledModules}}{{range $index, $module := .InstalledModules}}{{if $index}}, {{end}}{{$module}}{{end}}{{else}}-{{end}}</td>
                         <td class="text-break">{{if .EnabledModules}}{{range $index, $module := .EnabledModules}}{{if $index}}, {{end}}{{$module}}{{end}}{{else}}-{{end}}</td>
                     </tr>
@@ -203,14 +267,203 @@
 
 <section class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current behavior</h3>
+        <h3><i class="bi bi-activity" style="color:var(--accent);margin-right:6px;"></i>PHP Diagnostics</h3>
+        {{if .PHPDiagnostics}}
+        <div class="stack-form compact-form" style="gap:16px;">
+            {{range .PHPDiagnostics}}
+            <div class="table-card" style="padding:16px;">
+                <div class="section-head" style="margin-bottom:12px;">
+                    <div>
+                        <span class="eyebrow">PHP {{.Version}}</span>
+                        <h3 style="margin:4px 0 0;">{{.CLIVersion}}</h3>
+                    </div>
+                </div>
+                <div class="form-grid two-up">
+                    <div>
+                        <span class="eyebrow">php -i summary</span>
+                        <pre class="command-output" style="margin-top:8px;">{{.InfoSummary}}</pre>
+                    </div>
+                    <div>
+                        <span class="eyebrow">php-fpm service</span>
+                        <pre class="command-output" style="margin-top:8px;">{{.FPMStatus}}</pre>
+                    </div>
+                </div>
+                <div style="margin-top:12px;">
+                    <span class="eyebrow">php -m</span>
+                    <pre class="command-output" style="margin-top:8px;">{{.ModuleOutput}}</pre>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="muted">Install at least one PHP version to show diagnostics.</p>
+        {{end}}
+    </article>
+</section>
+
+<section class="grid single">
+    <article class="panel">
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current Behavior</h3>
         <ul>
             <li>The panel uses the stored Nginx config path for the managed site.</li>
             <li>The config is edited only when a PHP-FPM socket entry exists.</li>
             <li>Version installs use the current apt sources available on the server.</li>
             <li>Extension installs try the matching `phpX.Y-extension` package first, then enable the module for CLI and FPM.</li>
-            <li>Only versions detected from the host are shown in the dropdown.</li>
+            <li>Disable uses `phpdismod` for both CLI and FPM.</li>
         </ul>
     </article>
 </section>
+
+<script type="application/json" id="php-extension-statuses-json">{{.PHPExtensionStatusesJSON}}</script>
+<script type="application/json" id="php-ini-settings-json">{{.PHPINISettingsJSON}}</script>
+<script>
+(function () {
+    const versionSelect = document.getElementById('php-extension-version');
+    const showEnabled = document.getElementById('php-show-enabled');
+    const showInstalled = document.getElementById('php-show-installed');
+    const extensionItems = Array.from(document.querySelectorAll('[data-extension-item]'));
+    const presetButtons = Array.from(document.querySelectorAll('[data-extension-preset]'));
+    const statusesNode = document.getElementById('php-extension-statuses-json');
+    const iniNode = document.getElementById('php-ini-settings-json');
+    const iniVersionSelect = document.getElementById('php-ini-version');
+    const iniMemoryLimit = document.getElementById('php-ini-memory-limit');
+    const iniUploadMaxFilesize = document.getElementById('php-ini-upload-max-filesize');
+    const iniPostMaxSize = document.getElementById('php-ini-post-max-size');
+    const iniMaxExecutionTime = document.getElementById('php-ini-max-execution-time');
+    if (!versionSelect || !extensionItems.length) {
+        return;
+    }
+
+    let statuses = [];
+    let iniSettings = [];
+    if (statusesNode && statusesNode.textContent) {
+        try {
+            statuses = JSON.parse(statusesNode.textContent);
+        } catch (error) {
+            statuses = [];
+        }
+    }
+    if (iniNode && iniNode.textContent) {
+        try {
+            iniSettings = JSON.parse(iniNode.textContent);
+        } catch (error) {
+            iniSettings = [];
+        }
+    }
+
+    function statusForVersion(version) {
+        return statuses.find((item) => item.version === version) || null;
+    }
+
+    function iniForVersion(version) {
+        return iniSettings.find((item) => item.version === version) || null;
+    }
+
+    function updateExtensionFilter() {
+        const version = versionSelect.value;
+        const versionStatus = statusForVersion(version);
+        const installed = new Set((versionStatus && versionStatus.installed_modules) || []);
+        const enabled = new Set((versionStatus && versionStatus.enabled_modules) || []);
+        const available = new Set((versionStatus && versionStatus.available_modules) || []);
+        extensionItems.forEach((item) => {
+            const checkbox = item.querySelector('input[data-extension]');
+            const stateNode = item.querySelector('[data-extension-state]');
+            if (!checkbox) {
+                return;
+            }
+            const extension = checkbox.dataset.extension || '';
+            const isInstalled = installed.has(extension);
+            const isEnabled = enabled.has(extension);
+            const isAvailable = !version || available.has(extension) || isInstalled;
+            let hidden = false;
+            if (version) {
+                if (!isAvailable) {
+                    hidden = true;
+                } else if (isEnabled && !showEnabled.checked) {
+                    hidden = true;
+                } else if (isInstalled && !isEnabled && !showInstalled.checked) {
+                    hidden = true;
+                }
+            }
+            item.style.display = hidden ? 'none' : '';
+            checkbox.disabled = version ? !isAvailable : false;
+            if (checkbox.disabled) {
+                checkbox.checked = false;
+            }
+            if (stateNode) {
+                if (!isAvailable) {
+                    stateNode.textContent = 'not available for this version';
+                } else if (isEnabled) {
+                    stateNode.textContent = 'enabled';
+                } else if (isInstalled) {
+                    stateNode.textContent = 'installed';
+                } else {
+                    stateNode.textContent = 'available to install';
+                }
+            }
+        });
+    }
+
+    function applyPreset(serialized) {
+        const extensions = String(serialized || '').split(',').map((item) => item.trim()).filter(Boolean);
+        const extensionSet = new Set(extensions);
+        extensionItems.forEach((item) => {
+            const checkbox = item.querySelector('input[data-extension]');
+            if (!checkbox) {
+                return;
+            }
+            checkbox.checked = extensionSet.has(checkbox.dataset.extension || '');
+        });
+        updateExtensionFilter();
+    }
+
+    function updateINIForm() {
+        if (!iniVersionSelect) {
+            return;
+        }
+        const selected = iniForVersion(iniVersionSelect.value);
+        if (!selected) {
+            return;
+        }
+        if (iniMemoryLimit && !iniMemoryLimit.value) {
+            iniMemoryLimit.value = selected.memory_limit || '';
+        }
+        if (iniUploadMaxFilesize && !iniUploadMaxFilesize.value) {
+            iniUploadMaxFilesize.value = selected.upload_max_filesize || '';
+        }
+        if (iniPostMaxSize && !iniPostMaxSize.value) {
+            iniPostMaxSize.value = selected.post_max_size || '';
+        }
+        if (iniMaxExecutionTime && !iniMaxExecutionTime.value) {
+            iniMaxExecutionTime.value = selected.max_execution_time || '';
+        }
+    }
+
+    versionSelect.addEventListener('change', updateExtensionFilter);
+    showEnabled?.addEventListener('change', updateExtensionFilter);
+    showInstalled?.addEventListener('change', updateExtensionFilter);
+    presetButtons.forEach((button) => {
+        button.addEventListener('click', function () {
+            applyPreset(this.dataset.extensionPreset || '');
+        });
+    });
+    iniVersionSelect?.addEventListener('change', function () {
+        if (iniMemoryLimit) {
+            iniMemoryLimit.value = '';
+        }
+        if (iniUploadMaxFilesize) {
+            iniUploadMaxFilesize.value = '';
+        }
+        if (iniPostMaxSize) {
+            iniPostMaxSize.value = '';
+        }
+        if (iniMaxExecutionTime) {
+            iniMaxExecutionTime.value = '';
+        }
+        updateINIForm();
+    });
+    updateExtensionFilter();
+    updateINIForm();
+})();
+</script>
 {{end}}

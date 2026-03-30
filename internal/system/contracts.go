@@ -275,6 +275,10 @@ type PHPManager interface {
 	ListExtensionStatus(version string) (PHPExtensionStatus, error)
 	InstallExtensions(spec PHPExtensionSpec) (string, error)
 	EnableExtensions(spec PHPExtensionSpec) (string, error)
+	DisableExtensions(spec PHPExtensionSpec) (string, error)
+	Diagnostics(version string) (PHPDiagnostics, error)
+	ReadINISettings(version string) (PHPINISettings, error)
+	UpdateINISettings(spec PHPINIUpdateSpec) (string, error)
 }
 
 type PHPExtensionSpec struct {
@@ -286,6 +290,31 @@ type PHPExtensionStatus struct {
 	Version           string   `json:"version"`
 	InstalledModules  []string `json:"installed_modules"`
 	EnabledModules    []string `json:"enabled_modules"`
+	AvailableModules  []string `json:"available_modules"`
+}
+
+type PHPDiagnostics struct {
+	Version      string `json:"version"`
+	CLIVersion   string `json:"cli_version"`
+	InfoSummary  string `json:"info_summary"`
+	ModuleOutput string `json:"module_output"`
+	FPMStatus    string `json:"fpm_status"`
+}
+
+type PHPINISettings struct {
+	Version            string `json:"version"`
+	MemoryLimit        string `json:"memory_limit"`
+	UploadMaxFilesize  string `json:"upload_max_filesize"`
+	PostMaxSize        string `json:"post_max_size"`
+	MaxExecutionTime   string `json:"max_execution_time"`
+}
+
+type PHPINIUpdateSpec struct {
+	Version            string `json:"version"`
+	MemoryLimit        string `json:"memory_limit"`
+	UploadMaxFilesize  string `json:"upload_max_filesize"`
+	PostMaxSize        string `json:"post_max_size"`
+	MaxExecutionTime   string `json:"max_execution_time"`
 }
 
 type RedisStatus struct {

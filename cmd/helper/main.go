@@ -516,6 +516,42 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		output, err := system.NewPHPManager().EnableExtensions(spec)
 		writeSuccess(nil, output, err)
+	case "php.disable_extensions":
+		var spec system.PHPExtensionSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewPHPManager().DisableExtensions(spec)
+		writeSuccess(nil, output, err)
+	case "php.diagnostics":
+		var input struct {
+			Version string `json:"version"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		result, err := system.NewPHPManager().Diagnostics(input.Version)
+		writeSuccess(result, "", err)
+	case "php.read_ini_settings":
+		var input struct {
+			Version string `json:"version"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		result, err := system.NewPHPManager().ReadINISettings(input.Version)
+		writeSuccess(result, "", err)
+	case "php.update_ini_settings":
+		var spec system.PHPINIUpdateSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewPHPManager().UpdateINISettings(spec)
+		writeSuccess(nil, output, err)
 	case "redis.inspect":
 		status, err := system.NewRedisManager().Inspect()
 		writeSuccess(status, "", err)

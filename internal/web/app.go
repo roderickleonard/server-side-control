@@ -66,6 +66,12 @@ type SiteNginxConfigEditor struct {
 	Revisions  []domain.NginxConfigRevision
 }
 
+type PHPExtensionPresetView struct {
+	Name        string
+	Description string
+	Extensions  []string
+}
+
 type TemplateData struct {
 	Title          string
 	CurrentPath    string
@@ -103,9 +109,19 @@ type TemplateData struct {
 	PHPVersions    []string
 	PHPInstallableVersions []string
 	PHPExtensionStatuses []system.PHPExtensionStatus
+	PHPExtensionStatusesJSON template.JS
+	PHPDiagnostics []system.PHPDiagnostics
+	PHPINISettings []system.PHPINISettings
+	PHPINISettingsJSON template.JS
 	PHPExtensionVersion string
 	PHPExtensionInput string
 	PHPCommonExtensions []string
+	PHPExtensionPresets []PHPExtensionPresetView
+	PHPINISelectedVersion string
+	PHPINIMemoryLimit string
+	PHPINIUploadMaxFilesize string
+	PHPINIPostMaxSize string
+	PHPINIMaxExecutionTime string
 	RepositoryStatus system.RepositoryStatus
 	RuntimeStatus  system.RuntimeStatus
 	GitAuthStatus  system.GitAuthStatus

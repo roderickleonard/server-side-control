@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	template "html/template"
 	"io"
 	"net"
 	"net/http"
@@ -4514,6 +4515,11 @@ func (a *App) handlePHP(w http.ResponseWriter, r *http.Request) {
 	data.PHPExtensionVersion = strings.TrimSpace(r.FormValue("extension_version"))
 	selectedExtensions := collectPHPExtensions(r)
 	data.PHPExtensionInput = strings.Join(selectedExtensions, ", ")
+	data.PHPINISelectedVersion = strings.TrimSpace(r.FormValue("ini_version"))
+	data.PHPINIMemoryLimit = strings.TrimSpace(r.FormValue("memory_limit"))
+	data.PHPINIUploadMaxFilesize = strings.TrimSpace(r.FormValue("upload_max_filesize"))
+	data.PHPINIPostMaxSize = strings.TrimSpace(r.FormValue("post_max_size"))
+	data.PHPINIMaxExecutionTime = strings.TrimSpace(r.FormValue("max_execution_time"))
 
 	switch action {
 	case "install_versions":
@@ -4564,6 +4570,45 @@ func (a *App) handlePHP(w http.ResponseWriter, r *http.Request) {
 		a.recordAudit(r.Context(), "php.enable_extensions", data.PHPExtensionVersion, "success", map[string]any{"extensions": selectedExtensions})
 		a.render(r.Context(), w, r.URL.Path, "php.html", data)
 		return
+	case "disable_extensions":
+		output, err := a.php.DisableExtensions(system.PHPExtensionSpec{Version: data.PHPExtensionVersion, Extensions: selectedExtensions})
+		if err != nil {
+			data.RequestError = phpActionErrorMessage(err)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "php.disable_extensions", data.PHPExtensionVersion, "failure", map[string]any{"error": err.Error(), "extensions": selectedExtensions})
+			a.render(r.Context(), w, r.URL.Path, "php.html", data)
+			return
+		}
+		data = a.phpTemplateData(r)
+		data.PHPExtensionVersion = strings.TrimSpace(r.FormValue("extension_version"))
+		data.CommandOutput = output
+		data.SuccessMessage = "Selected PHP extensions were disabled successfully."
+		data.PHPExtensionInput = strings.Join(selectedExtensions, ", ")
+		a.recordAudit(r.Context(), "php.disable_extensions", data.PHPExtensionVersion, "success", map[string]any{"extensions": selectedExtensions})
+		a.render(r.Context(), w, r.URL.Path, "php.html", data)
+		return
+	case "update_ini":
+		output, err := a.php.UpdateINISettings(system.PHPINIUpdateSpec{
+			Version:           data.PHPINISelectedVersion,
+			MemoryLimit:       data.PHPINIMemoryLimit,
+			UploadMaxFilesize: data.PHPINIUploadMaxFilesize,
+			PostMaxSize:       data.PHPINIPostMaxSize,
+			MaxExecutionTime:  data.PHPINIMaxExecutionTime,
+		})
+		if err != nil {
+			data.RequestError = phpActionErrorMessage(err)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "php.update_ini", data.PHPINISelectedVersion, "failure", map[string]any{"error": err.Error()})
+			a.render(r.Context(), w, r.URL.Path, "php.html", data)
+			return
+		}
+		data = a.phpTemplateData(r)
+		data.PHPINISelectedVersion = strings.TrimSpace(r.FormValue("ini_version"))
+		data.CommandOutput = output
+		data.SuccessMessage = "PHP ini settings were updated and php-fpm was restarted successfully."
+			a.recordAudit(r.Context(), "php.update_ini", data.PHPINISelectedVersion, "success", map[string]any{})
+			a.render(r.Context(), w, r.URL.Path, "php.html", data)
+			return
 	default:
 		if a.store == nil {
 			data.RequestError = "Managed site storage is not configured yet. Set PANEL_DATABASE_DSN first."
@@ -4675,8 +4720,36 @@ func (a *App) listPHPExtensionStatuses(versions []string) []system.PHPExtensionS
 	return statuses
 }
 
+func (a *App) listPHPDiagnostics(versions []string) []system.PHPDiagnostics {
+	items := make([]system.PHPDiagnostics, 0, len(versions))
+	for _, version := range versions {
+		result, err := a.php.Diagnostics(version)
+		if err != nil {
+			continue
+		}
+		items = append(items, result)
+	}
+	return items
+}
+
+func (a *App) listPHPINISettings(versions []string) []system.PHPINISettings {
+	items := make([]system.PHPINISettings, 0, len(versions))
+	for _, version := range versions {
+		result, err := a.php.ReadINISettings(version)
+		if err != nil {
+			continue
+		}
+		items = append(items, result)
+	}
+	return items
+}
+
 func (a *App) phpTemplateData(r *http.Request) TemplateData {
 	versions := a.listPHPVersions()
+	statuses := a.listPHPExtensionStatuses(versions)
+	encodedStatuses, _ := json.Marshal(statuses)
+	iniSettings := a.listPHPINISettings(versions)
+	encodedINISettings, _ := json.Marshal(iniSettings)
 	return TemplateData{
 		Title:                "PHP",
 		DatabaseStatus:       a.databaseStatus(r.Context()),
@@ -4684,13 +4757,26 @@ func (a *App) phpTemplateData(r *http.Request) TemplateData {
 		ManagedSites:         a.listManagedSites(r),
 		PHPVersions:          versions,
 		PHPInstallableVersions: a.listPHPInstallableVersions(),
-		PHPExtensionStatuses: a.listPHPExtensionStatuses(versions),
+		PHPExtensionStatuses: statuses,
+		PHPExtensionStatusesJSON: template.JS(encodedStatuses),
+		PHPDiagnostics:       a.listPHPDiagnostics(versions),
+		PHPINISettings:       iniSettings,
+		PHPINISettingsJSON:   template.JS(encodedINISettings),
 		PHPCommonExtensions:  phpCommonExtensions(),
+		PHPExtensionPresets:  phpExtensionPresets(),
 	}
 }
 
 func phpCommonExtensions() []string {
-	return []string{"bcmath", "bz2", "curl", "gd", "gmp", "imagick", "intl", "mbstring", "mysql", "opcache", "pgsql", "redis", "soap", "sqlite3", "xml", "zip"}
+	return []string{"bcmath", "bz2", "curl", "exif", "gd", "gmp", "imagick", "intl", "mbstring", "mysql", "opcache", "pcntl", "pgsql", "redis", "soap", "sockets", "sqlite3", "xml", "zip"}
+}
+
+func phpExtensionPresets() []PHPExtensionPresetView {
+	return []PHPExtensionPresetView{
+		{Name: "Laravel", Description: "Common queue, cache, database, and image stack.", Extensions: []string{"bcmath", "curl", "exif", "gd", "imagick", "intl", "mbstring", "mysql", "opcache", "pcntl", "redis", "xml", "zip"}},
+		{Name: "WordPress", Description: "Typical media and MySQL requirements.", Extensions: []string{"curl", "exif", "gd", "imagick", "intl", "mbstring", "mysql", "opcache", "xml", "zip"}},
+		{Name: "API", Description: "Lean API profile with cache and JSON/XML helpers.", Extensions: []string{"bcmath", "curl", "intl", "mbstring", "opcache", "redis", "soap", "xml", "zip"}},
+	}
 }
 
 func collectPHPExtensions(r *http.Request) []string {

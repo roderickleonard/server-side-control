@@ -34,6 +34,22 @@ func (stubPHPManager) EnableExtensions(spec PHPExtensionSpec) (string, error) {
 	return "", fmt.Errorf("php management is only supported on Ubuntu target hosts")
 }
 
+func (stubPHPManager) DisableExtensions(spec PHPExtensionSpec) (string, error) {
+	return "", fmt.Errorf("php management is only supported on Ubuntu target hosts")
+}
+
+func (stubPHPManager) Diagnostics(version string) (PHPDiagnostics, error) {
+	return PHPDiagnostics{}, fmt.Errorf("php management is only supported on Ubuntu target hosts")
+}
+
+func (stubPHPManager) ReadINISettings(version string) (PHPINISettings, error) {
+	return PHPINISettings{}, fmt.Errorf("php management is only supported on Ubuntu target hosts")
+}
+
+func (stubPHPManager) UpdateINISettings(spec PHPINIUpdateSpec) (string, error) {
+	return "", fmt.Errorf("php management is only supported on Ubuntu target hosts")
+}
+
 func (stubPHPManager) SwitchSiteVersion(configPath string, version string) error {
 	return fmt.Errorf("php-fpm switching is only supported on Ubuntu target hosts")
 }

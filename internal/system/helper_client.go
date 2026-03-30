@@ -397,6 +397,26 @@ func (m *helperPHPManager) EnableExtensions(spec PHPExtensionSpec) (string, erro
 	return m.client.Call(context.Background(), "php.enable_extensions", spec, nil)
 }
 
+func (m *helperPHPManager) DisableExtensions(spec PHPExtensionSpec) (string, error) {
+	return m.client.Call(context.Background(), "php.disable_extensions", spec, nil)
+}
+
+func (m *helperPHPManager) Diagnostics(version string) (PHPDiagnostics, error) {
+	var result PHPDiagnostics
+	_, err := m.client.Call(context.Background(), "php.diagnostics", map[string]any{"version": version}, &result)
+	return result, err
+}
+
+func (m *helperPHPManager) ReadINISettings(version string) (PHPINISettings, error) {
+	var result PHPINISettings
+	_, err := m.client.Call(context.Background(), "php.read_ini_settings", map[string]any{"version": version}, &result)
+	return result, err
+}
+
+func (m *helperPHPManager) UpdateINISettings(spec PHPINIUpdateSpec) (string, error) {
+	return m.client.Call(context.Background(), "php.update_ini_settings", spec, nil)
+}
+
 func (m *helperRedisManager) Inspect() (RedisStatus, error) {
 	var status RedisStatus
 	_, err := m.client.Call(context.Background(), "redis.inspect", map[string]any{}, &status)

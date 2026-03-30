@@ -16,6 +16,8 @@ import (
 var fastCGIPassPattern = regexp.MustCompile(`fastcgi_pass\s+unix:/run/php/php[0-9.]+-fpm\.sock;`)
 var phpExtensionPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_+-]*$`)
 var phpInstallCandidateVersions = []string{"8.1", "8.2", "8.3", "8.4"}
+var phpINIByteValuePattern = regexp.MustCompile(`(?i)^\d+[kmg]?$`)
+var phpININumericValuePattern = regexp.MustCompile(`^\d+$`)
 
 type linuxPHPManager struct{}
 
@@ -115,7 +117,8 @@ func (linuxPHPManager) ListExtensionStatus(version string) (PHPExtensionStatus, 
 		return PHPExtensionStatus{}, err
 	}
 	enabled := phpEnabledModulesForVersion(version)
-	return PHPExtensionStatus{Version: version, InstalledModules: installed, EnabledModules: enabled}, nil
+	available := phpPackageModulesForVersion(version)
+	return PHPExtensionStatus{Version: version, InstalledModules: installed, EnabledModules: enabled, AvailableModules: available}, nil
 }
 
 func (linuxPHPManager) InstallExtensions(spec PHPExtensionSpec) (string, error) {
@@ -123,50 +126,12 @@ func (linuxPHPManager) InstallExtensions(spec PHPExtensionSpec) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	installedBefore, err := phpModulesForVersion(version)
+	installOutput, err := ensurePHPExtensionsInstalled(version, extensions)
 	if err != nil {
-		return "", err
+		return installOutput, err
 	}
-	installedSet := sliceToSet(installedBefore)
-	packages := make([]string, 0)
-	for _, extension := range extensions {
-		if _, ok := installedSet[extension]; ok {
-			continue
-		}
-		packageName := "php" + version + "-" + extension
-		if packageExists(packageName) {
-			packages = append(packages, packageName)
-		}
-	}
-	var outputParts []string
-	if len(packages) > 0 {
-		cmd := exec.Command("bash", "-lc", "DEBIAN_FRONTEND=noninteractive apt-get install -y "+shellJoin(packages))
-		var installOutput bytes.Buffer
-		cmd.Stdout = &installOutput
-		cmd.Stderr = &installOutput
-		if err := cmd.Run(); err != nil {
-			return strings.TrimSpace(installOutput.String()), fmt.Errorf("php extension install failed: %w", err)
-		}
-		outputParts = append(outputParts, strings.TrimSpace(installOutput.String()))
-	}
-	modulesAfter, err := phpModulesForVersion(version)
-	if err != nil {
-		return strings.Join(outputParts, "\n\n"), err
-	}
-	modulesAfterSet := sliceToSet(modulesAfter)
-	missing := make([]string, 0)
-	for _, extension := range extensions {
-		if _, ok := modulesAfterSet[extension]; !ok {
-			missing = append(missing, extension)
-		}
-	}
-	if len(missing) > 0 {
-		return strings.Join(outputParts, "\n\n"), fmt.Errorf("extensions are not available for php %s: %s", version, strings.Join(missing, ", "))
-	}
-	enableOutput, err := linuxPHPManager{}.EnableExtensions(PHPExtensionSpec{Version: version, Extensions: extensions})
-	if enableOutput != "" {
-		outputParts = append(outputParts, enableOutput)
-	}
+	enableOutput, err := enablePHPExtensions(version, extensions)
+	outputParts := nonEmptyStrings([]string{installOutput, enableOutput})
 	return strings.Join(nonEmptyStrings(outputParts), "\n\n"), err
 }
 
@@ -175,29 +140,107 @@ func (linuxPHPManager) EnableExtensions(spec PHPExtensionSpec) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	installed, err := phpModulesForVersion(version)
+	installOutput, err := ensurePHPExtensionsInstalled(version, extensions)
+	if err != nil {
+		return installOutput, err
+	}
+	enableOutput, err := enablePHPExtensions(version, extensions)
+	return strings.Join(nonEmptyStrings([]string{installOutput, enableOutput}), "\n\n"), err
+}
+
+func (linuxPHPManager) DisableExtensions(spec PHPExtensionSpec) (string, error) {
+	version, extensions, err := normalizePHPExtensionSpec(spec)
 	if err != nil {
 		return "", err
 	}
-	installedSet := sliceToSet(installed)
-	missing := make([]string, 0)
-	for _, extension := range extensions {
-		if _, ok := installedSet[extension]; !ok {
-			missing = append(missing, extension)
-		}
-	}
-	if len(missing) > 0 {
-		return "", fmt.Errorf("extensions are not installed for php %s: %s", version, strings.Join(missing, ", "))
-	}
 	args := append([]string{"-v", version, "-s", "cli", "-s", "fpm"}, extensions...)
-	cmd := exec.Command("phpenmod", args...)
+	cmd := exec.Command("phpdismod", args...)
 	var output bytes.Buffer
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 	if err := cmd.Run(); err != nil {
-		return strings.TrimSpace(output.String()), fmt.Errorf("enable php extensions failed: %w", err)
+		return strings.TrimSpace(output.String()), fmt.Errorf("disable php extensions failed: %w", err)
 	}
 	return strings.TrimSpace(output.String()), nil
+}
+
+func (linuxPHPManager) Diagnostics(version string) (PHPDiagnostics, error) {
+	version = strings.TrimSpace(version)
+	if !phpVersionPattern.MatchString(version) {
+		return PHPDiagnostics{}, ErrInvalidPHPVersion
+	}
+	phpBinary := "php" + version
+	cliOutput, err := exec.Command(phpBinary, "-v").CombinedOutput()
+	if err != nil {
+		return PHPDiagnostics{}, fmt.Errorf("read php cli version: %w", err)
+	}
+	moduleOutput, err := exec.Command(phpBinary, "-m").CombinedOutput()
+	if err != nil {
+		return PHPDiagnostics{}, fmt.Errorf("read php modules: %w", err)
+	}
+	infoOutput, err := exec.Command(phpBinary, "-i").CombinedOutput()
+	if err != nil {
+		return PHPDiagnostics{}, fmt.Errorf("read php info: %w", err)
+	}
+	fpmService := "php" + version + "-fpm"
+	fpmOutput, _ := exec.Command("systemctl", "status", fpmService, "--no-pager", "--lines=20").CombinedOutput()
+	return PHPDiagnostics{
+		Version:      version,
+		CLIVersion:   firstLine(string(cliOutput)),
+		InfoSummary:  summarizePHPInfo(string(infoOutput)),
+		ModuleOutput: strings.TrimSpace(string(moduleOutput)),
+		FPMStatus:    strings.TrimSpace(string(fpmOutput)),
+	}, nil
+}
+
+func (linuxPHPManager) ReadINISettings(version string) (PHPINISettings, error) {
+	version = strings.TrimSpace(version)
+	if !phpVersionPattern.MatchString(version) {
+		return PHPINISettings{}, ErrInvalidPHPVersion
+	}
+	iniPath := phpINIPath(version, "fpm")
+	settings := PHPINISettings{Version: version}
+	var err error
+	settings.MemoryLimit, err = readPHPINIValue(iniPath, "memory_limit")
+	if err != nil {
+		return PHPINISettings{}, err
+	}
+	settings.UploadMaxFilesize, err = readPHPINIValue(iniPath, "upload_max_filesize")
+	if err != nil {
+		return PHPINISettings{}, err
+	}
+	settings.PostMaxSize, err = readPHPINIValue(iniPath, "post_max_size")
+	if err != nil {
+		return PHPINISettings{}, err
+	}
+	settings.MaxExecutionTime, err = readPHPINIValue(iniPath, "max_execution_time")
+	if err != nil {
+		return PHPINISettings{}, err
+	}
+	return settings, nil
+}
+
+func (linuxPHPManager) UpdateINISettings(spec PHPINIUpdateSpec) (string, error) {
+	version := strings.TrimSpace(spec.Version)
+	if !phpVersionPattern.MatchString(version) {
+		return "", ErrInvalidPHPVersion
+	}
+	settings, err := normalizePHPINIUpdateSpec(spec)
+	if err != nil {
+		return "", err
+	}
+	paths := []string{phpINIPath(version, "cli"), phpINIPath(version, "fpm")}
+	updatedPaths := make([]string, 0, len(paths))
+	for _, iniPath := range paths {
+		if err := updatePHPINIFile(iniPath, settings); err != nil {
+			return strings.Join(updatedPaths, "\n"), err
+		}
+		updatedPaths = append(updatedPaths, iniPath)
+	}
+	if output, err := exec.Command("systemctl", "restart", "php"+version+"-fpm").CombinedOutput(); err != nil {
+		return strings.Join(updatedPaths, "\n"), fmt.Errorf("restart php%s-fpm failed: %w: %s", version, err, strings.TrimSpace(string(output)))
+	}
+	return "Updated php.ini settings:\n" + strings.Join(updatedPaths, "\n"), nil
 }
 
 func (linuxPHPManager) SwitchSiteVersion(configPath string, version string) error {
@@ -262,6 +305,27 @@ func normalizePHPExtensionSpec(spec PHPExtensionSpec) (string, []string, error) 
 	return version, result, nil
 }
 
+func normalizePHPINIUpdateSpec(spec PHPINIUpdateSpec) (PHPINIUpdateSpec, error) {
+	spec.Version = strings.TrimSpace(spec.Version)
+	spec.MemoryLimit = normalizePHPINIByteValue(spec.MemoryLimit)
+	spec.UploadMaxFilesize = normalizePHPINIByteValue(spec.UploadMaxFilesize)
+	spec.PostMaxSize = normalizePHPINIByteValue(spec.PostMaxSize)
+	spec.MaxExecutionTime = strings.TrimSpace(spec.MaxExecutionTime)
+	if spec.MemoryLimit == "" || !phpINIByteValuePattern.MatchString(spec.MemoryLimit) {
+		return PHPINIUpdateSpec{}, fmt.Errorf("memory_limit must look like 128M or 1G")
+	}
+	if spec.UploadMaxFilesize == "" || !phpINIByteValuePattern.MatchString(spec.UploadMaxFilesize) {
+		return PHPINIUpdateSpec{}, fmt.Errorf("upload_max_filesize must look like 64M")
+	}
+	if spec.PostMaxSize == "" || !phpINIByteValuePattern.MatchString(spec.PostMaxSize) {
+		return PHPINIUpdateSpec{}, fmt.Errorf("post_max_size must look like 64M")
+	}
+	if spec.MaxExecutionTime == "" || !phpININumericValuePattern.MatchString(spec.MaxExecutionTime) {
+		return PHPINIUpdateSpec{}, fmt.Errorf("max_execution_time must be numeric seconds")
+	}
+	return spec, nil
+}
+
 func phpModulesForVersion(version string) ([]string, error) {
 	paths, err := filepath.Glob(filepath.Join("/etc/php", version, "mods-available", "*.ini"))
 	if err != nil {
@@ -289,6 +353,33 @@ func phpEnabledModulesForVersion(version string) []string {
 			}
 		}
 	}
+	sort.Strings(modules)
+	return uniqueStrings(modules)
+}
+
+func phpPackageModulesForVersion(version string) []string {
+	output, err := exec.Command("bash", "-lc", "apt-cache search '^php"+version+"-' 2>/dev/null | awk '{print $1}'").Output()
+	if err != nil {
+		return nil
+	}
+	ignored := map[string]struct{}{"cgi": {}, "cli": {}, "common": {}, "dev": {}, "fpm": {}, "phpdbg": {}}
+	modules := make([]string, 0)
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "php"+version+"-") {
+			continue
+		}
+		module := strings.TrimPrefix(line, "php"+version+"-")
+		if !phpExtensionPattern.MatchString(module) {
+			continue
+		}
+		if _, skip := ignored[module]; skip {
+			continue
+		}
+		modules = append(modules, module)
+	}
+	installed, _ := phpModulesForVersion(version)
+	modules = append(modules, installed...)
 	sort.Strings(modules)
 	return uniqueStrings(modules)
 }
@@ -322,6 +413,66 @@ func isDigits(value string) bool {
 func packageExists(packageName string) bool {
 	output, err := exec.Command("bash", "-lc", "apt-cache show "+shellQuote(packageName)+" 2>/dev/null").Output()
 	return err == nil && strings.TrimSpace(string(output)) != ""
+}
+
+func ensurePHPExtensionsInstalled(version string, extensions []string) (string, error) {
+	installedBefore, err := phpModulesForVersion(version)
+	if err != nil {
+		return "", err
+	}
+	installedSet := sliceToSet(installedBefore)
+	packages := make([]string, 0)
+	missingPackages := make([]string, 0)
+	for _, extension := range extensions {
+		if _, ok := installedSet[extension]; ok {
+			continue
+		}
+		packageName := "php" + version + "-" + extension
+		if packageExists(packageName) {
+			packages = append(packages, packageName)
+			continue
+		}
+		missingPackages = append(missingPackages, extension)
+	}
+	var outputParts []string
+	if len(packages) > 0 {
+		cmd := exec.Command("bash", "-lc", "DEBIAN_FRONTEND=noninteractive apt-get install -y "+shellJoin(packages))
+		var installOutput bytes.Buffer
+		cmd.Stdout = &installOutput
+		cmd.Stderr = &installOutput
+		if err := cmd.Run(); err != nil {
+			return strings.TrimSpace(installOutput.String()), fmt.Errorf("php extension install failed: %w", err)
+		}
+		outputParts = append(outputParts, strings.TrimSpace(installOutput.String()))
+	}
+	modulesAfter, err := phpModulesForVersion(version)
+	if err != nil {
+		return strings.Join(outputParts, "\n\n"), err
+	}
+	modulesAfterSet := sliceToSet(modulesAfter)
+	missing := append([]string{}, missingPackages...)
+	for _, extension := range extensions {
+		if _, ok := modulesAfterSet[extension]; !ok {
+			missing = append(missing, extension)
+		}
+	}
+	missing = uniqueStrings(missing)
+	if len(missing) > 0 {
+		return strings.Join(outputParts, "\n\n"), fmt.Errorf("extensions are not available for php %s: %s", version, strings.Join(missing, ", "))
+	}
+	return strings.Join(nonEmptyStrings(outputParts), "\n\n"), nil
+}
+
+func enablePHPExtensions(version string, extensions []string) (string, error) {
+	args := append([]string{"-v", version, "-s", "cli", "-s", "fpm"}, extensions...)
+	cmd := exec.Command("phpenmod", args...)
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Run(); err != nil {
+		return strings.TrimSpace(output.String()), fmt.Errorf("enable php extensions failed: %w", err)
+	}
+	return strings.TrimSpace(output.String()), nil
 }
 
 func sliceToSet(values []string) map[string]struct{} {
@@ -358,4 +509,110 @@ func nonEmptyStrings(values []string) []string {
 		}
 	}
 	return result
+}
+
+func firstLine(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if index := strings.IndexByte(value, '\n'); index >= 0 {
+		return strings.TrimSpace(value[:index])
+	}
+	return value
+}
+
+func summarizePHPInfo(info string) string {
+	wanted := []string{
+		"Loaded Configuration File",
+		"Scan this dir for additional .ini files",
+		"Additional .ini files parsed",
+		"memory_limit",
+		"upload_max_filesize",
+		"post_max_size",
+		"max_execution_time",
+		"display_errors",
+		"error_reporting",
+	}
+	result := make([]string, 0, len(wanted))
+	lines := strings.Split(info, "\n")
+	for _, wantedKey := range wanted {
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, wantedKey) {
+				result = append(result, trimmed)
+				break
+			}
+		}
+	}
+	return strings.Join(result, "\n")
+}
+
+func phpINIPath(version string, sapi string) string {
+	return filepath.Join("/etc/php", version, sapi, "php.ini")
+}
+
+func readPHPINIValue(iniPath string, key string) (string, error) {
+	content, err := os.ReadFile(iniPath)
+	if err != nil {
+		return "", err
+	}
+	prefix := key + " ="
+	for _, line := range strings.Split(string(content), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, ";") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, prefix)), nil
+		}
+	}
+	return "", fmt.Errorf("%s not found in %s", key, iniPath)
+}
+
+func updatePHPINIFile(iniPath string, spec PHPINIUpdateSpec) error {
+	content, err := os.ReadFile(iniPath)
+	if err != nil {
+		return err
+	}
+	updated := string(content)
+	updated = replaceOrAppendPHPINIValue(updated, "memory_limit", spec.MemoryLimit)
+	updated = replaceOrAppendPHPINIValue(updated, "upload_max_filesize", spec.UploadMaxFilesize)
+	updated = replaceOrAppendPHPINIValue(updated, "post_max_size", spec.PostMaxSize)
+	updated = replaceOrAppendPHPINIValue(updated, "max_execution_time", spec.MaxExecutionTime)
+	if updated == string(content) {
+		return nil
+	}
+	return os.WriteFile(iniPath, []byte(updated), 0o644)
+}
+
+func replaceOrAppendPHPINIValue(content string, key string, value string) string {
+	lines := strings.Split(content, "\n")
+	replaced := false
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, ";") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, key+" =") {
+			lines[index] = key + " = " + value
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		lines = append(lines, key+" = "+value)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func normalizePHPINIByteValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if len(value) == 1 {
+		return strings.ToUpper(value)
+	}
+	return value[:len(value)-1] + strings.ToUpper(value[len(value)-1:])
 }
