@@ -679,6 +679,7 @@ func (a *App) handleDeploysStream(w http.ResponseWriter, r *http.Request) {
 			Branch: strings.TrimSpace(r.FormValue("branch")),
 			TargetDirectory: strings.TrimSpace(r.FormValue("target_directory")),
 			RunAsUser: strings.TrimSpace(r.FormValue("run_as_user")),
+			GitSiteName: strings.TrimSpace(r.FormValue("git_site_name")),
 			PostDeployCommand: r.FormValue("post_deploy_command"),
 		}
 		helperAction = "deploy.run"
@@ -1028,6 +1029,7 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 			Branch:            branch,
 			TargetDirectory:   site.RootDirectory,
 			RunAsUser:         site.OwnerLinuxUser,
+			GitSiteName:       site.Name,
 			PostDeployCommand: postDeployCommand,
 		}
 		auditAction = "deploy.site_sync"
@@ -1065,6 +1067,7 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 			Branch:            firstNonEmpty(subdomain.BranchName, "main"),
 			TargetDirectory:   subdomain.RootDirectory,
 			RunAsUser:         targetUser,
+			GitSiteName:       subdomain.FullDomain,
 			PostDeployCommand: subdomain.PostDeployCommand,
 		}
 		auditAction = "deploy.subdomain_sync"

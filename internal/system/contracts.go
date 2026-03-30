@@ -118,6 +118,7 @@ type DeploySpec struct {
 	Branch            string
 	TargetDirectory   string
 	RunAsUser         string
+	GitSiteName       string
 	PostDeployCommand string
 }
 

@@ -1577,11 +1577,16 @@ func (a *App) handleSiteDeployWebhook(w http.ResponseWriter, r *http.Request) {
 	a.recordAudit(r.Context(), "deploy.webhook", targetName, "queued", map[string]any{"branch": configuredBranch, "incoming_branch": incomingBranch, "provider": provider, "auth_mode": authMode, "subdomain_id": subdomainID})
 	go func(site domain.ManagedSite, subdomain domain.SiteSubdomain, repositoryURL string, branch string, targetLabel string, deployDirectory string, notifyEmail string, postDeployCommand string, subdomainID int64) {
 		ctx := context.Background()
+		gitSiteName := site.Name
+		if subdomainID > 0 {
+			gitSiteName = subdomain.FullDomain
+		}
 		result, deployErr := a.deploys.Deploy(system.DeploySpec{
 			RepositoryURL:     repositoryURL,
 			Branch:            branch,
 			TargetDirectory:   deployDirectory,
 			RunAsUser:         site.OwnerLinuxUser,
+			GitSiteName:       gitSiteName,
 			PostDeployCommand: postDeployCommand,
 		})
 		notifySite := site
@@ -2669,6 +2674,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			Branch:            data.GitBranch,
 			TargetDirectory:   site.RootDirectory,
 			RunAsUser:         site.OwnerLinuxUser,
+			GitSiteName:       site.Name,
 			PostDeployCommand: data.GitPostDeployCommand,
 		}
 		wasGitRepo := repositoryStatus.IsGitRepo
@@ -3920,6 +3926,7 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 		Branch:            r.FormValue("branch"),
 		TargetDirectory:   r.FormValue("target_directory"),
 		RunAsUser:         r.FormValue("run_as_user"),
+		GitSiteName:       r.FormValue("git_site_name"),
 		PostDeployCommand: r.FormValue("post_deploy_command"),
 	}
 

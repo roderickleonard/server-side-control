@@ -29,6 +29,7 @@ func (linuxDeployManager) Deploy(spec DeploySpec) (DeployResult, error) {
 	spec.Branch = strings.TrimSpace(spec.Branch)
 	spec.TargetDirectory = strings.TrimSpace(spec.TargetDirectory)
 	spec.RunAsUser = strings.TrimSpace(spec.RunAsUser)
+	spec.GitSiteName = strings.TrimSpace(spec.GitSiteName)
 	if spec.Branch == "" {
 		spec.Branch = "main"
 	}
@@ -53,22 +54,33 @@ func (linuxDeployManager) Deploy(spec DeploySpec) (DeployResult, error) {
 		return DeployResult{}, err
 	}
 
+	gitEnv, sshConfigErr := gitEnvironmentForDeploy(spec)
+	if sshConfigErr != nil {
+		return DeployResult{}, sshConfigErr
+	}
+
 	var output bytes.Buffer
 	action := "clone"
 	previousCommit, _ := currentCommit(ctx, spec.RunAsUser, spec.TargetDirectory, &output)
 	if dirExists(filepath.Join(spec.TargetDirectory, ".git")) {
 		action = "update"
-		if err := runAsUser(ctx, spec.RunAsUser, &output, "git", "-C", spec.TargetDirectory, "fetch", "--all", "--prune"); err != nil {
+		if err := configureRepositorySSHCommand(ctx, spec.RunAsUser, spec.TargetDirectory, gitEnv, &output); err != nil {
 			return DeployResult{Action: action, Output: output.String()}, err
 		}
-		if err := runAsUser(ctx, spec.RunAsUser, &output, "git", "-C", spec.TargetDirectory, "checkout", spec.Branch); err != nil {
+		if err := runAsUserEnv(ctx, spec.RunAsUser, gitEnv, &output, "git", "-C", spec.TargetDirectory, "fetch", "--all", "--prune"); err != nil {
 			return DeployResult{Action: action, Output: output.String()}, err
 		}
-		if err := runAsUser(ctx, spec.RunAsUser, &output, "git", "-C", spec.TargetDirectory, "pull", "--ff-only", "origin", spec.Branch); err != nil {
+		if err := runAsUserEnv(ctx, spec.RunAsUser, gitEnv, &output, "git", "-C", spec.TargetDirectory, "checkout", spec.Branch); err != nil {
+			return DeployResult{Action: action, Output: output.String()}, err
+		}
+		if err := runAsUserEnv(ctx, spec.RunAsUser, gitEnv, &output, "git", "-C", spec.TargetDirectory, "pull", "--ff-only", "origin", spec.Branch); err != nil {
 			return DeployResult{Action: action, Output: output.String()}, err
 		}
 	} else {
-		if err := runAsUser(ctx, spec.RunAsUser, &output, "git", "clone", "--branch", spec.Branch, spec.RepositoryURL, spec.TargetDirectory); err != nil {
+		if err := runAsUserEnv(ctx, spec.RunAsUser, gitEnv, &output, "git", "clone", "--branch", spec.Branch, spec.RepositoryURL, spec.TargetDirectory); err != nil {
+			return DeployResult{Action: action, Output: output.String()}, err
+		}
+		if err := configureRepositorySSHCommand(ctx, spec.RunAsUser, spec.TargetDirectory, gitEnv, &output); err != nil {
 			return DeployResult{Action: action, Output: output.String()}, err
 		}
 	}
@@ -162,6 +174,7 @@ func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
 	spec.Branch = strings.TrimSpace(spec.Branch)
 	spec.TargetDirectory = strings.TrimSpace(spec.TargetDirectory)
 	spec.RunAsUser = strings.TrimSpace(spec.RunAsUser)
+	spec.GitSiteName = strings.TrimSpace(spec.GitSiteName)
 	if spec.Branch == "" {
 		spec.Branch = "main"
 	}
@@ -186,18 +199,29 @@ func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
 		return err
 	}
 
+	gitEnv, sshConfigErr := gitEnvironmentForDeploy(spec)
+	if sshConfigErr != nil {
+		return sshConfigErr
+	}
+
 	if dirExists(filepath.Join(spec.TargetDirectory, ".git")) {
-		if err := runAsUserStream(ctx, spec.RunAsUser, stdout, stderr, "git", "-C", spec.TargetDirectory, "fetch", "--all", "--prune"); err != nil {
+		if err := configureRepositorySSHCommandStream(ctx, spec.RunAsUser, spec.TargetDirectory, gitEnv, stdout, stderr); err != nil {
 			return err
 		}
-		if err := runAsUserStream(ctx, spec.RunAsUser, stdout, stderr, "git", "-C", spec.TargetDirectory, "checkout", spec.Branch); err != nil {
+		if err := runAsUserStreamEnv(ctx, spec.RunAsUser, gitEnv, stdout, stderr, "git", "-C", spec.TargetDirectory, "fetch", "--all", "--prune"); err != nil {
 			return err
 		}
-		if err := runAsUserStream(ctx, spec.RunAsUser, stdout, stderr, "git", "-C", spec.TargetDirectory, "pull", "--ff-only", "origin", spec.Branch); err != nil {
+		if err := runAsUserStreamEnv(ctx, spec.RunAsUser, gitEnv, stdout, stderr, "git", "-C", spec.TargetDirectory, "checkout", spec.Branch); err != nil {
+			return err
+		}
+		if err := runAsUserStreamEnv(ctx, spec.RunAsUser, gitEnv, stdout, stderr, "git", "-C", spec.TargetDirectory, "pull", "--ff-only", "origin", spec.Branch); err != nil {
 			return err
 		}
 	} else {
-		if err := runAsUserStream(ctx, spec.RunAsUser, stdout, stderr, "git", "clone", "--branch", spec.Branch, spec.RepositoryURL, spec.TargetDirectory); err != nil {
+		if err := runAsUserStreamEnv(ctx, spec.RunAsUser, gitEnv, stdout, stderr, "git", "clone", "--branch", spec.Branch, spec.RepositoryURL, spec.TargetDirectory); err != nil {
+			return err
+		}
+		if err := configureRepositorySSHCommandStream(ctx, spec.RunAsUser, spec.TargetDirectory, gitEnv, stdout, stderr); err != nil {
 			return err
 		}
 	}
@@ -253,7 +277,11 @@ func commandOutputAsUser(ctx context.Context, username string, directory string,
 }
 
 func runAsUser(ctx context.Context, username string, output *bytes.Buffer, name string, args ...string) error {
-	fullArgs := append([]string{"-u", username, "--", name}, args...)
+	return runAsUserEnv(ctx, username, nil, output, name, args...)
+}
+
+func runAsUserEnv(ctx context.Context, username string, env map[string]string, output *bytes.Buffer, name string, args ...string) error {
+	fullArgs := buildSudoCommandArgs(username, env, name, args...)
 	cmd := exec.CommandContext(ctx, "sudo", fullArgs...)
 	cmd.Stdout = output
 	cmd.Stderr = output
@@ -264,7 +292,11 @@ func runAsUser(ctx context.Context, username string, output *bytes.Buffer, name 
 }
 
 func runAsUserStream(ctx context.Context, username string, stdout io.Writer, stderr io.Writer, name string, args ...string) error {
-	fullArgs := append([]string{"-u", username, "--", name}, args...)
+	return runAsUserStreamEnv(ctx, username, nil, stdout, stderr, name, args...)
+}
+
+func runAsUserStreamEnv(ctx context.Context, username string, env map[string]string, stdout io.Writer, stderr io.Writer, name string, args ...string) error {
+	fullArgs := buildSudoCommandArgs(username, env, name, args...)
 	cmd := exec.CommandContext(ctx, "sudo", fullArgs...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
@@ -272,6 +304,70 @@ func runAsUserStream(ctx context.Context, username string, stdout io.Writer, std
 		return fmt.Errorf("command failed: %w", err)
 	}
 	return nil
+}
+
+func buildSudoCommandArgs(username string, env map[string]string, name string, args ...string) []string {
+	fullArgs := append([]string{"-u", username, "--", name}, args...)
+	if len(env) == 0 {
+		return fullArgs
+	}
+	envArgs := make([]string, 0, len(env))
+	for key, value := range env {
+		envArgs = append(envArgs, key+"="+value)
+	}
+	fullArgs = append([]string{"-u", username, "--", "env"}, envArgs...)
+	fullArgs = append(fullArgs, name)
+	fullArgs = append(fullArgs, args...)
+	return fullArgs
+}
+
+func gitEnvironmentForDeploy(spec DeploySpec) (map[string]string, error) {
+	protocol, _ := parseRepositoryEndpoint(spec.RepositoryURL)
+	if protocol != "ssh" || spec.GitSiteName == "" {
+		return nil, nil
+	}
+	homeDirectory, err := lookupUserHome(spec.RunAsUser)
+	if err != nil {
+		return nil, err
+	}
+	keyPath := deployKeyBasePath(homeDirectory, spec.GitSiteName)
+	if _, err := os.Stat(keyPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("deploy key not found for %s", spec.GitSiteName)
+		}
+		return nil, err
+	}
+	return map[string]string{
+		"GIT_SSH_COMMAND": buildGitSSHCommand(keyPath),
+		"GIT_TERMINAL_PROMPT": "0",
+	}, nil
+}
+
+func buildGitSSHCommand(keyPath string) string {
+	return fmt.Sprintf("ssh -F /dev/null -i %s -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes -o StrictHostKeyChecking=yes", shellQuote(keyPath))
+}
+
+func configureRepositorySSHCommand(ctx context.Context, username string, targetDirectory string, env map[string]string, output *bytes.Buffer) error {
+	sshCommand := strings.TrimSpace(envValue(env, "GIT_SSH_COMMAND"))
+	if sshCommand == "" {
+		return nil
+	}
+	return runAsUser(ctx, username, output, "git", "-C", targetDirectory, "config", "core.sshCommand", sshCommand)
+}
+
+func configureRepositorySSHCommandStream(ctx context.Context, username string, targetDirectory string, env map[string]string, stdout io.Writer, stderr io.Writer) error {
+	sshCommand := strings.TrimSpace(envValue(env, "GIT_SSH_COMMAND"))
+	if sshCommand == "" {
+		return nil
+	}
+	return runAsUserStream(ctx, username, stdout, stderr, "git", "-C", targetDirectory, "config", "core.sshCommand", sshCommand)
+}
+
+func envValue(env map[string]string, key string) string {
+	if len(env) == 0 {
+		return ""
+	}
+	return env[key]
 }
 
 func runShellAsUser(ctx context.Context, username string, workingDir string, command string, output *bytes.Buffer) error {
