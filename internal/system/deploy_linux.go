@@ -73,6 +73,9 @@ func (linuxDeployManager) Deploy(spec DeploySpec) (DeployResult, error) {
 		if err := configureRepositorySSHCommand(ctx, spec.RunAsUser, spec.TargetDirectory, gitEnv, &output); err != nil {
 			return DeployResult{Action: action, Output: output.String()}, err
 		}
+		if err := configureRepositoryFileMode(ctx, spec.RunAsUser, spec.TargetDirectory, &output); err != nil {
+			return DeployResult{Action: action, Output: output.String()}, err
+		}
 		if err := runAsUserEnv(ctx, spec.RunAsUser, gitEnv, &output, "git", "-C", spec.TargetDirectory, "fetch", "--all", "--prune"); err != nil {
 			return DeployResult{Action: action, Output: output.String()}, err
 		}
@@ -90,6 +93,9 @@ func (linuxDeployManager) Deploy(spec DeploySpec) (DeployResult, error) {
 			return DeployResult{Action: action, Output: output.String()}, err
 		}
 		if err := configureRepositorySSHCommand(ctx, spec.RunAsUser, spec.TargetDirectory, gitEnv, &output); err != nil {
+			return DeployResult{Action: action, Output: output.String()}, err
+		}
+		if err := configureRepositoryFileMode(ctx, spec.RunAsUser, spec.TargetDirectory, &output); err != nil {
 			return DeployResult{Action: action, Output: output.String()}, err
 		}
 	}
@@ -223,6 +229,9 @@ func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
 		if err := configureRepositorySSHCommandStream(ctx, spec.RunAsUser, spec.TargetDirectory, gitEnv, stdout, stderr); err != nil {
 			return err
 		}
+		if err := configureRepositoryFileModeStream(ctx, spec.RunAsUser, spec.TargetDirectory, stdout, stderr); err != nil {
+			return err
+		}
 		if err := runAsUserStreamEnv(ctx, spec.RunAsUser, gitEnv, stdout, stderr, "git", "-C", spec.TargetDirectory, "fetch", "--all", "--prune"); err != nil {
 			return err
 		}
@@ -240,6 +249,9 @@ func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
 			return err
 		}
 		if err := configureRepositorySSHCommandStream(ctx, spec.RunAsUser, spec.TargetDirectory, gitEnv, stdout, stderr); err != nil {
+			return err
+		}
+		if err := configureRepositoryFileModeStream(ctx, spec.RunAsUser, spec.TargetDirectory, stdout, stderr); err != nil {
 			return err
 		}
 	}
@@ -470,6 +482,14 @@ func configureRepositorySSHCommandStream(ctx context.Context, username string, t
 		return nil
 	}
 	return runAsUserStream(ctx, username, stdout, stderr, "git", "-C", targetDirectory, "config", "core.sshCommand", sshCommand)
+}
+
+func configureRepositoryFileMode(ctx context.Context, username string, targetDirectory string, output *bytes.Buffer) error {
+	return runAsUser(ctx, username, output, "git", "-C", targetDirectory, "config", "core.fileMode", "false")
+}
+
+func configureRepositoryFileModeStream(ctx context.Context, username string, targetDirectory string, stdout io.Writer, stderr io.Writer) error {
+	return runAsUserStream(ctx, username, stdout, stderr, "git", "-C", targetDirectory, "config", "core.fileMode", "false")
 }
 
 func ensureCleanGitWorktree(ctx context.Context, username string, targetDirectory string, output *bytes.Buffer) error {
