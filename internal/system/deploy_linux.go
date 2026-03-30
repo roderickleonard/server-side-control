@@ -31,14 +31,11 @@ func (linuxDeployManager) Deploy(spec DeploySpec) (DeployResult, error) {
 	spec.RunAsUser = strings.TrimSpace(spec.RunAsUser)
 	spec.GitSiteName = strings.TrimSpace(spec.GitSiteName)
 	spec.PostDeployNodeVersion = strings.TrimSpace(spec.PostDeployNodeVersion)
-	if spec.Branch == "" {
-		spec.Branch = "main"
-	}
 
 	if !repoURLPattern.MatchString(spec.RepositoryURL) {
 		return DeployResult{}, ErrInvalidRepoURL
 	}
-	if !branchPattern.MatchString(spec.Branch) {
+	if spec.Branch != "" && !branchPattern.MatchString(spec.Branch) {
 		return DeployResult{}, ErrInvalidBranch
 	}
 	if !filepath.IsAbs(spec.TargetDirectory) {
@@ -62,6 +59,11 @@ func (linuxDeployManager) Deploy(spec DeploySpec) (DeployResult, error) {
 	if sshConfigErr != nil {
 		return DeployResult{}, sshConfigErr
 	}
+	resolvedBranch, resolveErr := resolveDeployBranch(ctx, spec, gitEnv, nil)
+	if resolveErr != nil {
+		return DeployResult{}, resolveErr
+	}
+	spec.Branch = resolvedBranch
 
 	var output bytes.Buffer
 	action := "clone"
@@ -183,14 +185,11 @@ func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
 	spec.RunAsUser = strings.TrimSpace(spec.RunAsUser)
 	spec.GitSiteName = strings.TrimSpace(spec.GitSiteName)
 	spec.PostDeployNodeVersion = strings.TrimSpace(spec.PostDeployNodeVersion)
-	if spec.Branch == "" {
-		spec.Branch = "main"
-	}
 
 	if !repoURLPattern.MatchString(spec.RepositoryURL) {
 		return ErrInvalidRepoURL
 	}
-	if !branchPattern.MatchString(spec.Branch) {
+	if spec.Branch != "" && !branchPattern.MatchString(spec.Branch) {
 		return ErrInvalidBranch
 	}
 	if !filepath.IsAbs(spec.TargetDirectory) {
@@ -214,6 +213,11 @@ func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
 	if sshConfigErr != nil {
 		return sshConfigErr
 	}
+	resolvedBranch, resolveErr := resolveDeployBranch(ctx, spec, gitEnv, stdout)
+	if resolveErr != nil {
+		return resolveErr
+	}
+	spec.Branch = resolvedBranch
 
 	if dirExists(filepath.Join(spec.TargetDirectory, ".git")) {
 		if err := configureRepositorySSHCommandStream(ctx, spec.RunAsUser, spec.TargetDirectory, gitEnv, stdout, stderr); err != nil {
@@ -279,6 +283,97 @@ func currentCommit(ctx context.Context, username string, directory string, outpu
 		output.Write(localOutput.Bytes())
 	}
 	return strings.TrimSpace(localOutput.String()), nil
+}
+
+func currentBranch(ctx context.Context, username string, directory string, output *bytes.Buffer) (string, error) {
+	if !dirExists(filepath.Join(directory, ".git")) {
+		return "", nil
+	}
+	var localOutput bytes.Buffer
+	if err := runAsUser(ctx, username, &localOutput, "git", "-C", directory, "rev-parse", "--abbrev-ref", "HEAD"); err != nil {
+		if output != nil {
+			output.Write(localOutput.Bytes())
+		}
+		return "", err
+	}
+	if output != nil {
+		output.Write(localOutput.Bytes())
+	}
+	branch := strings.TrimSpace(localOutput.String())
+	if branch == "HEAD" {
+		return "", nil
+	}
+	return branch, nil
+}
+
+func resolveDeployBranch(ctx context.Context, spec DeploySpec, env map[string]string, output io.Writer) (string, error) {
+	if spec.Branch != "" {
+		if branchExistsRemote(ctx, spec.RunAsUser, spec.RepositoryURL, spec.Branch, env, output) {
+			return spec.Branch, nil
+		}
+		if current := strings.TrimSpace(commandOutputAsUser(ctx, spec.RunAsUser, spec.TargetDirectory, "rev-parse", "--abbrev-ref", "HEAD")); current != "" && current != "HEAD" {
+			return current, nil
+		}
+		if remote := strings.TrimSpace(detectRemoteDefaultBranch(ctx, spec.RunAsUser, spec.RepositoryURL, env, output)); remote != "" {
+			return remote, nil
+		}
+		return spec.Branch, nil
+	}
+	if current := strings.TrimSpace(commandOutputAsUser(ctx, spec.RunAsUser, spec.TargetDirectory, "rev-parse", "--abbrev-ref", "HEAD")); current != "" && current != "HEAD" {
+		return current, nil
+	}
+	if remote := strings.TrimSpace(detectRemoteDefaultBranch(ctx, spec.RunAsUser, spec.RepositoryURL, env, output)); remote != "" {
+		return remote, nil
+	}
+	return "main", nil
+}
+
+func detectRemoteDefaultBranch(ctx context.Context, username string, repositoryURL string, env map[string]string, output io.Writer) string {
+	var buffer bytes.Buffer
+	if err := runAsUserEnv(ctx, username, env, &buffer, "git", "ls-remote", "--symref", repositoryURL, "HEAD"); err == nil {
+		if output != nil {
+			_, _ = output.Write(buffer.Bytes())
+		}
+		for _, line := range strings.Split(buffer.String(), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "ref:") && strings.HasSuffix(line, "HEAD") {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 {
+					ref := strings.TrimSpace(fields[1])
+					if strings.HasPrefix(ref, "refs/heads/") {
+						return strings.TrimPrefix(ref, "refs/heads/")
+					}
+				}
+			}
+		}
+	}
+	for _, candidate := range []string{"main", "master"} {
+		buffer.Reset()
+		if err := runAsUserEnv(ctx, username, env, &buffer, "git", "ls-remote", "--heads", repositoryURL, candidate); err == nil {
+			if output != nil {
+				_, _ = output.Write(buffer.Bytes())
+			}
+			if strings.TrimSpace(buffer.String()) != "" {
+				return candidate
+			}
+		}
+	}
+	return ""
+}
+
+func branchExistsRemote(ctx context.Context, username string, repositoryURL string, branch string, env map[string]string, output io.Writer) bool {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return false
+	}
+	var buffer bytes.Buffer
+	if err := runAsUserEnv(ctx, username, env, &buffer, "git", "ls-remote", "--heads", repositoryURL, branch); err != nil {
+		return false
+	}
+	if output != nil {
+		_, _ = output.Write(buffer.Bytes())
+	}
+	return strings.TrimSpace(buffer.String()) != ""
 }
 
 func commandOutputAsUser(ctx context.Context, username string, directory string, args ...string) string {

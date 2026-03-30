@@ -1592,7 +1592,7 @@ func (a *App) handleSiteDeployWebhook(w http.ResponseWriter, r *http.Request) {
 	subdomainID, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("subdomain_id")), 10, 64)
 	targetName := site.Name
 	targetDirectory := site.RootDirectory
-	targetBranch := firstNonEmpty(site.AutoDeployBranch, "main")
+	targetBranch := strings.TrimSpace(site.AutoDeployBranch)
 	targetSecret := strings.TrimSpace(site.AutoDeploySecret)
 	targetCommand := strings.TrimSpace(site.AutoDeployCommand)
 	targetNodeVersion := firstNonEmpty(strings.TrimSpace(site.AutoDeployNodeVersion), strings.TrimSpace(site.NodeVersion))
@@ -1613,7 +1613,7 @@ func (a *App) handleSiteDeployWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		targetName = webhookSubdomain.FullDomain
 		targetDirectory = webhookSubdomain.RootDirectory
-		targetBranch = firstNonEmpty(webhookSubdomain.AutoDeployBranch, webhookSubdomain.BranchName, "main")
+		targetBranch = firstNonEmpty(webhookSubdomain.AutoDeployBranch, webhookSubdomain.BranchName)
 		targetSecret = strings.TrimSpace(webhookSubdomain.AutoDeploySecret)
 		targetCommand = strings.TrimSpace(webhookSubdomain.AutoDeployCommand)
 		targetNodeVersion = firstNonEmpty(strings.TrimSpace(webhookSubdomain.AutoDeployNodeVersion), strings.TrimSpace(webhookSubdomain.NodeVersion))
@@ -2645,9 +2645,6 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 	})
 	runtimeStatus, runtimeErr := a.runtime.Inspect(system.RuntimeInspectSpec{User: site.OwnerLinuxUser})
 	branch := repositoryStatus.Branch
-	if branch == "" {
-		branch = "main"
-	}
 	repositoryURL := repositoryStatus.RemoteURL
 	gitAuthStatus, gitAuthErr := a.gitAuth.Inspect(system.GitAuthInspectSpec{User: site.OwnerLinuxUser, SiteName: site.Name, RepositoryURL: repositoryURL})
 	releases := a.listSiteDeploymentReleases(r, site.RootDirectory, site.OwnerLinuxUser)
@@ -2993,7 +2990,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		successMessage = "Site node version saved."
 	case "save_auto_deploy":
 		if data.AutoDeployBranch == "" {
-			data.AutoDeployBranch = firstNonEmpty(branch, "main")
+			data.AutoDeployBranch = strings.TrimSpace(branch)
 		}
 		if data.AutoDeployEnabled && data.AutoDeploySecret == "" {
 			secret, err := randomPassword(32)
@@ -3023,7 +3020,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		}
 		data.AutoDeploySecret = secret
 		if data.AutoDeployBranch == "" {
-			data.AutoDeployBranch = firstNonEmpty(site.AutoDeployBranch, branch, "main")
+			data.AutoDeployBranch = firstNonEmpty(site.AutoDeployBranch, branch)
 		}
 		if err := a.store.UpdateManagedSiteAutoDeploy(r.Context(), site.Name, data.AutoDeployEnabled || site.AutoDeployEnabled, data.AutoDeployBranch, data.AutoDeploySecret, firstNonEmpty(data.AutoDeployCommand, site.AutoDeployCommand), firstNonEmpty(data.AutoDeployNodeVersion, site.AutoDeployNodeVersion), firstNonEmpty(data.AutoDeployNotifyEmail, site.AutoDeployNotifyEmail)); err != nil {
 			data.RequestError = "Could not rotate auto deploy secret: " + err.Error()
@@ -3049,10 +3046,10 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		subdomainRecord.RepositoryURL = data.SubdomainRepositoryURL
-		subdomainRecord.BranchName = firstNonEmpty(data.SubdomainBranch, "main")
+		subdomainRecord.BranchName = firstNonEmpty(data.SubdomainBranch, branch)
 		subdomainRecord.PostDeployCommand = data.SubdomainPostDeployCommand
 		subdomainRecord.AutoDeployEnabled = data.SubdomainAutoDeployEnabled
-		subdomainRecord.AutoDeployBranch = firstNonEmpty(data.SubdomainAutoDeployBranch, subdomainRecord.BranchName, "main")
+		subdomainRecord.AutoDeployBranch = firstNonEmpty(data.SubdomainAutoDeployBranch, subdomainRecord.BranchName)
 		subdomainRecord.AutoDeploySecret = data.SubdomainAutoDeploySecret
 		subdomainRecord.AutoDeployCommand = data.SubdomainAutoDeployCommand
 		subdomainRecord.AutoDeployNodeVersion = data.SubdomainAutoDeployNodeVersion
@@ -3101,11 +3098,11 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			}
 			data.SubdomainAutoDeploySecret = secret
 		}
-		if err := a.store.UpdateSiteSubdomainDeploy(r.Context(), site.ID, subdomain.ID, data.SubdomainRepositoryURL, firstNonEmpty(data.SubdomainBranch, "main"), data.SubdomainPostDeployCommand, data.SubdomainAutoDeployEnabled, firstNonEmpty(data.SubdomainAutoDeployBranch, data.SubdomainBranch, "main"), data.SubdomainAutoDeploySecret, data.SubdomainAutoDeployCommand, data.SubdomainAutoDeployNodeVersion, data.SubdomainAutoDeployNotifyEmail); err != nil {
+		if err := a.store.UpdateSiteSubdomainDeploy(r.Context(), site.ID, subdomain.ID, data.SubdomainRepositoryURL, firstNonEmpty(data.SubdomainBranch, subdomain.BranchName, branch), data.SubdomainPostDeployCommand, data.SubdomainAutoDeployEnabled, firstNonEmpty(data.SubdomainAutoDeployBranch, data.SubdomainBranch, subdomain.AutoDeployBranch, subdomain.BranchName, branch), data.SubdomainAutoDeploySecret, data.SubdomainAutoDeployCommand, data.SubdomainAutoDeployNodeVersion, data.SubdomainAutoDeployNotifyEmail); err != nil {
 			data.RequestError = "Could not save subdomain deploy settings: " + err.Error()
 			break
 		}
-		a.recordAudit(r.Context(), "site.subdomain.deploy.save", subdomain.FullDomain, "success", map[string]any{"enabled": data.SubdomainAutoDeployEnabled, "branch": firstNonEmpty(data.SubdomainAutoDeployBranch, data.SubdomainBranch, "main")})
+		a.recordAudit(r.Context(), "site.subdomain.deploy.save", subdomain.FullDomain, "success", map[string]any{"enabled": data.SubdomainAutoDeployEnabled, "branch": firstNonEmpty(data.SubdomainAutoDeployBranch, data.SubdomainBranch, subdomain.AutoDeployBranch, subdomain.BranchName, branch)})
 		successMessage = "Subdomain deploy settings saved."
 	case "rotate_subdomain_auto_deploy_secret":
 		subdomains, err := a.store.ListSiteSubdomains(r.Context(), site.ID)
@@ -3124,7 +3121,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		data.SubdomainAutoDeploySecret = secret
-		if err := a.store.UpdateSiteSubdomainDeploy(r.Context(), site.ID, subdomain.ID, firstNonEmpty(data.SubdomainRepositoryURL, subdomain.RepositoryURL), firstNonEmpty(data.SubdomainBranch, subdomain.BranchName, "main"), firstNonEmpty(data.SubdomainPostDeployCommand, subdomain.PostDeployCommand), data.SubdomainAutoDeployEnabled || subdomain.AutoDeployEnabled, firstNonEmpty(data.SubdomainAutoDeployBranch, subdomain.AutoDeployBranch, subdomain.BranchName, "main"), secret, firstNonEmpty(data.SubdomainAutoDeployCommand, subdomain.AutoDeployCommand), firstNonEmpty(data.SubdomainAutoDeployNodeVersion, subdomain.AutoDeployNodeVersion), firstNonEmpty(data.SubdomainAutoDeployNotifyEmail, subdomain.AutoDeployNotifyEmail)); err != nil {
+		if err := a.store.UpdateSiteSubdomainDeploy(r.Context(), site.ID, subdomain.ID, firstNonEmpty(data.SubdomainRepositoryURL, subdomain.RepositoryURL), firstNonEmpty(data.SubdomainBranch, subdomain.BranchName, branch), firstNonEmpty(data.SubdomainPostDeployCommand, subdomain.PostDeployCommand), data.SubdomainAutoDeployEnabled || subdomain.AutoDeployEnabled, firstNonEmpty(data.SubdomainAutoDeployBranch, subdomain.AutoDeployBranch, subdomain.BranchName, branch), secret, firstNonEmpty(data.SubdomainAutoDeployCommand, subdomain.AutoDeployCommand), firstNonEmpty(data.SubdomainAutoDeployNodeVersion, subdomain.AutoDeployNodeVersion), firstNonEmpty(data.SubdomainAutoDeployNotifyEmail, subdomain.AutoDeployNotifyEmail)); err != nil {
 			data.RequestError = "Could not rotate subdomain auto deploy secret: " + err.Error()
 			break
 		}
@@ -4316,7 +4313,7 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.DeploymentReleases = releases
 	data.PreferredNodeVersion = firstNonEmpty(data.PreferredNodeVersion, site.NodeVersion)
 	data.AutoDeployEnabled = data.AutoDeployEnabled || site.AutoDeployEnabled
-	data.AutoDeployBranch = firstNonEmpty(data.AutoDeployBranch, site.AutoDeployBranch, repositoryStatus.Branch, "main")
+	data.AutoDeployBranch = firstNonEmpty(data.AutoDeployBranch, site.AutoDeployBranch, repositoryStatus.Branch)
 	data.AutoDeploySecret = firstNonEmpty(data.AutoDeploySecret, site.AutoDeploySecret)
 	data.AutoDeployCommand = firstNonEmpty(data.AutoDeployCommand, site.AutoDeployCommand)
 	data.AutoDeployNodeVersion = firstNonEmpty(data.AutoDeployNodeVersion, site.AutoDeployNodeVersion, data.PreferredNodeVersion)
@@ -4351,7 +4348,7 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	}
 	for index := range data.SiteSubdomains {
 		if strings.TrimSpace(data.SiteSubdomains[index].AutoDeployBranch) == "" {
-			data.SiteSubdomains[index].AutoDeployBranch = firstNonEmpty(data.SiteSubdomains[index].BranchName, "main")
+			data.SiteSubdomains[index].AutoDeployBranch = strings.TrimSpace(data.SiteSubdomains[index].BranchName)
 		}
 		data.SiteSubdomains[index].AutoDeployWebhookURL = buildSubdomainAutoDeployWebhookURL(requestExternalBaseURL(r, a.cfg.BaseURL), site.Name, data.SiteSubdomains[index].ID, data.SiteSubdomains[index].AutoDeploySecret)
 		data.SiteSubdomains[index].DeploymentReleases = a.listSiteDeploymentReleases(r, data.SiteSubdomains[index].RootDirectory, site.OwnerLinuxUser)
@@ -4502,8 +4499,6 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	if data.GitBranch == "" {
 		if repositoryStatus.Branch != "" {
 			data.GitBranch = repositoryStatus.Branch
-		} else {
-			data.GitBranch = "main"
 		}
 	}
 	if data.RuntimeNodeVersion == "" {
@@ -4583,13 +4578,13 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 		data.SubdomainRepositoryURL = firstNonEmpty(subdomain.RepositoryURL, repositoryStatus.RemoteURL)
 	}
 	if data.SubdomainBranch == "" {
-		data.SubdomainBranch = firstNonEmpty(subdomain.BranchName, repositoryStatus.Branch, "main")
+		data.SubdomainBranch = firstNonEmpty(subdomain.BranchName, repositoryStatus.Branch)
 	}
 	if data.SubdomainPostDeployCommand == "" {
 		data.SubdomainPostDeployCommand = subdomain.PostDeployCommand
 	}
 	data.SubdomainAutoDeployEnabled = data.SubdomainAutoDeployEnabled || subdomain.AutoDeployEnabled
-	data.SubdomainAutoDeployBranch = firstNonEmpty(data.SubdomainAutoDeployBranch, subdomain.AutoDeployBranch, data.SubdomainBranch, "main")
+	data.SubdomainAutoDeployBranch = firstNonEmpty(data.SubdomainAutoDeployBranch, subdomain.AutoDeployBranch, data.SubdomainBranch)
 	data.SubdomainAutoDeploySecret = firstNonEmpty(data.SubdomainAutoDeploySecret, subdomain.AutoDeploySecret)
 	data.SubdomainAutoDeployCommand = firstNonEmpty(data.SubdomainAutoDeployCommand, subdomain.AutoDeployCommand)
 	data.SubdomainAutoDeployNotifyEmail = firstNonEmpty(data.SubdomainAutoDeployNotifyEmail, subdomain.AutoDeployNotifyEmail)

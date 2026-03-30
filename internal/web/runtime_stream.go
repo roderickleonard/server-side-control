@@ -1121,9 +1121,6 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		branch := strings.TrimSpace(r.FormValue("branch"))
-		if branch == "" {
-			branch = "main"
-		}
 		postDeployCommand := r.FormValue("post_deploy_command")
 		helperAction = "deploy.run"
 		payload = system.DeploySpec{
@@ -1167,7 +1164,7 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		helperAction = "deploy.run"
 		payload = system.DeploySpec{
 			RepositoryURL:     subdomain.RepositoryURL,
-			Branch:            firstNonEmpty(subdomain.BranchName, "main"),
+			Branch:            strings.TrimSpace(subdomain.BranchName),
 			TargetDirectory:   subdomain.RootDirectory,
 			RunAsUser:         targetUser,
 			GitSiteName:       subdomain.FullDomain,
@@ -1176,7 +1173,7 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		}
 		auditAction = "deploy.subdomain_sync"
 		label = "git sync " + subdomain.FullDomain
-		auditMeta = map[string]any{"repository_url": subdomain.RepositoryURL, "branch": firstNonEmpty(subdomain.BranchName, "main"), "run_as_user": targetUser, "target_directory": subdomain.RootDirectory, "subdomain_id": subdomain.ID}
+		auditMeta = map[string]any{"repository_url": subdomain.RepositoryURL, "branch": strings.TrimSpace(subdomain.BranchName), "run_as_user": targetUser, "target_directory": subdomain.RootDirectory, "subdomain_id": subdomain.ID}
 		appendRepoState = true
 		if status, inspectErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: subdomain.RootDirectory, RunAsUser: targetUser}); inspectErr == nil {
 			previousCommit = strings.TrimSpace(status.CurrentCommit)
