@@ -4733,6 +4733,8 @@ func deployErrorMessage(err error) string {
 		message = "Target directory must be an absolute path."
 	case errors.Is(err, system.ErrInvalidRunAsUser):
 		message = "Run-as user is invalid for Ubuntu deployment."
+	case errors.Is(err, system.ErrDirtyWorkingTree):
+		message = "Deploy blocked because the target repository has local tracked changes. Commit, stash, or discard those changes first. Details: " + err.Error()
 	}
 	return message
 }

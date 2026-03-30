@@ -74,6 +74,9 @@ func (linuxDeployManager) Deploy(spec DeploySpec) (DeployResult, error) {
 		if err := runAsUserEnv(ctx, spec.RunAsUser, gitEnv, &output, "git", "-C", spec.TargetDirectory, "fetch", "--all", "--prune"); err != nil {
 			return DeployResult{Action: action, Output: output.String()}, err
 		}
+		if err := ensureCleanGitWorktree(ctx, spec.RunAsUser, spec.TargetDirectory, &output); err != nil {
+			return DeployResult{Action: action, Output: output.String()}, err
+		}
 		if err := runAsUserEnv(ctx, spec.RunAsUser, gitEnv, &output, "git", "-C", spec.TargetDirectory, "checkout", spec.Branch); err != nil {
 			return DeployResult{Action: action, Output: output.String()}, err
 		}
@@ -217,6 +220,9 @@ func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
 			return err
 		}
 		if err := runAsUserStreamEnv(ctx, spec.RunAsUser, gitEnv, stdout, stderr, "git", "-C", spec.TargetDirectory, "fetch", "--all", "--prune"); err != nil {
+			return err
+		}
+		if err := ensureCleanGitWorktreeStream(ctx, spec.RunAsUser, spec.TargetDirectory, stdout, stderr); err != nil {
 			return err
 		}
 		if err := runAsUserStreamEnv(ctx, spec.RunAsUser, gitEnv, stdout, stderr, "git", "-C", spec.TargetDirectory, "checkout", spec.Branch); err != nil {
@@ -369,6 +375,73 @@ func configureRepositorySSHCommandStream(ctx context.Context, username string, t
 		return nil
 	}
 	return runAsUserStream(ctx, username, stdout, stderr, "git", "-C", targetDirectory, "config", "core.sshCommand", sshCommand)
+}
+
+func ensureCleanGitWorktree(ctx context.Context, username string, targetDirectory string, output *bytes.Buffer) error {
+	var statusOutput bytes.Buffer
+	if err := runAsUser(ctx, username, &statusOutput, "git", "-C", targetDirectory, "status", "--porcelain", "--untracked-files=no"); err != nil {
+		if output != nil {
+			output.Write(statusOutput.Bytes())
+		}
+		return err
+	}
+	if output != nil {
+		output.Write(statusOutput.Bytes())
+	}
+	files := parseDirtyWorktreeFiles(statusOutput.String())
+	if len(files) == 0 {
+		return nil
+	}
+	if output != nil {
+		output.WriteString("deploy blocked: local git changes detected in: " + strings.Join(files, ", ") + "\n")
+	}
+	return fmt.Errorf("%w: %s", ErrDirtyWorkingTree, strings.Join(files, ", "))
+}
+
+func ensureCleanGitWorktreeStream(ctx context.Context, username string, targetDirectory string, stdout io.Writer, stderr io.Writer) error {
+	var statusOutput bytes.Buffer
+	if err := runAsUser(ctx, username, &statusOutput, "git", "-C", targetDirectory, "status", "--porcelain", "--untracked-files=no"); err != nil {
+		if stdout != nil {
+			_, _ = stdout.Write(statusOutput.Bytes())
+		}
+		return err
+	}
+	if stdout != nil {
+		_, _ = stdout.Write(statusOutput.Bytes())
+	}
+	files := parseDirtyWorktreeFiles(statusOutput.String())
+	if len(files) == 0 {
+		return nil
+	}
+	message := "deploy blocked: local git changes detected in: " + strings.Join(files, ", ") + "\n"
+	if stderr != nil {
+		_, _ = io.WriteString(stderr, message)
+	}
+	return fmt.Errorf("%w: %s", ErrDirtyWorkingTree, strings.Join(files, ", "))
+}
+
+func parseDirtyWorktreeFiles(output string) []string {
+	files := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if len(line) < 4 {
+			continue
+		}
+		path := strings.TrimSpace(line[3:])
+		if path == "" {
+			continue
+		}
+		if parts := strings.SplitN(path, " -> ", 2); len(parts) == 2 {
+			path = strings.TrimSpace(parts[1])
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		files = append(files, path)
+	}
+	return files
 }
 
 func envValue(env map[string]string, key string) string {
