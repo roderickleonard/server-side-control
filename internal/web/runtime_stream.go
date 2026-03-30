@@ -216,9 +216,6 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 	targetDirectory := site.RootDirectory
 	targetUser := site.OwnerLinuxUser
 	targetLabel := site.Name
-	credentialPreferenceSubdomainID := int64(0)
-	credentialPreferenceProtocol := ""
-	credentialPreferenceUsername := ""
 	switch action {
 	case "sync_repository":
 		repositoryURL := strings.TrimSpace(r.FormValue("repository_url"))
@@ -368,39 +365,6 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		auditAction = "git_auth.subdomain.trust_host"
 		label = "trust host " + host + " · " + subdomain.FullDomain
 		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "host": host, "subdomain_id": subdomain.ID}
-	case "store_subdomain_git_credential":
-		subdomainID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subdomain_id")), 10, 64)
-		if err != nil || subdomainID <= 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subdomain id is required"})
-			return
-		}
-		protocol := strings.TrimSpace(r.FormValue("credential_protocol"))
-		host := strings.TrimSpace(r.FormValue("credential_host"))
-		username := strings.TrimSpace(r.FormValue("credential_username"))
-		password := r.FormValue("credential_password")
-		if host == "" || username == "" || strings.TrimSpace(password) == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "credential host, username, and password are required"})
-			return
-		}
-		subdomains, listErr := a.store.ListSiteSubdomains(r.Context(), site.ID)
-		if listErr != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load subdomains"})
-			return
-		}
-		subdomain, ok := findSiteSubdomain(subdomains, subdomainID)
-		if !ok {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "subdomain could not be found"})
-			return
-		}
-		targetLabel = subdomain.FullDomain
-		helperAction = "git_auth.store_credential"
-		payload = system.GitCredentialSpec{User: site.OwnerLinuxUser, Protocol: protocol, Host: host, Username: username, Password: password}
-		auditAction = "git_auth.subdomain.store_credential"
-		label = "store git credentials · " + subdomain.FullDomain
-		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "protocol": protocol, "host": host, "username": username, "subdomain_id": subdomain.ID}
-		credentialPreferenceSubdomainID = subdomain.ID
-		credentialPreferenceProtocol = protocol
-		credentialPreferenceUsername = username
 	case "run_custom_git_command":
 		command := strings.TrimSpace(r.FormValue("git_custom_command"))
 		if command == "" {
@@ -437,20 +401,6 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		auditAction = "git_auth.trust_host"
 		label = "trust host " + host
 		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "host": host}
-	case "store_git_credential":
-		protocol := strings.TrimSpace(r.FormValue("credential_protocol"))
-		host := strings.TrimSpace(r.FormValue("credential_host"))
-		username := strings.TrimSpace(r.FormValue("credential_username"))
-		password := r.FormValue("credential_password")
-		if host == "" || username == "" || strings.TrimSpace(password) == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "credential host, username, and password are required"})
-			return
-		}
-		helperAction = "git_auth.store_credential"
-		payload = system.GitCredentialSpec{User: site.OwnerLinuxUser, Protocol: protocol, Host: host, Username: username, Password: password}
-		auditAction = "git_auth.store_credential"
-		label = "store git credentials"
-		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "protocol": protocol, "host": host, "username": username}
 	case "run_ssh_command":
 		workingDirectory := strings.TrimSpace(r.FormValue("ssh_working_directory"))
 		commandBody := r.FormValue("ssh_command_body")
@@ -542,9 +492,6 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		successMeta[key] = value
 	}
 	a.recordAudit(r.Context(), auditAction, targetLabel, "success", successMeta)
-	if credentialPreferenceSubdomainID > 0 && a.store != nil {
-		_ = a.store.UpdateSiteSubdomainGitCredentialPreferences(r.Context(), site.ID, credentialPreferenceSubdomainID, credentialPreferenceProtocol, credentialPreferenceUsername)
-	}
 	if appendRepoState {
 		if status, inspectErr := a.deploys.Inspect(system.RepositoryInspectSpec{TargetDirectory: targetDirectory, RunAsUser: targetUser}); inspectErr == nil && status.IsGitRepo {
 			_, _ = io.WriteString(streamWriter, "\n")

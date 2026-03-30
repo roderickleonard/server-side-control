@@ -61,17 +61,6 @@ func (s *Store) UpdateSiteSubdomainLocation(ctx context.Context, siteID int64, s
 	return nil
 }
 
-func (s *Store) UpdateSiteSubdomainGitCredentialPreferences(ctx context.Context, siteID int64, subdomainID int64, protocol string, username string) error {
-	if s == nil {
-		return errors.New("store is not configured")
-	}
-	_, err := s.db.ExecContext(ctx, `UPDATE site_subdomains SET git_credential_protocol = ?, git_credential_username = ? WHERE site_id = ? AND id = ?`, protocol, username, siteID, subdomainID)
-	if err != nil {
-		return fmt.Errorf("update site subdomain git credential preferences: %w", err)
-	}
-	return nil
-}
-
 func (s *Store) DeleteSiteSubdomain(ctx context.Context, siteID int64, subdomainID int64) error {
 	if s == nil {
 		return errors.New("store is not configured")

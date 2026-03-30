@@ -2,6 +2,9 @@
 <link rel="stylesheet" href="/static/vendor/xterm/xterm.min.css">
 <section class="hero compact">
     <div>
+        <div class="details-note" style="margin-bottom:8px;">
+            <a href="/sites">Sites</a> / <a href="/sites/details?name={{.SelectedSite.Name}}&tab=domains">{{.SelectedSite.Name}}</a> / <span>{{.SelectedSubdomain.FullDomain}}</span>
+        </div>
         <span class="eyebrow">Subdomain details</span>
         <h2>{{.SelectedSubdomain.FullDomain}}</h2>
         <p class="lead">Parent site: {{.SelectedSite.Name}}. Deploy, runtime, SSH, files, TLS and Nginx controls for this subdomain.</p>
@@ -55,7 +58,6 @@
             <div><strong>Remote</strong><span>{{if .RepositoryStatus.RemoteURL}}{{.RepositoryStatus.RemoteURL}}{{else if .SubdomainRepositoryURL}}{{.SubdomainRepositoryURL}}{{else}}-{{end}}</span></div>
             <div><strong>Deploy key</strong><span>{{if .GitAuthStatus.DeployKeyReady}}Ready{{else}}Missing{{end}}</span></div>
             <div><strong>Known host</strong><span>{{if .GitAuthStatus.KnownHostTrusted}}Trusted{{else}}Not trusted{{end}}</span></div>
-            <div><strong>Credential</strong><span>{{if .GitAuthStatus.CredentialConfigured}}Configured{{else}}Missing{{end}}</span></div>
             <div><strong>Webhook</strong><span>{{if .SubdomainAutoDeployEnabled}}Enabled{{else}}Disabled{{end}}</span></div>
         </div>
         <div class="details-note" style="margin-top:12px;">
@@ -93,6 +95,7 @@
                 <label>
                     <span>Repository URL</span>
                     <input type="text" name="subdomain_repository_url" value="{{.SubdomainRepositoryURL}}" placeholder="git@github.com:org/repo.git">
+                    <small class="muted details-note">Use the SSH repository URL with your deploy key, for example <code>git@github.com:org/repo.git</code>.</small>
                 </label>
                 <label>
                     <span>Branch</span>
@@ -161,56 +164,34 @@
         <div class="site-delete-summary details-summary" style="margin-top:12px;">
             <div><strong>Deploy key</strong><span>{{if .GitAuthStatus.DeployKeyReady}}Ready{{else}}Missing{{end}}</span></div>
             <div><strong>Known host</strong><span>{{if .GitAuthStatus.KnownHostTrusted}}Trusted{{else}}Not trusted{{end}}</span></div>
-            <div><strong>Credential</strong><span>{{if .GitAuthStatus.CredentialConfigured}}Configured{{else}}Missing{{end}}</span></div>
-            <div><strong>Git host</strong><span>{{if .GitAuthStatus.RepositoryHost}}{{.GitAuthStatus.RepositoryHost}}{{else}}-{{end}}</span></div>
+            <div><strong>SSH host</strong><span>{{if .GitAuthStatus.RepositoryHost}}{{.GitAuthStatus.RepositoryHost}}{{else}}-{{end}}</span></div>
         </div>
+        {{if .GitAuthStatus.PublicKey}}
+        <pre class="command-output details-pre" style="margin-top:12px;">{{.GitAuthStatus.PublicKey}}</pre>
+        {{else}}
+        <p class="muted details-note" style="margin-top:12px;">Generate a deploy key, add the public key to GitHub or GitLab, then use the SSH repository URL.</p>
+        {{end}}
         <div class="form-grid two-up" style="margin-top:12px;">
             <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
                 <input type="hidden" name="details_action" value="generate_subdomain_deploy_key">
                 <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
                 <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
                 <input type="hidden" name="repository_url" value="{{.SubdomainRepositoryURL}}">
-                <button type="submit" class="btn btn-sm btn-outline-secondary">Generate deploy key</button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Generate SSH deploy key</button>
             </form>
             <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
                 <input type="hidden" name="details_action" value="trust_subdomain_git_host">
                 <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
                 <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
                 <label>
-                    <span>Git host</span>
+                    <span>SSH host</span>
                     <input type="text" name="credential_host" value="{{.GitCredentialHost}}" placeholder="github.com">
                 </label>
                 <div class="form-actions">
-                    <button type="submit" class="btn btn-sm btn-outline-secondary">Trust host</button>
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Trust SSH host</button>
                 </div>
             </form>
         </div>
-        <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1" style="margin-top:12px;gap:8px;">
-            <input type="hidden" name="details_action" value="store_subdomain_git_credential">
-            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
-            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
-            <div class="form-grid two-up">
-                <label>
-                    <span>Protocol</span>
-                    <input type="text" name="credential_protocol" value="{{.GitCredentialProtocol}}" placeholder="https">
-                </label>
-                <label>
-                    <span>Host</span>
-                    <input type="text" name="credential_host" value="{{.GitCredentialHost}}" placeholder="github.com">
-                </label>
-                <label>
-                    <span>Username</span>
-                    <input type="text" name="credential_username" value="{{.GitCredentialUsername}}" placeholder="git username">
-                </label>
-                <label>
-                    <span>Password / token</span>
-                    <input type="password" name="credential_password" value="" placeholder="personal access token">
-                </label>
-            </div>
-            <div class="form-actions">
-                <button type="submit" class="btn btn-sm btn-outline-secondary">Store credential</button>
-            </div>
-        </form>
         <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" style="margin-top:12px;gap:8px;">
             <input type="hidden" name="details_action" value="run_subdomain_git_command">
             <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">

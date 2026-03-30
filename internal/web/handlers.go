@@ -747,9 +747,9 @@ func panelDomainFromBaseURL(rawURL string) string {
 
 func siteDetailTabForAction(action string) string {
 	switch action {
-	case "sync_repository", "generate_deploy_key", "trust_git_host", "store_git_credential", "save_auto_deploy", "rotate_auto_deploy_secret":
+	case "sync_repository", "generate_deploy_key", "trust_git_host", "save_auto_deploy", "rotate_auto_deploy_secret":
 		return "deploy"
-	case "sync_subdomain_repository", "run_subdomain_git_command", "save_subdomain_deploy", "rotate_subdomain_auto_deploy_secret", "move_subdomain_root", "move_subdomain_root_preview", "rollback_subdomain_release", "generate_subdomain_deploy_key", "trust_subdomain_git_host", "store_subdomain_git_credential":
+	case "sync_subdomain_repository", "run_subdomain_git_command", "save_subdomain_deploy", "rotate_subdomain_auto_deploy_secret", "move_subdomain_root", "move_subdomain_root_preview", "rollback_subdomain_release", "generate_subdomain_deploy_key", "trust_subdomain_git_host":
 		return "domains"
 	case "run_custom_git_command":
 		return "deploy"
@@ -768,7 +768,7 @@ func siteDetailTabForAction(action string) string {
 
 func subdomainDetailTabForAction(action string) string {
 	switch action {
-	case "sync_subdomain_repository", "run_subdomain_git_command", "save_subdomain_deploy", "rotate_subdomain_auto_deploy_secret", "rollback_subdomain_release", "generate_subdomain_deploy_key", "trust_subdomain_git_host", "store_subdomain_git_credential":
+	case "sync_subdomain_repository", "run_subdomain_git_command", "save_subdomain_deploy", "rotate_subdomain_auto_deploy_secret", "rollback_subdomain_release", "generate_subdomain_deploy_key", "trust_subdomain_git_host":
 		return "deploy"
 	case "npm_install", "run_npm_script", "run_custom_command", "install_nvm", "install_node", "install_pm2", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "list_pm2", "show_pm2_logs", "save_runtime_command", "delete_runtime_command":
 		return "runtime"
@@ -2436,8 +2436,6 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		SubdomainRootDirectory: strings.TrimSpace(r.FormValue("subdomain_root_directory")),
 		SubdomainRepositoryURL: strings.TrimSpace(r.FormValue("subdomain_repository_url")),
 		SubdomainBranch: strings.TrimSpace(r.FormValue("subdomain_branch")),
-		SubdomainGitCredentialProtocol: strings.TrimSpace(r.FormValue("subdomain_git_credential_protocol")),
-		SubdomainGitCredentialUsername: strings.TrimSpace(r.FormValue("subdomain_git_credential_username")),
 		SubdomainPostDeployCommand: r.FormValue("subdomain_post_deploy_command"),
 		SubdomainAutoDeployEnabled: r.FormValue("subdomain_auto_deploy_enabled") == "1",
 		SubdomainAutoDeployBranch: strings.TrimSpace(r.FormValue("subdomain_auto_deploy_branch")),
@@ -2454,9 +2452,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		CronFilter:          firstNonEmpty(strings.TrimSpace(r.FormValue("cron_filter")), "site"),
 		CronEditID:          strings.TrimSpace(r.FormValue("cron_id")),
 		CronLogID:           strings.TrimSpace(r.FormValue("cron_log_id")),
-		GitCredentialProtocol: firstNonEmpty(strings.TrimSpace(r.FormValue("credential_protocol")), firstNonEmpty(gitAuthStatus.RepositoryProtocol, "https")),
 		GitCredentialHost:   firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
-		GitCredentialUsername: strings.TrimSpace(r.FormValue("credential_username")),
 		NginxConfigContent:  r.FormValue("nginx_config_content"),
 	}
 	if commandID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("runtime_command_id")), 10, 64); err == nil {
@@ -2584,17 +2580,6 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		a.recordAudit(r.Context(), "git_auth.trust_host", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser, "host": data.GitCredentialHost})
 		data.CommandOutput = output
 		successMessage = "Git host was added to known_hosts successfully."
-	case "store_git_credential":
-		output, actionErr = a.gitAuth.StoreCredential(system.GitCredentialSpec{User: site.OwnerLinuxUser, Protocol: data.GitCredentialProtocol, Host: data.GitCredentialHost, Username: data.GitCredentialUsername, Password: r.FormValue("credential_password")})
-		if actionErr != nil {
-			data.RequestError = gitAuthErrorMessage(actionErr)
-			data.CommandOutput = output
-			a.recordAudit(r.Context(), "git_auth.store_credential", site.Name, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "protocol": data.GitCredentialProtocol, "host": data.GitCredentialHost, "username": data.GitCredentialUsername, "error": actionErr.Error()})
-			break
-		}
-		a.recordAudit(r.Context(), "git_auth.store_credential", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser, "protocol": data.GitCredentialProtocol, "host": data.GitCredentialHost, "username": data.GitCredentialUsername})
-		data.CommandOutput = output
-		successMessage = "Git credentials were stored for private HTTPS access successfully."
 	case "run_npm_script":
 		scriptName := strings.TrimSpace(r.FormValue("script_name"))
 		nodeVersion := strings.TrimSpace(r.FormValue("npm_script_node_version"))
@@ -3351,8 +3336,6 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 		SubdomainDirectoryName:          strings.TrimSpace(r.FormValue("subdomain_directory_name")),
 		SubdomainRepositoryURL:          strings.TrimSpace(r.FormValue("subdomain_repository_url")),
 		SubdomainBranch:                 strings.TrimSpace(r.FormValue("subdomain_branch")),
-		SubdomainGitCredentialProtocol:  strings.TrimSpace(r.FormValue("subdomain_git_credential_protocol")),
-		SubdomainGitCredentialUsername:  strings.TrimSpace(r.FormValue("subdomain_git_credential_username")),
 		SubdomainPostDeployCommand:      r.FormValue("subdomain_post_deploy_command"),
 		SubdomainAutoDeployEnabled:      r.FormValue("subdomain_auto_deploy_enabled") == "1",
 		SubdomainAutoDeployBranch:       strings.TrimSpace(r.FormValue("subdomain_auto_deploy_branch")),
@@ -3372,9 +3355,7 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 		RuntimeCommandName:              strings.TrimSpace(r.FormValue("runtime_command_name")),
 		RuntimeCommandNodeVersion:       strings.TrimSpace(r.FormValue("runtime_command_node_version")),
 		RuntimeCommandBody:              r.FormValue("env_content"),
-		GitCredentialProtocol:           firstNonEmpty(strings.TrimSpace(r.FormValue("credential_protocol")), firstNonEmpty(subdomain.GitCredentialProtocol, gitAuthStatus.RepositoryProtocol, "https")),
 		GitCredentialHost:               firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
-		GitCredentialUsername:           firstNonEmpty(strings.TrimSpace(r.FormValue("credential_username")), subdomain.GitCredentialUsername),
 	}
 	data.RuntimeCommandBody = firstNonEmpty(r.FormValue("runtime_command_body"), data.RuntimeCommandBody)
 	if commandID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("runtime_command_id")), 10, 64); err == nil {
@@ -4104,9 +4085,6 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 			data.EcosystemPort = port
 		}
 	}
-	if data.GitCredentialProtocol == "" {
-		data.GitCredentialProtocol = firstNonEmpty(gitAuthStatus.RepositoryProtocol, "https")
-	}
 	if data.GitCredentialHost == "" {
 		data.GitCredentialHost = gitAuthStatus.RepositoryHost
 	}
@@ -4160,8 +4138,6 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 	if data.SubdomainAutoDeployPreset == "" {
 		data.SubdomainAutoDeployPreset, data.SubdomainAutoDeployPM2Process = detectAutoDeployPreset(data.SubdomainAutoDeployCommand)
 	}
-	data.SubdomainGitCredentialProtocol = firstNonEmpty(data.SubdomainGitCredentialProtocol, subdomain.GitCredentialProtocol, gitAuthStatus.RepositoryProtocol, "https")
-	data.SubdomainGitCredentialUsername = firstNonEmpty(data.SubdomainGitCredentialUsername, subdomain.GitCredentialUsername)
 	data.NpmScriptNodeVersion = firstNonEmpty(data.NpmScriptNodeVersion, runtimeStatus.DefaultNodeVersion)
 	data.RuntimeNodeVersion = firstNonEmpty(data.RuntimeNodeVersion, runtimeStatus.DefaultNodeVersion)
 	data.RuntimeCommandNodeVersion = firstNonEmpty(data.RuntimeCommandNodeVersion, runtimeStatus.DefaultNodeVersion)
@@ -4170,9 +4146,7 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 	data.PM2LogLines = firstNonEmpty(data.PM2LogLines, "100")
 	data.SubdomainAutoDeployPM2Process = firstNonEmpty(data.SubdomainAutoDeployPM2Process, data.PM2ProcessName)
 	data.PM2ScriptPath = firstNonEmpty(data.PM2ScriptPath, "ecosystem.config.cjs")
-	data.GitCredentialProtocol = firstNonEmpty(data.GitCredentialProtocol, data.SubdomainGitCredentialProtocol, gitAuthStatus.RepositoryProtocol, "https")
 	data.GitCredentialHost = firstNonEmpty(data.GitCredentialHost, gitAuthStatus.RepositoryHost)
-	data.GitCredentialUsername = firstNonEmpty(data.GitCredentialUsername, data.SubdomainGitCredentialUsername)
 	data.NginxConfigPath = strings.TrimSpace(subdomain.NginxConfigPath)
 	if data.NginxConfigPath != "" {
 		editor := SiteNginxConfigEditor{TargetType: "subdomain", TargetID: subdomain.ID, Title: subdomain.FullDomain, Domain: subdomain.FullDomain, ConfigPath: data.NginxConfigPath, Notice: data.NginxConfigNotice}

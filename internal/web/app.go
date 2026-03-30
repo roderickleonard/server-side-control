@@ -128,9 +128,7 @@ type TemplateData struct {
 	PM2LogLines string
 	PM2ListOutput string
 	PM2LogsOutput string
-	GitCredentialProtocol string
 	GitCredentialHost string
-	GitCredentialUsername string
 	PanelListenAddr string
 	PanelBaseURL string
 	PanelServiceName string
@@ -176,8 +174,6 @@ type TemplateData struct {
 	SubdomainRootDirectory string
 	SubdomainRepositoryURL string
 	SubdomainBranch string
-	SubdomainGitCredentialProtocol string
-	SubdomainGitCredentialUsername string
 	SubdomainPostDeployCommand string
 	SubdomainAutoDeployEnabled bool
 	SubdomainAutoDeployBranch string

@@ -129,6 +129,7 @@
                 </label>
                 <label>
                     <span>Branch</span>
+                    <small class="muted details-note">Use the SSH repository URL with your deploy key, for example <code>git@github.com:org/repo.git</code>.</small>
                     <input type="text" name="branch" value="{{.GitBranch}}" placeholder="main">
                 </label>
                 <label>
@@ -740,48 +741,6 @@
             </form>
         </div>
         </div>
-    </article>
-    <article class="panel">
-        <div class="section-head">
-            <div>
-                <span class="eyebrow">Private HTTPS access</span>
-                <h3>{{if .GitAuthStatus.CredentialConfigured}}Credentials stored{{else}}No stored credentials yet{{end}}</h3>
-            </div>
-            <span class="badge subtle-badge">Credential store</span>
-        </div>
-        <div class="site-delete-summary details-summary">
-            <div><strong>Store path</strong><span>{{if .GitAuthStatus.CredentialStorePath}}{{.GitAuthStatus.CredentialStorePath}}{{else}}-{{end}}</span></div>
-            <div><strong>Target host</strong><span>{{if .GitCredentialHost}}{{.GitCredentialHost}}{{else}}-{{end}}</span></div>
-        </div>
-        <p class="muted details-note">Use this for private repositories accessed over HTTPS with a username and personal access token.</p>
-        <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
-            <input type="hidden" name="details_action" value="store_git_credential">
-            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
-            <div class="form-grid two-up">
-                <label>
-                    <span>Protocol</span>
-                    <select name="credential_protocol">
-                        <option value="https" {{if eq .GitCredentialProtocol "https"}}selected{{end}}>https</option>
-                        <option value="http" {{if eq .GitCredentialProtocol "http"}}selected{{end}}>http</option>
-                    </select>
-                </label>
-                <label>
-                    <span>Host</span>
-                    <input type="text" name="credential_host" value="{{.GitCredentialHost}}" placeholder="github.com" required>
-                </label>
-                <label>
-                    <span>Username</span>
-                    <input type="text" name="credential_username" value="{{.GitCredentialUsername}}" placeholder="git or your-username" required>
-                </label>
-                <label>
-                    <span>Password or token</span>
-                    <input type="password" name="credential_password" placeholder="ghp_xxx or PAT" required>
-                </label>
-            </div>
-            <div class="form-actions">
-                <button type="submit">Store HTTPS credentials</button>
-            </div>
-        </form>
     </article>
 </section>
 
