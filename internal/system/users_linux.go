@@ -75,12 +75,12 @@ func (linuxUserManager) CreateLinuxUser(username string, createHome bool, passwo
 		return fmt.Errorf("useradd: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	if password != "" {
-		if err := linuxUserManager{}.SetLinuxUserPassword(username, password); err != nil {
+		if err := (linuxUserManager{}).SetLinuxUserPassword(username, password); err != nil {
 			return err
 		}
 	}
 	if grantSudo {
-		if err := linuxUserManager{}.SetLinuxUserSudo(username, true); err != nil {
+		if err := (linuxUserManager{}).SetLinuxUserSudo(username, true); err != nil {
 			return err
 		}
 	}
@@ -237,13 +237,12 @@ func (linuxUserManager) SetLinuxUserPasswordlessSudo(username string, enabled bo
 		return ErrUserNotFound
 	}
 	if enabled {
-		if err := linuxUserManager{}.SetLinuxUserSudo(username, true); err != nil {
+		if err := (linuxUserManager{}).SetLinuxUserSudo(username, true); err != nil {
 			return err
 		}
 		return writeLinuxUserPasswordlessSudo(username)
 	}
 	return removeLinuxUserPasswordlessSudo(username)
-	return nil
 }
 
 func linuxUserHasPasswordlessSudo(username string) bool {
