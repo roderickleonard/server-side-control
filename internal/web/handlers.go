@@ -4252,7 +4252,7 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		}
 	}
 	if data.CronFilter == "" {
-		data.CronFilter = "subdomain"
+		data.CronFilter = "site"
 	}
 	var allCronJobs []system.CronJob
 	if _, err := a.helper.Call(r.Context(), "cron.list", map[string]string{"user": site.OwnerLinuxUser}, &allCronJobs); err == nil {
@@ -4263,19 +4263,19 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 				filteredJobs = append(filteredJobs, job)
 				continue
 			}
-			if job.Managed && job.SiteName == subdomain.FullDomain {
+			if job.Managed && job.SiteName == site.Name {
 				filteredJobs = append(filteredJobs, job)
 			}
 		}
 		data.CronJobs = filteredJobs
 		for _, job := range allCronJobs {
-			if data.CronEditID != "" && job.Managed && job.SiteName == subdomain.FullDomain && job.ID == data.CronEditID {
+			if data.CronEditID != "" && job.Managed && job.SiteName == site.Name && job.ID == data.CronEditID {
 				data.CronSchedule = firstNonEmpty(data.CronSchedule, job.Schedule)
 				data.CronCommand = firstNonEmpty(data.CronCommand, job.Command)
 				data.CronRunInSiteRoot = job.RunInSiteRoot
 			}
 			if data.CronLogID != "" && job.ID == data.CronLogID && job.LogPath != "" {
-				data.CronLogTitle = firstNonEmpty(job.SiteName, subdomain.FullDomain) + " · " + job.Schedule
+				data.CronLogTitle = firstNonEmpty(job.SiteName, site.Name) + " · " + job.Schedule
 				var logContent string
 				if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": job.LogPath, "max_bytes": 65536}, &logContent); err == nil {
 					data.CronLogContent = logContent
@@ -4475,6 +4475,43 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 	data.SubdomainAutoDeployPM2Process = firstNonEmpty(data.SubdomainAutoDeployPM2Process, data.PM2ProcessName)
 	data.PM2ScriptPath = firstNonEmpty(data.PM2ScriptPath, "ecosystem.config.cjs")
 	data.GitCredentialHost = firstNonEmpty(data.GitCredentialHost, gitAuthStatus.RepositoryHost)
+	if data.CronFilter == "" {
+		data.CronFilter = "subdomain"
+	}
+	var allCronJobs []system.CronJob
+	if _, err := a.helper.Call(r.Context(), "cron.list", map[string]string{"user": site.OwnerLinuxUser}, &allCronJobs); err == nil {
+		filteredJobs := make([]system.CronJob, 0, len(allCronJobs))
+		for _, job := range allCronJobs {
+			job.NextRunText = describeCronNextRun(job.Schedule, time.Now())
+			if data.CronFilter == "all" {
+				filteredJobs = append(filteredJobs, job)
+				continue
+			}
+			if job.Managed && job.SiteName == subdomain.FullDomain {
+				filteredJobs = append(filteredJobs, job)
+			}
+		}
+		data.CronJobs = filteredJobs
+		for _, job := range allCronJobs {
+			if data.CronEditID != "" && job.Managed && job.SiteName == subdomain.FullDomain && job.ID == data.CronEditID {
+				data.CronSchedule = firstNonEmpty(data.CronSchedule, job.Schedule)
+				data.CronCommand = firstNonEmpty(data.CronCommand, job.Command)
+				data.CronRunInSiteRoot = job.RunInSiteRoot
+			}
+			if data.CronLogID != "" && job.ID == data.CronLogID && job.LogPath != "" {
+				data.CronLogTitle = firstNonEmpty(job.SiteName, subdomain.FullDomain) + " · " + job.Schedule
+				var logContent string
+				if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": job.LogPath, "max_bytes": 65536}, &logContent); err == nil {
+					data.CronLogContent = logContent
+					if data.CronLogNotice == "" && strings.Contains(logContent, "[truncated after ") {
+						data.CronLogNotice = "Only the last available 64 KB of the cron log is shown."
+					}
+				} else if data.CronLogNotice == "" {
+					data.CronLogNotice = "Cron log file could not be read yet. The job may not have run yet."
+				}
+			}
+		}
+	}
 	data.NginxConfigPath = strings.TrimSpace(subdomain.NginxConfigPath)
 	if data.NginxConfigPath != "" {
 		editor := SiteNginxConfigEditor{TargetType: "subdomain", TargetID: subdomain.ID, Title: subdomain.FullDomain, Domain: subdomain.FullDomain, ConfigPath: data.NginxConfigPath, Notice: data.NginxConfigNotice}
