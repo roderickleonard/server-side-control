@@ -524,11 +524,10 @@
             <div><strong>Mode</strong><span>PTY over WebSocket</span></div>
         </div>
         <div class="form-actions" style="margin-top:12px;">
-            <button type="button" class="btn btn-sm btn-secondary" id="ssh-terminal-connect">Connect terminal</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="ssh-terminal-disconnect">Disconnect</button>
+            <button type="button" class="btn btn-sm btn-secondary" id="ssh-terminal-connect">Open terminal drawer</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="ssh-terminal-disconnect">Disconnect session</button>
         </div>
-        <div id="ssh-terminal-status" class="muted details-note" style="margin-top:10px;">Terminal disconnected.</div>
-        <div id="ssh-terminal" style="margin-top:12px;border:1px solid var(--border);border-radius:14px;overflow:hidden;min-height:360px;background:#111827;"></div>
+        <div class="muted details-note" style="margin-top:10px;">Live output opens in the shared terminal drawer on the right. You can copy the full transcript and close the drawer whenever you want.</div>
     </article>
 </section>
 
@@ -581,6 +580,49 @@
             {{if .SiteBrowserFileNotice}}<div class="details-note" style="margin-bottom:8px;">{{.SiteBrowserFileNotice}}</div>{{end}}
             <pre class="command-output">{{.SiteBrowserFileContent}}</pre>
         </div>
+        {{end}}
+    </article>
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Laravel permissions</span>
+                <h3>{{if .ProjectHasArtisan}}Auto-fix writable paths{{else}}Laravel not detected{{end}}</h3>
+            </div>
+        </div>
+        {{if .ProjectHasArtisan}}
+        <p class="muted details-note">This uses the same root helper flow as the main site and streams the exact shell output into the terminal drawer.</p>
+        <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream">
+            <input type="hidden" name="details_action" value="fix_laravel_permissions">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <div class="form-actions">
+                <button type="submit">Fix Laravel permissions</button>
+            </div>
+        </form>
+        <div class="form-actions" style="justify-content:flex-start;margin-top:10px;gap:8px;">
+            <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream">
+                <input type="hidden" name="details_action" value="run_ssh_command">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <input type="hidden" name="ssh_working_directory" value="{{.SelectedSubdomain.RootDirectory}}">
+                <input type="hidden" name="ssh_command_body" value="php artisan optimize:clear">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">optimize clear</button>
+            </form>
+            <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream">
+                <input type="hidden" name="details_action" value="run_ssh_command">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <input type="hidden" name="ssh_working_directory" value="{{.SelectedSubdomain.RootDirectory}}">
+                <input type="hidden" name="ssh_command_body" value="php artisan storage:link">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">storage link</button>
+            </form>
+        </div>
+        <div style="margin-top:14px;">
+            <span class="eyebrow">SSH commands used</span>
+            <pre class="command-output" style="margin-top:8px;">{{.LaravelPermissionCommand}}</pre>
+        </div>
+        {{else}}
+        <p class="muted details-note">No artisan file was detected in this subdomain root, so Laravel permission repair is not shown here.</p>
         {{end}}
     </article>
 </section>
@@ -683,19 +725,6 @@
     </article>
 </section>
 
-<section class="grid single" id="cmd-output-section">
-    <article class="panel">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <span class="panel-title">Command output</span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="cmd-output-toggle">{{if .CommandOutput}}Hide{{else}}Show{{end}}</button>
-        </div>
-        <div id="cmd-output-body"{{if not .CommandOutput}} class="hidden"{{end}}>
-            <div id="cmd-output-status" class="muted details-note" style="margin-bottom:10px;"></div>
-            <pre class="command-output" id="cmd-output-pre">{{.CommandOutput}}</pre>
-        </div>
-    </article>
-</section>
-
 <dialog id="subdomain-rollback-dialog" class="panel" style="max-width:520px;width:calc(100% - 32px);border:1px solid rgba(148,163,184,0.25);background:#0f172a;color:#e5e7eb;">
     <form method="dialog" class="stack-form" style="margin-top:0;">
         <div>
@@ -714,15 +743,11 @@
 <script src="/static/vendor/xterm/xterm-addon-fit.min.js"></script>
 <script>
 (function () {
+    const terminalDrawer = window.PanelTerminalDrawer;
     const tabNav = document.getElementById('site-tab-nav');
     const runtimeForm = document.getElementById('runtime-npm-actions');
     const customForm = document.getElementById('runtime-custom-form');
     const siteActionForms = Array.from(document.querySelectorAll('.site-action-stream-form'));
-    const outputSection = document.getElementById('cmd-output-section');
-    const outputBody = document.getElementById('cmd-output-body');
-    const outputPre = document.getElementById('cmd-output-pre');
-    const outputStatus = document.getElementById('cmd-output-status');
-    const outputToggle = document.getElementById('cmd-output-toggle');
     const commandSelect = document.getElementById('runtime-command-select');
     const commandId = document.getElementById('runtime-command-id');
     const commandName = document.getElementById('runtime-command-name');
@@ -731,29 +756,15 @@
     const commandRun = document.getElementById('runtime-custom-run');
     const commandClear = document.getElementById('runtime-command-clear');
     const composerInstallForm = document.getElementById('runtime-composer-install-form');
-    const sshTerminalMount = document.getElementById('ssh-terminal');
-    const sshTerminalStatus = document.getElementById('ssh-terminal-status');
     const sshTerminalConnect = document.getElementById('ssh-terminal-connect');
     const sshTerminalDisconnect = document.getElementById('ssh-terminal-disconnect');
     const subdomainRollbackDialog = document.getElementById('subdomain-rollback-dialog');
     const subdomainRollbackDialogText = document.getElementById('subdomain-rollback-dialog-text');
-    if (!tabNav || !runtimeForm || !customForm || !outputSection || !outputBody || !outputPre || !outputStatus || !outputToggle || !commandSelect || !commandId || !commandName || !commandNodeVersion || !commandBody || !commandRun || !commandClear) {
+    if (!terminalDrawer || !tabNav || !runtimeForm || !customForm || !commandSelect || !commandId || !commandName || !commandNodeVersion || !commandBody || !commandRun || !commandClear) {
         return;
     }
 
-    let sshTerminal = null;
-    let sshFitAddon = null;
-    let sshSocket = null;
     let pendingRollbackForm = null;
-
-    function setOutputVisibility(isVisible) {
-        outputBody.classList.toggle('hidden', !isVisible);
-        outputToggle.textContent = isVisible ? 'Hide' : 'Show';
-    }
-
-    outputToggle.addEventListener('click', () => {
-        setOutputVisibility(outputBody.classList.contains('hidden'));
-    });
 
     function resetCustomCommandForm() {
         commandSelect.value = '';
@@ -792,52 +803,12 @@
         button.addEventListener('click', () => activateTab(button.dataset.tab || 'overview'));
     });
 
-    async function streamBody(endpoint, form) {
-        const payload = new URLSearchParams(new FormData(form));
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-            body: payload.toString()
-        });
-        if (!response.ok || !response.body) {
-            const text = await response.text();
-            throw new Error(text || 'Command could not be started.');
-        }
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) {
-                break;
-            }
-            outputPre.textContent += decoder.decode(value, { stream: true });
-            outputPre.scrollTop = outputPre.scrollHeight;
-        }
-    }
-
     async function runStream(form, endpoint, reloadOnSuccess) {
-        const buttons = Array.from(form.querySelectorAll('button'));
-        buttons.forEach((button) => { button.disabled = true; });
-        setOutputVisibility(true);
-        outputPre.textContent = '';
-        outputStatus.textContent = 'Running...';
-        outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        try {
-            await streamBody(endpoint, form);
-            if (outputPre.textContent.includes('[command failed]')) {
-                outputStatus.textContent = 'Failed';
-                return;
-            }
-            outputStatus.textContent = reloadOnSuccess ? 'Completed, refreshing...' : 'Completed';
-            if (reloadOnSuccess) {
-                window.setTimeout(() => window.location.reload(), 700);
-            }
-        } catch (error) {
-            outputStatus.textContent = 'Failed';
-            outputPre.textContent += '\n' + String(error);
-        } finally {
-            buttons.forEach((button) => { button.disabled = false; });
-        }
+        await terminalDrawer.streamForm(form, endpoint, {
+            title: 'Live command · {{.SelectedSubdomain.FullDomain}}',
+            subtitle: '{{.SelectedSite.OwnerLinuxUser}} · {{.SelectedSubdomain.RootDirectory}}',
+            reloadOnSuccess: reloadOnSuccess
+        });
     }
 
     runtimeForm.querySelectorAll('[data-runtime-action]').forEach((button) => {
@@ -902,100 +873,17 @@
         });
     });
 
-    function updateSSHStatus(text) {
-        if (sshTerminalStatus) {
-            sshTerminalStatus.textContent = text;
-        }
-    }
-
-    function ensureTerminal() {
-        if (sshTerminal || !sshTerminalMount || !window.Terminal || !window.FitAddon) {
-            return sshTerminal;
-        }
-        sshTerminal = new window.Terminal({
-            cursorBlink: true,
-            fontSize: 13,
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            theme: { background: '#111827', foreground: '#e5e7eb' },
-            scrollback: 5000
-        });
-        sshFitAddon = new window.FitAddon.FitAddon();
-        sshTerminal.loadAddon(sshFitAddon);
-        sshTerminal.open(sshTerminalMount);
-        sshFitAddon.fit();
-        window.setTimeout(() => sshFitAddon.fit(), 30);
-        return sshTerminal;
-    }
-
-    function disconnectInteractiveTerminal() {
-        if (sshSocket) {
-            sshSocket.close();
-            sshSocket = null;
-        }
-        updateSSHStatus('Terminal disconnected.');
-    }
-
-    function connectInteractiveTerminal() {
-        const terminal = ensureTerminal();
-        if (!terminal || !sshFitAddon) {
-            updateSSHStatus('Terminal library could not be loaded.');
-            return;
-        }
-        if (sshSocket && sshSocket.readyState === WebSocket.OPEN) {
-            terminal.focus();
-            return;
-        }
-        terminal.clear();
-        sshFitAddon.fit();
-        const cwd = encodeURIComponent('{{.SelectedSubdomain.RootDirectory}}');
+    sshTerminalConnect?.addEventListener('click', () => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const socketURL = protocol + '//' + window.location.host + '/sites/details/terminal-ws?name={{.SelectedSite.Name}}&cwd=' + cwd + '&cols=' + terminal.cols + '&rows=' + terminal.rows;
-        sshSocket = new WebSocket(socketURL);
-        sshSocket.binaryType = 'arraybuffer';
-        updateSSHStatus('Connecting interactive terminal...');
-
-        sshSocket.onopen = () => {
-            updateSSHStatus('Interactive terminal connected.');
-            terminal.focus();
-            sshSocket.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }));
-        };
-        sshSocket.onmessage = async (event) => {
-            if (typeof event.data === 'string') {
-                terminal.write(event.data);
-                return;
-            }
-            const text = await new Blob([event.data]).text();
-            terminal.write(text);
-        };
-        sshSocket.onclose = () => {
-            updateSSHStatus('Interactive terminal disconnected.');
-            sshSocket = null;
-        };
-        sshSocket.onerror = () => {
-            updateSSHStatus('Interactive terminal connection failed.');
-        };
-        terminal.onData((data) => {
-            if (sshSocket && sshSocket.readyState === WebSocket.OPEN) {
-                sshSocket.send(JSON.stringify({ type: 'input', data }));
-            }
+        const socketURL = protocol + '//' + window.location.host + '/sites/details/terminal-ws?name={{.SelectedSite.Name}}&cwd=' + encodeURIComponent('{{.SelectedSubdomain.RootDirectory}}') + '&cols=120&rows=34';
+        terminalDrawer.openInteractiveTerminal({
+            title: 'Interactive terminal · {{.SelectedSubdomain.FullDomain}}',
+            subtitle: '{{.SelectedSite.OwnerLinuxUser}} · {{.SelectedSubdomain.RootDirectory}}',
+            socketURL: socketURL
         });
-        terminal.onResize((size) => {
-            if (sshSocket && sshSocket.readyState === WebSocket.OPEN) {
-                sshSocket.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
-            }
-        });
-    }
-
-    sshTerminalConnect?.addEventListener('click', connectInteractiveTerminal);
-    sshTerminalDisconnect?.addEventListener('click', disconnectInteractiveTerminal);
-    window.addEventListener('resize', () => {
-        if (!sshFitAddon) {
-            return;
-        }
-        sshFitAddon.fit();
-        if (sshSocket && sshSocket.readyState === WebSocket.OPEN && sshTerminal) {
-            sshSocket.send(JSON.stringify({ type: 'resize', cols: sshTerminal.cols, rows: sshTerminal.rows }));
-        }
+    });
+    sshTerminalDisconnect?.addEventListener('click', () => {
+        terminalDrawer.disconnectInteractiveTerminal();
     });
 
     Array.from(document.querySelectorAll('.subdomain-rollback-form')).forEach((form) => {

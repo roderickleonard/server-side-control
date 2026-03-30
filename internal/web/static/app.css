@@ -1063,6 +1063,118 @@ li + li {
     border: 1px solid rgba(255,255,255,0.06);
 }
 
+.terminal-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(3, 8, 18, 0.32);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease;
+    z-index: 340;
+}
+
+.terminal-drawer-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.terminal-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: min(720px, calc(100vw - 32px));
+    height: 100vh;
+    background: linear-gradient(180deg, #08111f 0%, #0b1526 100%);
+    color: #d9e7f5;
+    box-shadow: -18px 0 42px rgba(2, 6, 23, 0.34);
+    border-left: 1px solid rgba(148, 163, 184, 0.18);
+    transform: translateX(100%);
+    transition: transform 220ms ease;
+    z-index: 350;
+    display: flex;
+    flex-direction: column;
+}
+
+.terminal-drawer.is-open {
+    transform: translateX(0);
+}
+
+.terminal-drawer-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 20px 14px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.terminal-drawer-header h3 {
+    margin: 4px 0 0;
+    color: #f8fafc;
+}
+
+.terminal-drawer-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.terminal-drawer-subtitle,
+.terminal-drawer-status,
+.terminal-drawer-terminal-meta {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.terminal-drawer-status {
+    padding: 10px 20px 0;
+}
+
+.terminal-drawer-body {
+    min-height: 0;
+    flex: 1;
+    padding: 14px 20px 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.terminal-drawer-stream,
+.terminal-drawer-terminal {
+    min-height: 0;
+    height: 100%;
+}
+
+.terminal-drawer-output {
+    margin-top: 0;
+    max-height: none;
+    height: 100%;
+    min-height: 0;
+    border-radius: 12px;
+    background: #040b16;
+    color: #d3e7fb;
+}
+
+.terminal-drawer-terminal {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+}
+
+.terminal-drawer-terminal-mount {
+    flex: 1;
+    min-height: 0;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #040b16;
+}
+
+@media (max-width: 900px) {
+    .terminal-drawer {
+        width: 100vw;
+    }
+}
+
 /* ── Badges ────────────────────────────────────────────────────────────── */
 
 .subtle-badge {

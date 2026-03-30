@@ -22,19 +22,11 @@
 </section>
 {{end}}
 
-{{if .CommandOutput}}
-<section class="grid single">
-    <article class="panel">
-        <h3><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Site operation output</h3>
-        <pre class="command-output">{{.CommandOutput}}</pre>
-    </article>
-</section>
-{{end}}
-
 <section class="grid">
     <article class="panel">
         <h3><i class="bi bi-plus-circle" style="color:var(--accent);margin-right:6px;"></i>Create site</h3>
-        <form method="post" class="stack-form">
+        <form method="post" class="stack-form site-stream-form" data-stream-endpoint="/sites/stream" data-reload-on-success="1">
+            <input type="hidden" name="site_action" value="create">
             <div class="form-grid two-up">
                 <label>
                     <span>Site name</span>
@@ -181,7 +173,7 @@
                     <div><strong>Root</strong><span id="delete-site-root">-</span></div>
                     <div><strong>Config</strong><span id="delete-site-config">-</span></div>
                 </div>
-                <form method="post" class="inline-form mt-3" id="delete-site-form">
+                <form method="post" class="inline-form mt-3 site-stream-form" id="delete-site-form" data-stream-endpoint="/sites/stream" data-reload-on-success="1">
                     <input type="hidden" name="site_action" value="delete">
                     <input type="hidden" name="delete_site_name" id="delete-site-name-input" value="">
                     <label class="checkbox-row compact modal-confirm-row">
@@ -199,4 +191,32 @@
 </div>
 
 {{template "site_tls" .}}
+<script>
+(() => {
+    const terminalDrawer = window.PanelTerminalDrawer;
+    if (!terminalDrawer) {
+        return;
+    }
+    const forms = Array.from(document.querySelectorAll('.site-stream-form'));
+    forms.forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const reloadOnSuccess = form.dataset.reloadOnSuccess === '1';
+            const succeeded = await terminalDrawer.streamForm(form, form.dataset.streamEndpoint || '/sites/stream', {
+                title: 'Site action',
+                reloadOnSuccess,
+            });
+            if (succeeded && reloadOnSuccess) {
+                const modalElement = form.closest('.modal');
+                if (modalElement && window.bootstrap && window.bootstrap.Modal) {
+                    const instance = window.bootstrap.Modal.getInstance(modalElement);
+                    if (instance) {
+                        instance.hide();
+                    }
+                }
+            }
+        });
+    });
+})();
+</script>
 {{end}}

@@ -28,19 +28,10 @@
 </section>
 {{end}}
 
-{{if .CommandOutput}}
-<section class="grid single">
-    <article class="panel">
-        <h3><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Command output</h3>
-        <pre class="command-output">{{.CommandOutput}}</pre>
-    </article>
-</section>
-{{end}}
-
 <section class="grid">
     <article class="panel">
         <h3><i class="bi bi-rocket" style="color:var(--accent);margin-right:6px;"></i>Run deploy</h3>
-        <form method="post" class="stack-form">
+        <form method="post" class="stack-form deploy-stream-form" data-stream-endpoint="/deploys/stream">
             <input type="hidden" name="deploy_mode" value="deploy">
             <div class="form-grid two-up">
                 <label class="span-2">
@@ -76,7 +67,7 @@
     </article>
     <article class="panel">
         <h3><i class="bi bi-arrow-counterclockwise" style="color:var(--muted);margin-right:6px;"></i>Rollback release</h3>
-        <form method="post" class="stack-form">
+        <form method="post" class="stack-form deploy-stream-form" data-stream-endpoint="/deploys/stream">
             <input type="hidden" name="deploy_mode" value="rollback">
             <div class="form-grid two-up">
                 <label>
@@ -121,4 +112,21 @@
 </section>
 
 {{template "deploy_history" .}}
+<script>
+(() => {
+    const terminalDrawer = window.PanelTerminalDrawer;
+    if (!terminalDrawer) {
+        return;
+    }
+    const forms = Array.from(document.querySelectorAll('.deploy-stream-form'));
+    forms.forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            await terminalDrawer.streamForm(form, form.dataset.streamEndpoint || '/deploys/stream', {
+                title: 'Deploy action',
+            });
+        });
+    });
+})();
+</script>
 {{end}}

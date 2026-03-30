@@ -15,6 +15,7 @@ var ErrInvalidGitHost = errors.New("invalid git host")
 var ErrInvalidCredentialProtocol = errors.New("invalid credential protocol")
 var ErrInvalidCredentialUsername = errors.New("invalid credential username")
 var ErrInvalidCredentialPassword = errors.New("invalid credential password")
+var ErrInvalidLinuxPassword = errors.New("invalid linux password")
 var ErrInvalidGitCommand = errors.New("invalid git command")
 var ErrInvalidTableName = errors.New("invalid mysql table name")
 var ErrInvalidRestorePath = errors.New("invalid mysql restore file path")
@@ -22,9 +23,12 @@ var ErrInvalidCronSchedule = errors.New("invalid cron schedule")
 var ErrInvalidCronCommand = errors.New("invalid cron command")
 
 type UserManager interface {
-	CreateLinuxUser(username string, createHome bool) error
+	CreateLinuxUser(username string, createHome bool, password string, grantSudo bool) error
 	ListLinuxUsers() ([]LinuxUser, error)
 	DeleteLinuxUser(username string, removeHome bool) error
+	SetLinuxUserPassword(username string, password string) error
+	SetLinuxUserSudo(username string, enabled bool) error
+	SetLinuxUserPasswordlessSudo(username string, enabled bool) error
 }
 
 type LinuxUser struct {
@@ -32,6 +36,9 @@ type LinuxUser struct {
 	UID           int
 	HomeDirectory string
 	Shell         string
+	PasswordSet   bool
+	SudoEnabled   bool
+	PasswordlessSudo bool
 }
 
 type DatabaseManager interface {

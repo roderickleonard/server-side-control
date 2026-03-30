@@ -22,17 +22,29 @@
 <section class="grid">
     <article class="panel">
         <h3><i class="bi bi-person-plus" style="color:var(--accent);margin-right:6px;"></i>Create user</h3>
-        <form method="post" class="stack-form">
+        <form method="post" class="stack-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
             <input type="hidden" name="user_action" value="create">
-            <div class="form-grid">
+            <div class="form-grid two-up">
                 <label>
                     <span>Linux username</span>
                     <input type="text" name="username" placeholder="deployapp" required>
+                </label>
+                <label>
+                    <span>Initial password</span>
+                    <input type="password" name="linux_password" placeholder="Set a login password">
                 </label>
             </div>
             <label class="checkbox-row">
                 <input type="checkbox" name="create_home" value="1" checked>
                 <span>Create home directory</span>
+            </label>
+            <label class="checkbox-row">
+                <input type="checkbox" name="grant_sudo" value="1">
+                <span>Add user to sudo group</span>
+            </label>
+            <label class="checkbox-row">
+                <input type="checkbox" name="grant_passwordless_sudo" value="1">
+                <span>Allow passwordless sudo (NOPASSWD)</span>
             </label>
             <div class="form-actions">
                 <button type="submit">Create user</button>
@@ -44,7 +56,8 @@
         <ul>
             <li>Usernames must begin with a lowercase letter or underscore.</li>
             <li>Only lowercase letters, numbers, underscores, and hyphens are accepted.</li>
-            <li>The current implementation intentionally keeps the operation narrow and auditable.</li>
+            <li>New users are created as regular login users with `/bin/bash`.</li>
+            <li>If you want to use `sudo` inside the terminal, give the user a password and enable sudo access.</li>
         </ul>
     </article>
 </section>
@@ -61,6 +74,12 @@
                         <th>UID</th>
                         <th>Home</th>
                         <th>Shell</th>
+                        <th>Password</th>
+                        <th>Sudo</th>
+                        <th>NOPASSWD</th>
+                        <th>Password action</th>
+                        <th>Sudo action</th>
+                        <th>NOPASSWD action</th>
                         <th class="text-end">Delete</th>
                     </tr>
                 </thead>
@@ -71,8 +90,35 @@
                         <td>{{.UID}}</td>
                         <td class="text-break">{{.HomeDirectory}}</td>
                         <td>{{.Shell}}</td>
+                        <td>{{if .PasswordSet}}Set{{else}}Not set{{end}}</td>
+                        <td>{{if .SudoEnabled}}Enabled{{else}}Disabled{{end}}</td>
+                        <td>{{if .PasswordlessSudo}}Enabled{{else}}Disabled{{end}}</td>
                         <td>
-                            <form method="post" class="inline-form table-action-form">
+                            <form method="post" class="inline-form table-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
+                                <input type="hidden" name="user_action" value="set_password">
+                                <input type="hidden" name="password_username" value="{{.Username}}">
+                                <input type="password" name="set_linux_password" placeholder="New password" required>
+                                <button type="submit">Save password</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="post" class="inline-form table-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
+                                <input type="hidden" name="user_action" value="set_sudo">
+                                <input type="hidden" name="sudo_username" value="{{.Username}}">
+                                <input type="hidden" name="sudo_enabled" value="{{if .SudoEnabled}}0{{else}}1{{end}}">
+                                <button type="submit">{{if .SudoEnabled}}Revoke sudo{{else}}Grant sudo{{end}}</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="post" class="inline-form table-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
+                                <input type="hidden" name="user_action" value="set_passwordless_sudo">
+                                <input type="hidden" name="passwordless_sudo_username" value="{{.Username}}">
+                                <input type="hidden" name="passwordless_sudo_enabled" value="{{if .PasswordlessSudo}}0{{else}}1{{end}}">
+                                <button type="submit">{{if .PasswordlessSudo}}Disable NOPASSWD{{else}}Enable NOPASSWD{{end}}</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="post" class="inline-form table-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
                                 <input type="hidden" name="user_action" value="delete">
                                 <input type="hidden" name="delete_username" value="{{.Username}}">
                                 <label class="checkbox-row compact">
@@ -92,4 +138,22 @@
         {{end}}
     </article>
 </section>
+<script>
+(() => {
+    const terminalDrawer = window.PanelTerminalDrawer;
+    if (!terminalDrawer) {
+        return;
+    }
+    const forms = Array.from(document.querySelectorAll('.user-stream-form'));
+    for (const form of forms) {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            await terminalDrawer.streamForm(form, form.dataset.streamEndpoint || '/users/stream', {
+                title: 'Linux user action',
+                reloadOnSuccess: form.dataset.reloadOnSuccess === '1',
+            });
+        });
+    }
+})();
+</script>
 {{end}}

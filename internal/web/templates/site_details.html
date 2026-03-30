@@ -53,29 +53,12 @@
         </div>
         <p class="muted details-note">Use this for a persistent interactive shell session in the browser. It runs as {{.SelectedSite.OwnerLinuxUser}} and keeps shell state until you disconnect.</p>
         <div class="form-actions" style="margin-top:12px;">
-            <button type="button" class="btn btn-sm btn-secondary" id="ssh-terminal-connect">Connect terminal</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="ssh-terminal-disconnect">Disconnect</button>
+            <button type="button" class="btn btn-sm btn-secondary" id="ssh-terminal-connect">Open terminal drawer</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="ssh-terminal-disconnect">Disconnect session</button>
         </div>
-        <div id="ssh-terminal-status" class="muted details-note" style="margin-top:10px;">Terminal disconnected.</div>
-        <div id="ssh-terminal" style="margin-top:12px;border:1px solid var(--border);border-radius:14px;overflow:hidden;min-height:360px;background:#111827;"></div>
+        <div class="muted details-note" style="margin-top:10px;">Live output opens in the shared terminal drawer on the right. You can copy the full transcript and close the drawer whenever you want.</div>
     </article>
 </section>
-
-<section class="grid single" id="cmd-output-section">
-    <article class="panel">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <span class="panel-title"><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Command output</span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="cmd-output-toggle">{{if .CommandOutput}}Hide{{else}}Show{{end}}</button>
-        </div>
-        <div id="cmd-output-body"{{if not .CommandOutput}} class="hidden"{{end}}>
-            <div id="cmd-output-status" class="muted details-note" style="margin-bottom:10px;"></div>
-            <pre class="command-output" id="cmd-output-pre">{{.CommandOutput}}</pre>
-        </div>
-    </article>
-</section>
-{{if .CommandOutput}}
-<script>document.getElementById('cmd-output-section').scrollIntoView({behavior:'smooth',block:'start'});</script>
-{{end}}
 
 <section class="grid" data-site-tab="overview">
     <article class="panel">
@@ -97,6 +80,46 @@
             <div><strong>Database</strong><span>{{if .SelectedSite.DatabaseName}}<a href="/databases/details?name={{.SelectedSite.DatabaseName}}">{{.SelectedSite.DatabaseName}}</a>{{else}}-{{end}}</span></div>
             <div><strong>Updated</strong><span>{{.SelectedSite.UpdatedAt.Format "2006-01-02 15:04:05"}}</span></div>
         </div>
+    </article>
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Laravel permissions</span>
+                <h3>{{if .ProjectHasArtisan}}Auto-fix writable paths{{else}}Laravel not detected{{end}}</h3>
+            </div>
+        </div>
+        {{if .ProjectHasArtisan}}
+        <p class="muted details-note">This runs from the panel helper and streams the exact shell steps into the right-side terminal drawer.</p>
+        <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream">
+            <input type="hidden" name="details_action" value="fix_laravel_permissions">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <div class="form-actions">
+                <button type="submit">Fix Laravel permissions</button>
+            </div>
+        </form>
+        <div class="form-actions" style="justify-content:flex-start;margin-top:10px;gap:8px;">
+            <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream">
+                <input type="hidden" name="details_action" value="run_ssh_command">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="ssh_working_directory" value="{{.SelectedSite.RootDirectory}}">
+                <input type="hidden" name="ssh_command_body" value="php artisan optimize:clear">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">optimize clear</button>
+            </form>
+            <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream">
+                <input type="hidden" name="details_action" value="run_ssh_command">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="ssh_working_directory" value="{{.SelectedSite.RootDirectory}}">
+                <input type="hidden" name="ssh_command_body" value="php artisan storage:link">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">storage link</button>
+            </form>
+        </div>
+        <div style="margin-top:14px;">
+            <span class="eyebrow">SSH commands used</span>
+            <pre class="command-output" style="margin-top:8px;">{{.LaravelPermissionCommand}}</pre>
+        </div>
+        {{else}}
+        <p class="muted details-note">No <code>artisan</code> file was detected in this site root, so Laravel permission repair is not shown here.</p>
+        {{end}}
     </article>
     <article class="panel">
         <div class="section-head">
@@ -1031,15 +1054,11 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
 <script src="/static/vendor/xterm/xterm-addon-fit.min.js"></script>
 <script>
 (function () {
+    const terminalDrawer = window.PanelTerminalDrawer;
     const tabNav = document.getElementById('site-tab-nav');
     const runtimeForm = document.getElementById('runtime-npm-actions');
     const customForm = document.getElementById('runtime-custom-form');
     const siteActionForms = Array.from(document.querySelectorAll('.site-action-stream-form'));
-    const outputSection = document.getElementById('cmd-output-section');
-    const outputBody = document.getElementById('cmd-output-body');
-    const outputPre = document.getElementById('cmd-output-pre');
-    const outputStatus = document.getElementById('cmd-output-status');
-    const outputToggle = document.getElementById('cmd-output-toggle');
     const commandSelect = document.getElementById('runtime-command-select');
     const commandId = document.getElementById('runtime-command-id');
     const commandName = document.getElementById('runtime-command-name');
@@ -1048,128 +1067,13 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     const commandRun = document.getElementById('runtime-custom-run');
     const commandClear = document.getElementById('runtime-command-clear');
     const composerInstallForm = document.getElementById('runtime-composer-install-form');
-    const sshTerminalMount = document.getElementById('ssh-terminal');
-    const sshTerminalStatus = document.getElementById('ssh-terminal-status');
     const sshTerminalConnect = document.getElementById('ssh-terminal-connect');
     const sshTerminalDisconnect = document.getElementById('ssh-terminal-disconnect');
     const subdomainRollbackDialog = document.getElementById('subdomain-rollback-dialog');
     const subdomainRollbackDialogText = document.getElementById('subdomain-rollback-dialog-text');
-    if (!tabNav || !runtimeForm || !customForm || !outputSection || !outputBody || !outputPre || !outputStatus || !outputToggle || !commandSelect || !commandId || !commandName || !commandNodeVersion || !commandBody || !commandRun || !commandClear) {
+    if (!terminalDrawer || !tabNav || !runtimeForm || !customForm || !commandSelect || !commandId || !commandName || !commandNodeVersion || !commandBody || !commandRun || !commandClear) {
         return;
     }
-
-    let sshTerminal = null;
-    let sshFitAddon = null;
-    let sshSocket = null;
-
-    function updateSSHStatus(text) {
-        if (sshTerminalStatus) {
-            sshTerminalStatus.textContent = text;
-        }
-    }
-
-    function ensureTerminal() {
-        if (sshTerminal || !sshTerminalMount || !window.Terminal || !window.FitAddon) {
-            return sshTerminal;
-        }
-        sshTerminal = new window.Terminal({
-            cursorBlink: true,
-            fontSize: 13,
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            theme: {
-                background: '#111827',
-                foreground: '#e5e7eb'
-            },
-            scrollback: 5000
-        });
-        sshFitAddon = new window.FitAddon.FitAddon();
-        sshTerminal.loadAddon(sshFitAddon);
-        sshTerminal.open(sshTerminalMount);
-        sshFitAddon.fit();
-        window.setTimeout(() => sshFitAddon.fit(), 30);
-        return sshTerminal;
-    }
-
-    function disconnectInteractiveTerminal() {
-        if (sshSocket) {
-            sshSocket.close();
-            sshSocket = null;
-        }
-        updateSSHStatus('Terminal disconnected.');
-    }
-
-    function connectInteractiveTerminal() {
-        const terminal = ensureTerminal();
-        if (!terminal || !sshFitAddon) {
-            updateSSHStatus('Terminal library could not be loaded.');
-            return;
-        }
-        if (sshSocket && sshSocket.readyState === WebSocket.OPEN) {
-            terminal.focus();
-            return;
-        }
-        terminal.clear();
-        sshFitAddon.fit();
-        const cwd = encodeURIComponent('{{.SelectedSite.RootDirectory}}');
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const socketURL = protocol + '//' + window.location.host + '/sites/details/terminal-ws?name={{.SelectedSite.Name}}&cwd=' + cwd + '&cols=' + terminal.cols + '&rows=' + terminal.rows;
-        sshSocket = new WebSocket(socketURL);
-        sshSocket.binaryType = 'arraybuffer';
-        updateSSHStatus('Connecting interactive terminal...');
-
-        sshSocket.onopen = () => {
-            updateSSHStatus('Interactive terminal connected.');
-            terminal.focus();
-            sshSocket.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }));
-        };
-        sshSocket.onmessage = async (event) => {
-            if (typeof event.data === 'string') {
-                terminal.write(event.data);
-                return;
-            }
-            const text = await new Blob([event.data]).text();
-            terminal.write(text);
-        };
-        sshSocket.onclose = () => {
-            updateSSHStatus('Interactive terminal disconnected.');
-            sshSocket = null;
-        };
-        sshSocket.onerror = () => {
-            updateSSHStatus('Interactive terminal connection failed.');
-        };
-
-        terminal.onData((data) => {
-            if (!sshSocket || sshSocket.readyState !== WebSocket.OPEN) {
-                return;
-            }
-            sshSocket.send(JSON.stringify({ type: 'input', data }));
-        });
-
-        terminal.onResize((size) => {
-            if (!sshSocket || sshSocket.readyState !== WebSocket.OPEN) {
-                return;
-            }
-            sshSocket.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
-        });
-    }
-
-    sshTerminalConnect?.addEventListener('click', () => {
-        connectInteractiveTerminal();
-    });
-
-    sshTerminalDisconnect?.addEventListener('click', () => {
-        disconnectInteractiveTerminal();
-    });
-
-    window.addEventListener('resize', () => {
-        if (!sshFitAddon) {
-            return;
-        }
-        sshFitAddon.fit();
-        if (sshSocket && sshSocket.readyState === WebSocket.OPEN && sshTerminal) {
-            sshSocket.send(JSON.stringify({ type: 'resize', cols: sshTerminal.cols, rows: sshTerminal.rows }));
-        }
-    });
 
     const tabButtons = Array.from(tabNav.querySelectorAll('[data-tab]'));
     const tabPanels = Array.from(document.querySelectorAll('[data-site-tab]'));
@@ -1208,15 +1112,6 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
         commandBody.value = optionElement.dataset.commandBody || '';
     }
 
-    function setOutputVisibility(isVisible) {
-        outputBody.classList.toggle('hidden', !isVisible);
-        outputToggle.textContent = isVisible ? 'Hide' : 'Show';
-    }
-
-    outputToggle.addEventListener('click', () => {
-        setOutputVisibility(outputBody.classList.contains('hidden'));
-    });
-
     tabButtons.forEach((button) => {
         button.addEventListener('click', () => {
             activateTab(button.dataset.tab || 'overview');
@@ -1224,183 +1119,34 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     });
 
     async function streamRuntimeCommand(action, scriptName, commandName, commandBodyValue, commandNodeVersionValue, reloadOnSuccess) {
-        const buttons = Array.from(runtimeForm.querySelectorAll('button'));
-        buttons.forEach((button) => {
-            button.disabled = true;
-        });
-
         runtimeForm.querySelector('#runtime-npm-action').value = action;
         runtimeForm.querySelector('#runtime-npm-script-name').value = scriptName || '';
         runtimeForm.querySelector('#runtime-quick-command-name').value = commandName || '';
         runtimeForm.querySelector('#runtime-quick-command-body').value = commandBodyValue || '';
         runtimeForm.querySelector('#runtime-quick-command-node-version').value = commandNodeVersionValue || '';
-
-        setOutputVisibility(true);
-        outputPre.textContent = '';
-        outputStatus.textContent = 'Running...';
-        outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-        try {
-            const payload = new URLSearchParams(new FormData(runtimeForm));
-            const response = await fetch('/sites/details/runtime-stream', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-                },
-                body: payload.toString()
-            });
-
-            if (!response.ok || !response.body) {
-                const text = await response.text();
-                outputStatus.textContent = 'Failed';
-                outputPre.textContent = text || 'Command could not be started.';
-                return;
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) {
-                    break;
-                }
-                outputPre.textContent += decoder.decode(value, { stream: true });
-                outputPre.scrollTop = outputPre.scrollHeight;
-            }
-
-            if (outputPre.textContent.includes('[command failed]')) {
-                outputStatus.textContent = 'Failed';
-            } else {
-                outputStatus.textContent = reloadOnSuccess ? 'Completed, refreshing...' : 'Completed';
-                if (reloadOnSuccess) {
-                    window.setTimeout(() => {
-                        window.location.reload();
-                    }, 700);
-                }
-            }
-        } catch (error) {
-            outputStatus.textContent = 'Failed';
-            outputPre.textContent += '\n' + String(error);
-        } finally {
-            buttons.forEach((button) => {
-                button.disabled = false;
-            });
-        }
+        await terminalDrawer.streamForm(runtimeForm, '/sites/details/runtime-stream', {
+            title: 'Runtime command · {{.SelectedSite.Name}}',
+            subtitle: '{{.SelectedSite.OwnerLinuxUser}} · {{.SelectedSite.RootDirectory}}',
+            reloadOnSuccess: reloadOnSuccess
+        });
     }
 
     async function streamForm(form, endpoint, reloadOnSuccess) {
-        const buttons = Array.from(form.querySelectorAll('button'));
-        buttons.forEach((button) => {
-            button.disabled = true;
+        await terminalDrawer.streamForm(form, endpoint, {
+            title: 'Live command · {{.SelectedSite.Name}}',
+            subtitle: '{{.SelectedSite.OwnerLinuxUser}} · {{.SelectedSite.RootDirectory}}',
+            reloadOnSuccess: reloadOnSuccess
         });
-
-        setOutputVisibility(true);
-        outputPre.textContent = '';
-        outputStatus.textContent = 'Running...';
-        outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-        try {
-            const payload = new URLSearchParams(new FormData(form));
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-                },
-                body: payload.toString()
-            });
-
-            if (!response.ok || !response.body) {
-                const text = await response.text();
-                outputStatus.textContent = 'Failed';
-                outputPre.textContent = text || 'Command could not be started.';
-                return;
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) {
-                    break;
-                }
-                outputPre.textContent += decoder.decode(value, { stream: true });
-                outputPre.scrollTop = outputPre.scrollHeight;
-            }
-
-            if (outputPre.textContent.includes('[command failed]')) {
-                outputStatus.textContent = 'Failed';
-                return;
-            }
-            outputStatus.textContent = reloadOnSuccess ? 'Completed, refreshing...' : 'Completed';
-            if (reloadOnSuccess) {
-                window.setTimeout(() => {
-                    window.location.reload();
-                }, 700);
-            }
-        } catch (error) {
-            outputStatus.textContent = 'Failed';
-            outputPre.textContent += '\n' + String(error);
-        } finally {
-            buttons.forEach((button) => {
-                button.disabled = false;
-            });
-        }
     }
 
     async function streamCustomCommand() {
-        const buttons = Array.from(customForm.querySelectorAll('button'));
-        buttons.forEach((button) => {
-            button.disabled = true;
-        });
-
         document.getElementById('runtime-custom-action').value = 'run_custom_command';
-        setOutputVisibility(true);
-        outputPre.textContent = '';
-        outputStatus.textContent = 'Running...';
-        outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-        try {
-            const payload = new URLSearchParams(new FormData(customForm));
-            const response = await fetch('/sites/details/runtime-stream', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-                },
-                body: payload.toString()
-            });
-
-            if (!response.ok || !response.body) {
-                const text = await response.text();
-                outputStatus.textContent = 'Failed';
-                outputPre.textContent = text || 'Command could not be started.';
-                return;
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) {
-                    break;
-                }
-                outputPre.textContent += decoder.decode(value, { stream: true });
-                outputPre.scrollTop = outputPre.scrollHeight;
-            }
-
-            if (outputPre.textContent.includes('[command failed]')) {
-                outputStatus.textContent = 'Failed';
-            } else {
-                outputStatus.textContent = 'Completed';
-            }
-        } catch (error) {
-            outputStatus.textContent = 'Failed';
-            outputPre.textContent += '\n' + String(error);
-        } finally {
-            buttons.forEach((button) => {
-                button.disabled = false;
-            });
-            document.getElementById('runtime-custom-action').value = 'save_runtime_command';
-        }
+        await terminalDrawer.streamForm(customForm, '/sites/details/runtime-stream', {
+            title: 'Custom command · {{.SelectedSite.Name}}',
+            subtitle: '{{.SelectedSite.OwnerLinuxUser}} · {{.SelectedSite.RootDirectory}}',
+            reloadOnSuccess: false
+        });
+        document.getElementById('runtime-custom-action').value = 'save_runtime_command';
     }
 
     runtimeForm.querySelectorAll('[data-runtime-action]').forEach((button) => {
@@ -1455,6 +1201,20 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
         });
     });
 
+    sshTerminalConnect?.addEventListener('click', () => {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socketURL = protocol + '//' + window.location.host + '/sites/details/terminal-ws?name={{.SelectedSite.Name}}&cwd=' + encodeURIComponent('{{.SelectedSite.RootDirectory}}') + '&cols=120&rows=34';
+        terminalDrawer.openInteractiveTerminal({
+            title: 'Interactive terminal · {{.SelectedSite.Name}}',
+            subtitle: '{{.SelectedSite.OwnerLinuxUser}} · {{.SelectedSite.RootDirectory}}',
+            socketURL: socketURL
+        });
+    });
+
+    sshTerminalDisconnect?.addEventListener('click', () => {
+        terminalDrawer.disconnectInteractiveTerminal();
+    });
+
     subdomainRollbackForms.forEach((form) => {
         form.addEventListener('submit', (event) => {
             if (form.dataset.rollbackConfirmed === '1') {
@@ -1489,7 +1249,6 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
         pendingRollbackForm = null;
     });
 
-    setOutputVisibility(!outputBody.classList.contains('hidden'));
     activateTab(tabNav.dataset.activeTab || 'overview');
     if (commandId.value && commandId.value !== '0') {
         commandSelect.value = commandId.value;

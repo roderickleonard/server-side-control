@@ -22,15 +22,6 @@
 </section>
 {{end}}
 
-{{if .CommandOutput}}
-<section class="grid single">
-    <article class="panel">
-        <h3><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Redis output</h3>
-        <pre class="command-output">{{.CommandOutput}}</pre>
-    </article>
-</section>
-{{end}}
-
 <section class="grid">
     <article class="panel">
         <h3><i class="bi bi-activity" style="color:var(--accent);margin-right:6px;"></i>Service status</h3>
@@ -54,7 +45,7 @@
     </article>
     <article class="panel">
         <h3><i class="bi bi-download" style="color:var(--muted);margin-right:6px;"></i>Install Redis</h3>
-        <form method="post" class="stack-form">
+        <form method="post" class="stack-form redis-stream-form" data-stream-endpoint="/redis/stream">
             <input type="hidden" name="redis_action" value="install">
             <p class="muted">This installs the Ubuntu `redis-server` package, enables the service at boot, and starts it immediately.</p>
             <div class="form-actions">
@@ -67,7 +58,7 @@
 <section class="grid">
     <article class="panel">
         <h3><i class="bi bi-key" style="color:var(--accent);margin-right:6px;"></i>Credentials and port</h3>
-        <form method="post" class="stack-form">
+        <form method="post" class="stack-form redis-stream-form" data-stream-endpoint="/redis/stream">
             <input type="hidden" name="redis_action" value="save_config">
             <div class="form-grid two-up">
                 <label>
@@ -109,7 +100,7 @@
     </article>
     <article class="panel">
         <h3><i class="bi bi-arrow-repeat" style="color:var(--muted);margin-right:6px;"></i>Service control</h3>
-        <form method="post" class="stack-form">
+        <form method="post" class="stack-form redis-stream-form" data-stream-endpoint="/redis/stream">
             <p class="muted">Start, stop, or restart the Redis service without leaving the panel.</p>
             <div class="form-actions">
                 <button type="submit" name="redis_action" value="start" class="btn btn-outline-secondary">Start Redis service</button>
@@ -120,7 +111,7 @@
     </article>
     <article class="panel">
         <h3><i class="bi bi-broadcast" style="color:var(--muted);margin-right:6px;"></i>Connection test</h3>
-        <form method="post" class="stack-form">
+        <form method="post" class="stack-form redis-stream-form" data-stream-endpoint="/redis/stream">
             <input type="hidden" name="redis_action" value="test_connection">
             <div class="form-grid two-up">
                 <label>
@@ -160,4 +151,21 @@
         </ul>
     </article>
 </section>
+<script>
+(() => {
+    const terminalDrawer = window.PanelTerminalDrawer;
+    if (!terminalDrawer) {
+        return;
+    }
+    const forms = Array.from(document.querySelectorAll('.redis-stream-form'));
+    forms.forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            await terminalDrawer.streamForm(form, form.dataset.streamEndpoint || '/redis/stream', {
+                title: 'Redis action',
+            });
+        });
+    });
+})();
+</script>
 {{end}}

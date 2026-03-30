@@ -1661,7 +1661,10 @@ func (a *App) handleUsers(w http.ResponseWriter, r *http.Request) {
 
 	username := r.FormValue("username")
 	createHome := r.FormValue("create_home") == "1"
-	if err := a.users.CreateLinuxUser(username, createHome); err != nil {
+	password := r.FormValue("linux_password")
+	grantSudo := r.FormValue("grant_sudo") == "1"
+	grantPasswordlessSudo := r.FormValue("grant_passwordless_sudo") == "1"
+	if err := a.users.CreateLinuxUser(username, createHome, password, grantSudo); err != nil {
 		a.recordAudit(r.Context(), "user.create", username, "failure", map[string]any{"create_home": createHome, "error": err.Error()})
 		message := err.Error()
 		if errors.Is(err, system.ErrInvalidUsername) {
@@ -1669,6 +1672,9 @@ func (a *App) handleUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, system.ErrUserExists) {
 			message = "That Linux user already exists on the host."
+		}
+		if errors.Is(err, system.ErrInvalidLinuxPassword) {
+			message = "Linux password is invalid. Do not use empty values, new lines, or colons."
 		}
 		a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{
 			Title:          "Users",
@@ -1681,7 +1687,14 @@ func (a *App) handleUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updatedUsers, _ := a.users.ListLinuxUsers()
-	a.recordAudit(r.Context(), "user.create", username, "success", map[string]any{"create_home": createHome})
+	if grantPasswordlessSudo {
+		if err := a.users.SetLinuxUserPasswordlessSudo(username, true); err != nil {
+			a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{Title: "Users", DatabaseStatus: a.databaseStatus(r.Context()), Metrics: a.metrics.Snapshot(), LinuxUsers: updatedUsers, RequestError: err.Error()})
+			return
+		}
+		updatedUsers, _ = a.users.ListLinuxUsers()
+	}
+	a.recordAudit(r.Context(), "user.create", username, "success", map[string]any{"create_home": createHome, "grant_sudo": grantSudo})
 	a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{
 		Title:          "Users",
 		DatabaseStatus: a.databaseStatus(r.Context()),
@@ -1692,6 +1705,19 @@ func (a *App) handleUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleUserDelete(w http.ResponseWriter, r *http.Request, users []system.LinuxUser) {
+	action := r.FormValue("user_action")
+	if action == "set_password" {
+		a.handleUserPasswordUpdate(w, r, users)
+		return
+	}
+	if action == "set_sudo" {
+		a.handleUserSudoUpdate(w, r, users)
+		return
+	}
+	if action == "set_passwordless_sudo" {
+		a.handleUserPasswordlessSudoUpdate(w, r, users)
+		return
+	}
 	username := r.FormValue("delete_username")
 	removeHome := r.FormValue("remove_home") == "1"
 	if err := a.users.DeleteLinuxUser(username, removeHome); err != nil {
@@ -1724,6 +1750,80 @@ func (a *App) handleUserDelete(w http.ResponseWriter, r *http.Request, users []s
 		LinuxUsers:     updatedUsers,
 		SuccessMessage: "Linux user was deleted successfully.",
 	})
+}
+
+func (a *App) handleUserPasswordUpdate(w http.ResponseWriter, r *http.Request, users []system.LinuxUser) {
+	username := strings.TrimSpace(r.FormValue("password_username"))
+	password := r.FormValue("set_linux_password")
+	if err := a.users.SetLinuxUserPassword(username, password); err != nil {
+		a.recordAudit(r.Context(), "user.set_password", username, "failure", map[string]any{"error": err.Error()})
+		message := err.Error()
+		switch {
+		case errors.Is(err, system.ErrInvalidUsername):
+			message = "Linux username format is invalid."
+		case errors.Is(err, system.ErrUserNotFound):
+			message = "Linux user could not be found."
+		case errors.Is(err, system.ErrInvalidLinuxPassword):
+			message = "Linux password is invalid. Do not use empty values, new lines, or colons."
+		}
+		a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{Title: "Users", DatabaseStatus: a.databaseStatus(r.Context()), Metrics: a.metrics.Snapshot(), LinuxUsers: users, RequestError: message})
+		return
+	}
+	updatedUsers, _ := a.users.ListLinuxUsers()
+	a.recordAudit(r.Context(), "user.set_password", username, "success", nil)
+	a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{Title: "Users", DatabaseStatus: a.databaseStatus(r.Context()), Metrics: a.metrics.Snapshot(), LinuxUsers: updatedUsers, SuccessMessage: "Linux user password was updated successfully."})
+}
+
+func (a *App) handleUserSudoUpdate(w http.ResponseWriter, r *http.Request, users []system.LinuxUser) {
+	username := strings.TrimSpace(r.FormValue("sudo_username"))
+	enabled := r.FormValue("sudo_enabled") == "1"
+	if err := a.users.SetLinuxUserSudo(username, enabled); err != nil {
+		a.recordAudit(r.Context(), "user.set_sudo", username, "failure", map[string]any{"enabled": enabled, "error": err.Error()})
+		message := err.Error()
+		switch {
+		case errors.Is(err, system.ErrInvalidUsername):
+			message = "Linux username format is invalid."
+		case errors.Is(err, system.ErrUserNotFound):
+			message = "Linux user could not be found."
+		case errors.Is(err, system.ErrProtectedUser):
+			message = "This Linux user is protected and cannot have sudo changed from the panel."
+		}
+		a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{Title: "Users", DatabaseStatus: a.databaseStatus(r.Context()), Metrics: a.metrics.Snapshot(), LinuxUsers: users, RequestError: message})
+		return
+	}
+	updatedUsers, _ := a.users.ListLinuxUsers()
+	a.recordAudit(r.Context(), "user.set_sudo", username, "success", map[string]any{"enabled": enabled})
+	message := "Sudo access was revoked successfully."
+	if enabled {
+		message = "Sudo access was granted successfully."
+	}
+	a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{Title: "Users", DatabaseStatus: a.databaseStatus(r.Context()), Metrics: a.metrics.Snapshot(), LinuxUsers: updatedUsers, SuccessMessage: message})
+}
+
+func (a *App) handleUserPasswordlessSudoUpdate(w http.ResponseWriter, r *http.Request, users []system.LinuxUser) {
+	username := strings.TrimSpace(r.FormValue("passwordless_sudo_username"))
+	enabled := r.FormValue("passwordless_sudo_enabled") == "1"
+	if err := a.users.SetLinuxUserPasswordlessSudo(username, enabled); err != nil {
+		a.recordAudit(r.Context(), "user.set_passwordless_sudo", username, "failure", map[string]any{"enabled": enabled, "error": err.Error()})
+		message := err.Error()
+		switch {
+		case errors.Is(err, system.ErrInvalidUsername):
+			message = "Linux username format is invalid."
+		case errors.Is(err, system.ErrUserNotFound):
+			message = "Linux user could not be found."
+		case errors.Is(err, system.ErrProtectedUser):
+			message = "This Linux user is protected and cannot have passwordless sudo changed from the panel."
+		}
+		a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{Title: "Users", DatabaseStatus: a.databaseStatus(r.Context()), Metrics: a.metrics.Snapshot(), LinuxUsers: users, RequestError: message})
+		return
+	}
+	updatedUsers, _ := a.users.ListLinuxUsers()
+	a.recordAudit(r.Context(), "user.set_passwordless_sudo", username, "success", map[string]any{"enabled": enabled})
+	message := "Passwordless sudo was disabled successfully."
+	if enabled {
+		message = "Passwordless sudo was enabled successfully."
+	}
+	a.render(r.Context(), w, r.URL.Path, "users.html", TemplateData{Title: "Users", DatabaseStatus: a.databaseStatus(r.Context()), Metrics: a.metrics.Snapshot(), LinuxUsers: updatedUsers, SuccessMessage: message})
 }
 
 func (a *App) handleDatabases(w http.ResponseWriter, r *http.Request) {
@@ -4135,6 +4235,16 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 			}
 		}
 	}
+	if data.ProjectHasArtisan {
+		data.LaravelPermissionCommand = strings.Join([]string{
+			"cd " + shellQuoteForDisplay(site.RootDirectory),
+			"sudo chown -R " + site.OwnerLinuxUser + ":" + site.OwnerLinuxUser + " .",
+			"sudo find . -path './.git' -prune -o -type d -exec chmod 755 {} \\\;",
+			"sudo find . -path './.git' -prune -o -type f -exec chmod 644 {} \\\;",
+			"sudo find storage bootstrap/cache -type d -exec chmod 775 {} \\\;",
+			"sudo find storage bootstrap/cache -type f -exec chmod 664 {} \\\;",
+		}, "\n")
+	}
 	envPath := filepath.Join(site.RootDirectory, ".env")
 	var envContent string
 	if _, err := a.helper.Call(r.Context(), "files.read_env", map[string]string{"path": envPath}, &envContent); err == nil {
@@ -4192,6 +4302,16 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 	data.DeploymentReleases = releases
 	data.PackageScripts = readPackageJSONScripts(subdomain.RootDirectory)
 	data.ProjectHasComposer, data.ProjectHasArtisan = a.detectProjectMarkers(r.Context(), subdomain.RootDirectory)
+	if data.ProjectHasArtisan {
+		data.LaravelPermissionCommand = strings.Join([]string{
+			"cd " + shellQuoteForDisplay(subdomain.RootDirectory),
+			"sudo chown -R " + site.OwnerLinuxUser + ":" + site.OwnerLinuxUser + " .",
+			"sudo find . -path './.git' -prune -o -type d -exec chmod 755 {} \\\;",
+			"sudo find . -path './.git' -prune -o -type f -exec chmod 644 {} \\\;",
+			"sudo find storage bootstrap/cache -type d -exec chmod 775 {} \\\;",
+			"sudo find storage bootstrap/cache -type f -exec chmod 664 {} \\\;",
+		}, "\n")
+	}
 	data.DeployCommandPlaceholder = recommendedDeployCommand(data.ProjectHasComposer, data.ProjectHasArtisan, data.PackageScripts, subdomain.FullDomain)
 	data.AutoDeployCommandPlaceholder = data.DeployCommandPlaceholder
 	if commands, err := a.store.ListSubdomainRuntimeCommands(r.Context(), subdomain.ID); err == nil {
@@ -4403,6 +4523,13 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func shellQuoteForDisplay(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {

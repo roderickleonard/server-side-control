@@ -137,10 +137,12 @@ func NewHelperRedisManager(client *HelperClient) RedisManager {
 	return &helperRedisManager{client: client}
 }
 
-func (m *helperUserManager) CreateLinuxUser(username string, createHome bool) error {
+func (m *helperUserManager) CreateLinuxUser(username string, createHome bool, password string, grantSudo bool) error {
 	_, err := m.client.Call(context.Background(), "user.create", map[string]any{
 		"username":    username,
 		"create_home": createHome,
+		"password":    password,
+		"grant_sudo":  grantSudo,
 	}, nil)
 	return err
 }
@@ -155,6 +157,30 @@ func (m *helperUserManager) DeleteLinuxUser(username string, removeHome bool) er
 	_, err := m.client.Call(context.Background(), "user.delete", map[string]any{
 		"username":    username,
 		"remove_home": removeHome,
+	}, nil)
+	return err
+}
+
+func (m *helperUserManager) SetLinuxUserPassword(username string, password string) error {
+	_, err := m.client.Call(context.Background(), "user.set_password", map[string]any{
+		"username": username,
+		"password": password,
+	}, nil)
+	return err
+}
+
+func (m *helperUserManager) SetLinuxUserSudo(username string, enabled bool) error {
+	_, err := m.client.Call(context.Background(), "user.set_sudo", map[string]any{
+		"username": username,
+		"enabled":  enabled,
+	}, nil)
+	return err
+}
+
+func (m *helperUserManager) SetLinuxUserPasswordlessSudo(username string, enabled bool) error {
+	_, err := m.client.Call(context.Background(), "user.set_passwordless_sudo", map[string]any{
+		"username": username,
+		"enabled":  enabled,
 	}, nil)
 	return err
 }

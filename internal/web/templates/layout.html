@@ -84,6 +84,30 @@
         </aside>
 
         <div class="psk-main">
+            <div class="terminal-drawer-backdrop" id="terminal-drawer-backdrop"></div>
+            <aside class="terminal-drawer" id="terminal-drawer" aria-hidden="true">
+                <div class="terminal-drawer-header">
+                    <div>
+                        <span class="eyebrow">Live terminal</span>
+                        <h3 id="terminal-drawer-title">Terminal</h3>
+                        <div class="terminal-drawer-subtitle" id="terminal-drawer-subtitle"></div>
+                    </div>
+                    <div class="terminal-drawer-actions">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="terminal-drawer-copy">Copy all</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="terminal-drawer-close">Close</button>
+                    </div>
+                </div>
+                <div class="terminal-drawer-status" id="terminal-drawer-status">Idle.</div>
+                <div class="terminal-drawer-body">
+                    <div class="terminal-drawer-stream" id="terminal-drawer-stream">
+                        <pre class="command-output terminal-drawer-output" id="terminal-drawer-output"></pre>
+                    </div>
+                    <div class="terminal-drawer-terminal hidden" id="terminal-drawer-terminal-wrap">
+                        <div class="terminal-drawer-terminal-meta" id="terminal-drawer-terminal-meta">Terminal disconnected.</div>
+                        <div class="terminal-drawer-terminal-mount" id="terminal-drawer-terminal"></div>
+                    </div>
+                </div>
+            </aside>
             <header class="psk-topbar">
                 <button class="sb-toggle" id="sb-toggle" aria-label="Toggle navigation">
                     <i class="bi bi-list"></i>
@@ -109,6 +133,265 @@
             </header>
 
             <main class="content">
+                <script>
+                (function () {
+                    const root = document.getElementById('terminal-drawer');
+                    const backdrop = document.getElementById('terminal-drawer-backdrop');
+                    const titleNode = document.getElementById('terminal-drawer-title');
+                    const subtitleNode = document.getElementById('terminal-drawer-subtitle');
+                    const statusNode = document.getElementById('terminal-drawer-status');
+                    const streamWrap = document.getElementById('terminal-drawer-stream');
+                    const streamOutput = document.getElementById('terminal-drawer-output');
+                    const terminalWrap = document.getElementById('terminal-drawer-terminal-wrap');
+                    const terminalMeta = document.getElementById('terminal-drawer-terminal-meta');
+                    const terminalMount = document.getElementById('terminal-drawer-terminal');
+                    const copyButton = document.getElementById('terminal-drawer-copy');
+                    const closeButton = document.getElementById('terminal-drawer-close');
+                    if (!root || !backdrop || !titleNode || !subtitleNode || !statusNode || !streamWrap || !streamOutput || !terminalWrap || !terminalMeta || !terminalMount || !copyButton || !closeButton) {
+                        return;
+                    }
+
+                    let transcript = '';
+                    let mode = 'stream';
+                    let terminal = null;
+                    let fitAddon = null;
+                    let socket = null;
+                    let terminalBindingsReady = false;
+
+                    function setOpen(isOpen) {
+                        root.classList.toggle('is-open', isOpen);
+                        backdrop.classList.toggle('is-open', isOpen);
+                        root.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+                    }
+
+                    function setMode(nextMode) {
+                        mode = nextMode;
+                        streamWrap.classList.toggle('hidden', nextMode !== 'stream');
+                        terminalWrap.classList.toggle('hidden', nextMode !== 'terminal');
+                    }
+
+                    function resetCopyButton() {
+                        copyButton.textContent = 'Copy all';
+                    }
+
+                    function setHeader(nextTitle, nextSubtitle) {
+                        titleNode.textContent = nextTitle || 'Terminal';
+                        subtitleNode.textContent = nextSubtitle || '';
+                    }
+
+                    function setStatus(text) {
+                        statusNode.textContent = text || 'Idle.';
+                    }
+
+                    function setTerminalMeta(text) {
+                        terminalMeta.textContent = text || 'Terminal disconnected.';
+                    }
+
+                    function clearStreamOutput() {
+                        transcript = '';
+                        streamOutput.textContent = '';
+                        resetCopyButton();
+                    }
+
+                    function append(text) {
+                        const chunk = String(text || '');
+                        transcript += chunk;
+                        if (mode === 'stream') {
+                            streamOutput.textContent += chunk;
+                            streamOutput.scrollTop = streamOutput.scrollHeight;
+                        }
+                    }
+
+                    function openStream(options) {
+                        setMode('stream');
+                        setHeader(options && options.title, options && options.subtitle);
+                        setStatus((options && options.status) || 'Running...');
+                        clearStreamOutput();
+                        if (options && options.initialText) {
+                            append(options.initialText);
+                        }
+                        setOpen(true);
+                    }
+
+                    function ensureTerminal() {
+                        if (terminal || !window.Terminal || !window.FitAddon) {
+                            return terminal;
+                        }
+                        terminal = new window.Terminal({
+                            cursorBlink: true,
+                            fontSize: 13,
+                            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                            theme: { background: '#08111f', foreground: '#d9e7f5' },
+                            scrollback: 10000
+                        });
+                        fitAddon = new window.FitAddon.FitAddon();
+                        terminal.loadAddon(fitAddon);
+                        terminal.open(terminalMount);
+                        fitAddon.fit();
+                        if (!terminalBindingsReady) {
+                            terminalBindingsReady = true;
+                            terminal.onData((data) => {
+                                if (socket && socket.readyState === WebSocket.OPEN) {
+                                    socket.send(JSON.stringify({ type: 'input', data }));
+                                }
+                            });
+                            terminal.onResize((size) => {
+                                if (socket && socket.readyState === WebSocket.OPEN) {
+                                    socket.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
+                                }
+                            });
+                        }
+                        return terminal;
+                    }
+
+                    function disconnectInteractiveTerminal() {
+                        if (socket) {
+                            socket.close();
+                            socket = null;
+                        }
+                        setTerminalMeta('Terminal disconnected.');
+                    }
+
+                    async function copyTranscript() {
+                        const text = transcript || streamOutput.textContent || '';
+                        if (!text) {
+                            return;
+                        }
+                        try {
+                            await navigator.clipboard.writeText(text);
+                            copyButton.textContent = 'Copied';
+                            window.setTimeout(resetCopyButton, 1200);
+                        } catch (error) {
+                            copyButton.textContent = 'Copy failed';
+                            window.setTimeout(resetCopyButton, 1200);
+                        }
+                    }
+
+                    async function streamForm(form, endpoint, options) {
+                        const buttons = Array.from(form.querySelectorAll('button'));
+                        buttons.forEach((button) => {
+                            button.disabled = true;
+                        });
+                        openStream({
+                            title: (options && options.title) || form.dataset.streamTitle || 'Live command',
+                            subtitle: (options && options.subtitle) || form.dataset.streamSubtitle || '',
+                            status: 'Running...'
+                        });
+                        try {
+                            const formData = new FormData(form);
+                            const hasFiles = Array.from(form.querySelectorAll('input[type="file"]')).some((input) => input.files && input.files.length > 0);
+                            const wantsMultipart = hasFiles || String(form.enctype || form.getAttribute('enctype') || '').toLowerCase().includes('multipart/form-data');
+                            const requestOptions = {
+                                method: 'POST',
+                                body: wantsMultipart ? formData : new URLSearchParams(formData).toString()
+                            };
+                            if (!wantsMultipart) {
+                                requestOptions.headers = { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' };
+                            }
+                            const response = await fetch(endpoint, requestOptions);
+                            if (!response.ok || !response.body) {
+                                const text = await response.text();
+                                append(text || 'Command could not be started.');
+                                setStatus('Failed');
+                                return false;
+                            }
+                            const reader = response.body.getReader();
+                            const decoder = new TextDecoder();
+                            while (true) {
+                                const { value, done } = await reader.read();
+                                if (done) {
+                                    break;
+                                }
+                                append(decoder.decode(value, { stream: true }));
+                            }
+                            const failed = transcript.includes('[command failed]');
+                            setStatus(failed ? 'Failed' : ((options && options.reloadOnSuccess) ? 'Completed, refreshing...' : 'Completed'));
+                            if (!failed && options && options.reloadOnSuccess) {
+                                window.setTimeout(() => window.location.reload(), 700);
+                            }
+                            return !failed;
+                        } catch (error) {
+                            append('\n' + String(error));
+                            setStatus('Failed');
+                            return false;
+                        } finally {
+                            buttons.forEach((button) => {
+                                button.disabled = false;
+                            });
+                        }
+                    }
+
+                    function openInteractiveTerminal(options) {
+                        const instance = ensureTerminal();
+                        if (!instance || !fitAddon) {
+                            openStream({ title: (options && options.title) || 'Interactive terminal', status: 'Terminal library could not be loaded.' });
+                            return;
+                        }
+                        setMode('terminal');
+                        setHeader(options && options.title, options && options.subtitle);
+                        setStatus('Interactive terminal');
+                        setTerminalMeta('Connecting terminal...');
+                        transcript = '';
+                        setOpen(true);
+                        instance.clear();
+                        disconnectInteractiveTerminal();
+                        fitAddon.fit();
+                        socket = new WebSocket(options.socketURL);
+                        socket.binaryType = 'arraybuffer';
+                        socket.onopen = () => {
+                            setTerminalMeta('Interactive terminal connected.');
+                            fitAddon.fit();
+                            instance.focus();
+                            socket.send(JSON.stringify({ type: 'resize', cols: instance.cols, rows: instance.rows }));
+                        };
+                        socket.onmessage = async (event) => {
+                            const text = typeof event.data === 'string' ? event.data : await new Blob([event.data]).text();
+                            transcript += text;
+                            instance.write(text);
+                        };
+                        socket.onclose = () => {
+                            setTerminalMeta('Interactive terminal disconnected.');
+                            socket = null;
+                        };
+                        socket.onerror = () => {
+                            setTerminalMeta('Interactive terminal connection failed.');
+                        };
+                    }
+
+                    function closeDrawer() {
+                        disconnectInteractiveTerminal();
+                        setOpen(false);
+                    }
+
+                    backdrop.addEventListener('click', closeDrawer);
+                    closeButton.addEventListener('click', closeDrawer);
+                    copyButton.addEventListener('click', copyTranscript);
+                    window.addEventListener('keydown', (event) => {
+                        if (event.key === 'Escape' && root.classList.contains('is-open')) {
+                            closeDrawer();
+                        }
+                    });
+                    window.addEventListener('resize', () => {
+                        if (!fitAddon || !terminal) {
+                            return;
+                        }
+                        fitAddon.fit();
+                        if (socket && socket.readyState === WebSocket.OPEN) {
+                            socket.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }));
+                        }
+                    });
+
+                    window.PanelTerminalDrawer = {
+                        openStream,
+                        append,
+                        setStatus,
+                        streamForm,
+                        openInteractiveTerminal,
+                        disconnectInteractiveTerminal,
+                        close: closeDrawer
+                    };
+                })();
+                </script>
                 {{template "content" .}}
             </main>
         </div>

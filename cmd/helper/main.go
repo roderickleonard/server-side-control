@@ -64,6 +64,345 @@ func handleStreamMode() {
 		os.Exit(1)
 	}
 	switch request.Action {
+	case "user.create":
+		var input struct {
+			Username   string `json:"username"`
+			CreateHome bool   `json:"create_home"`
+			Password   string `json:"password"`
+			GrantSudo  bool   `json:"grant_sudo"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode user create spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamLinuxUserCreate(input.Username, input.CreateHome, input.Password, input.GrantSudo, os.Stdout); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "user.delete":
+		var input struct {
+			Username   string `json:"username"`
+			RemoveHome bool   `json:"remove_home"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode user delete spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamLinuxUserDelete(input.Username, input.RemoveHome, os.Stdout); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "user.set_password":
+		var input struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode user password spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamLinuxUserPassword(input.Username, input.Password, os.Stdout); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "user.set_sudo":
+		var input struct {
+			Username string `json:"username"`
+			Enabled  bool   `json:"enabled"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode user sudo spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamLinuxUserSudo(input.Username, input.Enabled, os.Stdout); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "user.set_passwordless_sudo":
+		var input struct {
+			Username string `json:"username"`
+			Enabled  bool   `json:"enabled"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode user passwordless sudo spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamLinuxUserPasswordlessSudo(input.Username, input.Enabled, os.Stdout); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "site.fix_laravel_permissions":
+		var input struct {
+			RootDir   string `json:"root_dir"`
+			OwnerUser string `json:"owner_user"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode laravel permissions spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := system.StreamFixLaravelPermissions(input.RootDir, input.OwnerUser, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "mysql.restore_database":
+		var input struct {
+			DatabaseName string `json:"database_name"`
+			FilePath     string `json:"file_path"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode mysql restore spec: %v\n", err)
+			os.Exit(1)
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "Restoring database %s from %s\n\n", strings.TrimSpace(input.DatabaseName), strings.TrimSpace(input.FilePath))
+		output, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).RestoreDatabase(input.DatabaseName, input.FilePath)
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "panel.apply_proxy":
+		var input system.PanelProxySpec
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode panel proxy spec: %v\n", err)
+			os.Exit(1)
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "Applying panel proxy for %s -> %s\n\n", strings.TrimSpace(input.Domain), strings.TrimSpace(input.ListenAddr))
+		configPath, err := system.ApplyPanelProxy(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, input)
+		if strings.TrimSpace(configPath) != "" {
+			_, _ = fmt.Fprintf(os.Stdout, "Config path: %s\n", strings.TrimSpace(configPath))
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "panel.restart_service":
+		serviceName := strings.TrimSpace(cfg.ServiceName)
+		if serviceName == "" {
+			serviceName = "server-side-control"
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "Scheduling restart for %s\n\n", serviceName)
+		cmd := exec.Command("bash", "-lc", fmt.Sprintf("nohup sh -c 'sleep 1; systemctl restart %s' >/dev/null 2>&1 &", serviceName))
+		if output, err := cmd.CombinedOutput(); err != nil {
+			trimmed := strings.TrimSpace(string(output))
+			if trimmed != "" {
+				_, _ = io.WriteString(os.Stderr, trimmed+"\n")
+			}
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: restart panel service: %v\n", err)
+			os.Exit(1)
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "Restart scheduled for %s\n", serviceName)
+	case "nginx.apply_site":
+		var spec system.SiteSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode site spec: %v\n", err)
+			os.Exit(1)
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "Applying Nginx site %s for %s\n\n", strings.TrimSpace(spec.Name), strings.TrimSpace(spec.Domain))
+		configPath, err := system.NewNginxManager(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, cfg.CertbotBinary).ApplySite(spec)
+		if strings.TrimSpace(configPath) != "" {
+			_, _ = fmt.Fprintf(os.Stdout, "Config path: %s\n", strings.TrimSpace(configPath))
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "nginx.delete_site":
+		var site system.SiteRemoval
+		if err := json.Unmarshal(request.Input, &site); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode site removal spec: %v\n", err)
+			os.Exit(1)
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "Deleting Nginx site %s\n\n", strings.TrimSpace(site.Name))
+		if err := system.NewNginxManager(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, cfg.CertbotBinary).DeleteSite(site); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "Deleted site %s\n", strings.TrimSpace(site.Name))
+	case "nginx.enable_tls":
+		var input system.TLSRequest
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode tls request: %v\n", err)
+			os.Exit(1)
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "Requesting TLS for %s\n\n", strings.TrimSpace(input.Domain))
+		output, err := system.NewNginxManager(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, cfg.CertbotBinary).EnableTLS(input)
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "deploy.rollback":
+		var spec system.RollbackSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode rollback spec: %v\n", err)
+			os.Exit(1)
+		}
+		result, err := system.NewDeployManager().Rollback(spec)
+		if result.Output != "" {
+			_, _ = io.WriteString(os.Stdout, result.Output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "pm2.list", "pm2.restart", "pm2.reload", "pm2.start", "pm2.stop", "pm2.logs":
+		var input struct {
+			User        string `json:"user"`
+			ProcessName string `json:"process_name"`
+			Lines       int    `json:"lines"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode pm2 spec: %v\n", err)
+			os.Exit(1)
+		}
+		var (
+			output string
+			err error
+		)
+		switch request.Action {
+		case "pm2.list":
+			output, err = system.NewPM2Manager().List(input.User)
+		case "pm2.restart":
+			output, err = system.NewPM2Manager().Restart(input.User, input.ProcessName)
+		case "pm2.reload":
+			output, err = system.NewPM2Manager().Reload(input.User, input.ProcessName)
+		case "pm2.start":
+			output, err = system.NewPM2Manager().Start(input.User, input.ProcessName)
+		case "pm2.stop":
+			output, err = system.NewPM2Manager().Stop(input.User, input.ProcessName)
+		default:
+			output, err = system.NewPM2Manager().Logs(input.User, input.ProcessName, input.Lines)
+		}
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "php.install_versions":
+		var input struct {
+			Versions []string `json:"versions"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode php install versions spec: %v\n", err)
+			os.Exit(1)
+		}
+		output, err := system.NewPHPManager().InstallVersions(input.Versions)
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "php.install_extensions", "php.enable_extensions", "php.disable_extensions":
+		var spec system.PHPExtensionSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode php extensions spec: %v\n", err)
+			os.Exit(1)
+		}
+		var (
+			output string
+			err error
+		)
+		switch request.Action {
+		case "php.install_extensions":
+			output, err = system.NewPHPManager().InstallExtensions(spec)
+		case "php.enable_extensions":
+			output, err = system.NewPHPManager().EnableExtensions(spec)
+		default:
+			output, err = system.NewPHPManager().DisableExtensions(spec)
+		}
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "php.update_ini_settings":
+		var spec system.PHPINIUpdateSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode php ini spec: %v\n", err)
+			os.Exit(1)
+		}
+		output, err := system.NewPHPManager().UpdateINISettings(spec)
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "php.switch":
+		var input struct {
+			ConfigPath string `json:"config_path"`
+			Version    string `json:"version"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode php switch spec: %v\n", err)
+			os.Exit(1)
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "Switching %s to PHP %s\n", input.ConfigPath, input.Version)
+		if err := system.NewPHPManager().SwitchSiteVersion(input.ConfigPath, input.Version); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "redis.install", "redis.start", "redis.stop", "redis.restart":
+		var (
+			output string
+			err error
+		)
+		switch request.Action {
+		case "redis.install":
+			output, err = system.NewRedisManager().Install()
+		case "redis.start":
+			output, err = system.NewRedisManager().Start()
+		case "redis.stop":
+			output, err = system.NewRedisManager().Stop()
+		default:
+			output, err = system.NewRedisManager().Restart()
+		}
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "redis.configure":
+		var spec system.RedisConfigSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode redis config spec: %v\n", err)
+			os.Exit(1)
+		}
+		output, err := system.NewRedisManager().Configure(spec)
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "redis.test_connection":
+		var spec system.RedisPingSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode redis ping spec: %v\n", err)
+			os.Exit(1)
+		}
+		output, err := system.NewRedisManager().TestConnection(spec)
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
 	case "deploy.run":
 		var spec system.DeploySpec
 		if err := json.Unmarshal(request.Input, &spec); err != nil {
@@ -171,12 +510,14 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		var input struct {
 			Username   string `json:"username"`
 			CreateHome bool   `json:"create_home"`
+			Password   string `json:"password"`
+			GrantSudo  bool   `json:"grant_sudo"`
 		}
 		if err := json.Unmarshal(request.Input, &input); err != nil {
 			writeFailure(err, "")
 			return
 		}
-		err := system.NewUserManager().CreateLinuxUser(input.Username, input.CreateHome)
+		err := system.NewUserManager().CreateLinuxUser(input.Username, input.CreateHome, input.Password, input.GrantSudo)
 		writeSuccess(nil, "", err)
 	case "user.list":
 		users, err := system.NewUserManager().ListLinuxUsers()
@@ -191,6 +532,39 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			return
 		}
 		err := system.NewUserManager().DeleteLinuxUser(input.Username, input.RemoveHome)
+		writeSuccess(nil, "", err)
+	case "user.set_password":
+		var input struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := system.NewUserManager().SetLinuxUserPassword(input.Username, input.Password)
+		writeSuccess(nil, "", err)
+	case "user.set_sudo":
+		var input struct {
+			Username string `json:"username"`
+			Enabled  bool   `json:"enabled"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := system.NewUserManager().SetLinuxUserSudo(input.Username, input.Enabled)
+		writeSuccess(nil, "", err)
+	case "user.set_passwordless_sudo":
+		var input struct {
+			Username string `json:"username"`
+			Enabled  bool   `json:"enabled"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := system.NewUserManager().SetLinuxUserPasswordlessSudo(input.Username, input.Enabled)
 		writeSuccess(nil, "", err)
 	case "mysql.provision_database":
 		var input struct {

@@ -360,6 +360,36 @@ func StreamInstallComposer(stdout io.Writer, stderr io.Writer) error {
 	return runBashAsRootStream(ctx, composerInstallScript(), stdout, stderr)
 }
 
+func StreamFixLaravelPermissions(rootDir string, ownerUser string, stdout io.Writer, stderr io.Writer) error {
+	ownerUser = strings.TrimSpace(ownerUser)
+	rootDir = strings.TrimSpace(rootDir)
+	if !usernamePattern.MatchString(ownerUser) {
+		return ErrInvalidRunAsUser
+	}
+	if !filepath.IsAbs(rootDir) {
+		return ErrInvalidTargetDirectory
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	script := strings.Join([]string{
+		"set -eu",
+		"cd " + shellQuote(rootDir),
+		"echo 'Checking Laravel directories'",
+		"test -d storage",
+		"test -d bootstrap/cache",
+		"echo 'Fixing ownership'",
+		"chown -R " + shellQuote(ownerUser+":"+ownerUser) + " .",
+		"echo 'Setting base directory permissions'",
+		"find . -path './.git' -prune -o -type d -print -exec chmod 755 {} \\;",
+		"find . -path './.git' -prune -o -type f -print -exec chmod 644 {} \\;",
+		"echo 'Applying writable Laravel directories'",
+		"find storage bootstrap/cache -type d -print -exec chmod 775 {} \\;",
+		"find storage bootstrap/cache -type f -print -exec chmod 664 {} \\;",
+		"echo 'Laravel permissions updated successfully.'",
+	}, "\n")
+	return runBashAsRootStream(ctx, script, stdout, stderr)
+}
+
 func lookupUserHome(username string) (string, error) {
 	username = strings.TrimSpace(username)
 	if !usernamePattern.MatchString(username) {

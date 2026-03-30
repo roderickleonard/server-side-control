@@ -64,3 +64,7 @@ func StreamShellCommand(spec ShellCommandSpec, stdout io.Writer, stderr io.Write
 func StreamInstallComposer(stdout io.Writer, stderr io.Writer) error {
 	return fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
 }
+
+func StreamFixLaravelPermissions(rootDir string, ownerUser string, stdout io.Writer, stderr io.Writer) error {
+	return fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
+}

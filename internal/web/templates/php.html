@@ -22,19 +22,10 @@
 </section>
 {{end}}
 
-{{if .CommandOutput}}
-<section class="alerts">
-    <div class="alert success">
-        <strong>Command output</strong>
-        <pre class="command-output" style="margin-top:10px;">{{.CommandOutput}}</pre>
-    </div>
-</section>
-{{end}}
-
 <section class="grid">
     <article class="panel">
         <h3><i class="bi bi-download" style="color:var(--accent);margin-right:6px;"></i>Install PHP Versions</h3>
-        <form method="post" class="stack-form compact-form">
+        <form method="post" class="stack-form compact-form php-stream-form" data-stream-endpoint="/php/stream" data-reload-on-success="1">
             <input type="hidden" name="php_action" value="install_versions">
             {{if .PHPInstallableVersions}}
             <div class="site-delete-summary details-summary">
@@ -53,7 +44,7 @@
     </article>
     <article class="panel">
         <h3><i class="bi bi-arrow-left-right" style="color:var(--accent);margin-right:6px;"></i>Switch Site Version</h3>
-        <form method="post" class="stack-form">
+        <form method="post" class="stack-form php-stream-form" data-stream-endpoint="/php/stream" data-reload-on-success="1">
             <input type="hidden" name="php_action" value="switch_version">
             <div class="form-grid two-up">
                 <label>
@@ -85,7 +76,7 @@
 <section class="grid">
     <article class="panel">
         <h3><i class="bi bi-puzzle" style="color:var(--accent);margin-right:6px;"></i>Manage Extensions</h3>
-        <form method="post" class="stack-form compact-form" id="php-extension-form">
+        <form method="post" class="stack-form compact-form php-stream-form" id="php-extension-form" data-stream-endpoint="/php/stream" data-reload-on-success="1">
             <input type="hidden" name="php_action" value="install_extensions" id="php-extension-action">
             <div class="form-grid two-up">
                 <label>
@@ -160,7 +151,7 @@
 <section class="grid single">
     <article class="panel">
         <h3><i class="bi bi-sliders" style="color:var(--accent);margin-right:6px;"></i>PHP ini Tuning</h3>
-        <form method="post" class="stack-form compact-form" id="php-ini-form">
+        <form method="post" class="stack-form compact-form php-stream-form" id="php-ini-form" data-stream-endpoint="/php/stream" data-reload-on-success="1">
             <input type="hidden" name="php_action" value="update_ini">
             <div class="form-grid two-up">
                 <label>
@@ -318,6 +309,8 @@
 <script type="application/json" id="php-ini-settings-json">{{.PHPINISettingsJSON}}</script>
 <script>
 (function () {
+    const terminalDrawer = window.PanelTerminalDrawer;
+    const streamForms = Array.from(document.querySelectorAll('.php-stream-form'));
     const versionSelect = document.getElementById('php-extension-version');
     const showEnabled = document.getElementById('php-show-enabled');
     const showInstalled = document.getElementById('php-show-installed');
@@ -330,6 +323,18 @@
     const iniUploadMaxFilesize = document.getElementById('php-ini-upload-max-filesize');
     const iniPostMaxSize = document.getElementById('php-ini-post-max-size');
     const iniMaxExecutionTime = document.getElementById('php-ini-max-execution-time');
+    if (terminalDrawer) {
+        streamForms.forEach((form) => {
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                await terminalDrawer.streamForm(form, form.dataset.streamEndpoint || '/php/stream', {
+                    title: 'PHP action',
+                    reloadOnSuccess: form.dataset.reloadOnSuccess === '1',
+                });
+            });
+        });
+    }
+
     if (!versionSelect || !extensionItems.length) {
         return;
     }

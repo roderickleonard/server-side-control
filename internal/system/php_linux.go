@@ -19,6 +19,18 @@ var phpInstallCandidateVersions = []string{"8.1", "8.2", "8.3", "8.4"}
 var phpINIByteValuePattern = regexp.MustCompile(`(?i)^\d+[kmg]?$`)
 var phpININumericValuePattern = regexp.MustCompile(`^\d+$`)
 
+type phpExtensionAlias struct {
+	PackageSuffix string
+	Modules       []string
+}
+
+var phpExtensionAliases = map[string]phpExtensionAlias{
+	"mysql":   {PackageSuffix: "mysql", Modules: []string{"mysqli", "pdo_mysql", "mysqlnd"}},
+	"pgsql":   {PackageSuffix: "pgsql", Modules: []string{"pgsql", "pdo_pgsql"}},
+	"sqlite3": {PackageSuffix: "sqlite3", Modules: []string{"sqlite3", "pdo_sqlite"}},
+	"xml":     {PackageSuffix: "xml", Modules: []string{"dom", "simplexml", "xml", "xmlreader", "xmlwriter"}},
+}
+
 type linuxPHPManager struct{}
 
 func NewPHPManager() PHPManager {
@@ -116,7 +128,8 @@ func (linuxPHPManager) ListExtensionStatus(version string) (PHPExtensionStatus, 
 	if err != nil {
 		return PHPExtensionStatus{}, err
 	}
-	enabled := phpEnabledModulesForVersion(version)
+	installed = expandPHPExtensionAliases(installed)
+	enabled := expandPHPExtensionAliases(phpEnabledModulesForVersion(version))
 	available := phpPackageModulesForVersion(version)
 	return PHPExtensionStatus{Version: version, InstalledModules: installed, EnabledModules: enabled, AvailableModules: available}, nil
 }
@@ -153,7 +166,11 @@ func (linuxPHPManager) DisableExtensions(spec PHPExtensionSpec) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	args := append([]string{"-v", version, "-s", "cli", "-s", "fpm"}, extensions...)
+	modules, err := installedModulesForRequestedExtensions(version, extensions)
+	if err != nil {
+		return "", err
+	}
+	args := append([]string{"-v", version, "-s", "cli", "-s", "fpm"}, modules...)
 	cmd := exec.Command("phpdismod", args...)
 	var output bytes.Buffer
 	cmd.Stdout = &output
@@ -380,6 +397,7 @@ func phpPackageModulesForVersion(version string) []string {
 	}
 	installed, _ := phpModulesForVersion(version)
 	modules = append(modules, installed...)
+	modules = append(modules, inferLogicalExtensionAliases(modules)...)
 	sort.Strings(modules)
 	return uniqueStrings(modules)
 }
@@ -420,14 +438,15 @@ func ensurePHPExtensionsInstalled(version string, extensions []string) (string, 
 	if err != nil {
 		return "", err
 	}
-	installedSet := sliceToSet(installedBefore)
+	installedSet := sliceToSet(expandPHPExtensionAliases(installedBefore))
 	packages := make([]string, 0)
 	missingPackages := make([]string, 0)
 	for _, extension := range extensions {
 		if _, ok := installedSet[extension]; ok {
 			continue
 		}
-		packageName := "php" + version + "-" + extension
+		resolved := resolvePHPExtensionAlias(extension)
+		packageName := "php" + version + "-" + resolved.PackageSuffix
 		if packageExists(packageName) {
 			packages = append(packages, packageName)
 			continue
@@ -449,7 +468,7 @@ func ensurePHPExtensionsInstalled(version string, extensions []string) (string, 
 	if err != nil {
 		return strings.Join(outputParts, "\n\n"), err
 	}
-	modulesAfterSet := sliceToSet(modulesAfter)
+	modulesAfterSet := sliceToSet(expandPHPExtensionAliases(modulesAfter))
 	missing := append([]string{}, missingPackages...)
 	for _, extension := range extensions {
 		if _, ok := modulesAfterSet[extension]; !ok {
@@ -464,7 +483,11 @@ func ensurePHPExtensionsInstalled(version string, extensions []string) (string, 
 }
 
 func enablePHPExtensions(version string, extensions []string) (string, error) {
-	args := append([]string{"-v", version, "-s", "cli", "-s", "fpm"}, extensions...)
+	modules, err := installedModulesForRequestedExtensions(version, extensions)
+	if err != nil {
+		return "", err
+	}
+	args := append([]string{"-v", version, "-s", "cli", "-s", "fpm"}, modules...)
 	cmd := exec.Command("phpenmod", args...)
 	var output bytes.Buffer
 	cmd.Stdout = &output
@@ -473,6 +496,62 @@ func enablePHPExtensions(version string, extensions []string) (string, error) {
 		return strings.TrimSpace(output.String()), fmt.Errorf("enable php extensions failed: %w", err)
 	}
 	return strings.TrimSpace(output.String()), nil
+}
+
+func resolvePHPExtensionAlias(extension string) phpExtensionAlias {
+	if alias, ok := phpExtensionAliases[extension]; ok {
+		return alias
+	}
+	return phpExtensionAlias{PackageSuffix: extension, Modules: []string{extension}}
+}
+
+func installedModulesForRequestedExtensions(version string, extensions []string) ([]string, error) {
+	installed, err := phpModulesForVersion(version)
+	if err != nil {
+		return nil, err
+	}
+	installedSet := sliceToSet(installed)
+	modules := make([]string, 0, len(extensions))
+	missing := make([]string, 0)
+	for _, extension := range extensions {
+		resolved := resolvePHPExtensionAlias(extension)
+		found := false
+		for _, module := range resolved.Modules {
+			if _, ok := installedSet[module]; ok {
+				modules = append(modules, module)
+				found = true
+			}
+		}
+		if !found {
+			missing = append(missing, extension)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("extensions are not installed for php %s: %s", version, strings.Join(missing, ", "))
+	}
+	sort.Strings(modules)
+	return uniqueStrings(modules), nil
+}
+
+func expandPHPExtensionAliases(modules []string) []string {
+	result := append([]string{}, modules...)
+	result = append(result, inferLogicalExtensionAliases(modules)...)
+	sort.Strings(result)
+	return uniqueStrings(result)
+}
+
+func inferLogicalExtensionAliases(modules []string) []string {
+	moduleSet := sliceToSet(modules)
+	aliases := make([]string, 0)
+	for aliasName, alias := range phpExtensionAliases {
+		for _, module := range alias.Modules {
+			if _, ok := moduleSet[module]; ok {
+				aliases = append(aliases, aliasName)
+				break
+			}
+		}
+	}
+	return aliases
 }
 
 func sliceToSet(values []string) map[string]struct{} {

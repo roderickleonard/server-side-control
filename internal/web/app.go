@@ -236,6 +236,7 @@ type TemplateData struct {
 	SiteBrowserFileContent string
 	SiteBrowserFileNotice string
 	SiteBrowserEntries []SiteFileEntry
+	LaravelPermissionCommand string
 	NginxEditors []SiteNginxConfigEditor
 	NginxConfigPath string
 	NginxConfigContent string
@@ -294,9 +295,12 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/logout", a.handleLogout)
 	a.router.HandleFunc("/", a.handleDashboard)
 	a.router.HandleFunc("/users", a.handleUsers)
+	a.router.HandleFunc("/users/stream", a.handleUsersStream)
 	a.router.HandleFunc("/databases", a.handleDatabases)
 	a.router.HandleFunc("/databases/details", a.handleDatabaseDetails)
+	a.router.HandleFunc("/databases/details/stream", a.handleDatabaseDetailsStream)
 	a.router.HandleFunc("/sites", a.handleSites)
+	a.router.HandleFunc("/sites/stream", a.handleSitesStream)
 	a.router.HandleFunc("/sites/details", a.handleSiteDetails)
 	a.router.HandleFunc("/sites/subdomains/details", a.handleSubdomainDetails)
 	a.router.HandleFunc("/sites/details/runtime-stream", a.handleSiteRuntimeStream)
@@ -304,13 +308,18 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/sites/details/terminal-ws", a.handleSiteTerminalWS)
 	a.router.HandleFunc("/webhooks/site-deploy", a.handleSiteDeployWebhook)
 	a.router.HandleFunc("/settings", a.handleSettings)
+	a.router.HandleFunc("/settings/stream", a.handleSettingsStream)
 	a.router.HandleFunc("/settings/passkeys/begin", a.handlePasskeyRegisterBegin)
 	a.router.HandleFunc("/settings/passkeys/finish", a.handlePasskeyRegisterFinish)
 	a.router.HandleFunc("/php", a.handlePHP)
+	a.router.HandleFunc("/php/stream", a.handlePHPStream)
 	a.router.HandleFunc("/redis", a.handleRedis)
+	a.router.HandleFunc("/redis/stream", a.handleRedisStream)
 	a.router.HandleFunc("/redis/logs", a.handleRedisLogs)
 	a.router.HandleFunc("/deploys", a.handleDeploys)
+	a.router.HandleFunc("/deploys/stream", a.handleDeploysStream)
 	a.router.HandleFunc("/processes", a.handleProcesses)
+	a.router.HandleFunc("/processes/stream", a.handleProcessesStream)
 	a.router.HandleFunc("/logs", a.handleLogs)
 }
 
