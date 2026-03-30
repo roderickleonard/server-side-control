@@ -78,8 +78,21 @@
 
 <section class="grid single" data-site-tab="deploy">
     <article class="panel">
-        <h3>Deploy</h3>
-        <div class="stack-cluster">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Repository sync</span>
+                <h3>{{if .RepositoryStatus.IsGitRepo}}Pull latest code{{else}}Clone repository{{end}}</h3>
+            </div>
+            <span class="badge subtle-badge">{{if .RepositoryStatus.IsGitRepo}}Git repo ready{{else}}No git repo yet{{end}}</span>
+        </div>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Remote</strong><span>{{if .RepositoryStatus.RemoteURL}}{{.RepositoryStatus.RemoteURL}}{{else if .SubdomainRepositoryURL}}{{.SubdomainRepositoryURL}}{{else}}-{{end}}</span></div>
+            <div><strong>Branch</strong><span>{{if .RepositoryStatus.Branch}}{{.RepositoryStatus.Branch}}{{else if .SubdomainBranch}}{{.SubdomainBranch}}{{else}}main{{end}}</span></div>
+            <div><strong>Commit</strong><span>{{if .RepositoryStatus.CurrentCommit}}{{.RepositoryStatus.CurrentCommit}}{{else}}-{{end}}</span></div>
+            <div><strong>Target</strong><span>{{.SelectedSubdomain.RootDirectory}}</span></div>
+        </div>
+        <p class="muted details-note" style="margin-top:12px;">{{if .RepositoryStatus.IsGitRepo}}Bu bölüm sadece repo ayarları ve clone/pull işlemleri içindir.{{else}}Önce repo ayarlarını kaydedin, sonra clone ile subdomain köküne çekin.{{end}}</p>
+        <div class="stack-cluster" style="margin-top:12px;">
             <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
                 <input type="hidden" name="details_action" value="sync_subdomain_repository">
                 <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
@@ -91,6 +104,13 @@
             <input type="hidden" name="details_action" value="save_subdomain_deploy">
             <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
             <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <input type="hidden" name="subdomain_auto_deploy_enabled" value="{{if .SubdomainAutoDeployEnabled}}1{{else}}0{{end}}">
+            <input type="hidden" name="subdomain_auto_deploy_branch" value="{{.SubdomainAutoDeployBranch}}">
+            <input type="hidden" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}">
+            <input type="hidden" name="subdomain_auto_deploy_notify_email" value="{{.SubdomainAutoDeployNotifyEmail}}">
+            <input type="hidden" name="subdomain_auto_deploy_secret" value="{{.SubdomainAutoDeploySecret}}">
+            <input type="hidden" name="subdomain_auto_deploy_preset" value="{{.SubdomainAutoDeployPreset}}">
+            <input type="hidden" name="subdomain_auto_deploy_pm2_process" value="{{.SubdomainAutoDeployPM2Process}}">
             <div class="form-grid two-up">
                 <label>
                     <span>Repository URL</span>
@@ -105,68 +125,16 @@
                     <span>Post deploy command</span>
                     <input type="text" name="subdomain_post_deploy_command" value="{{.SubdomainPostDeployCommand}}" placeholder="{{.DeployCommandPlaceholder}}">
                 </label>
-                <label>
-                    <span>Auto deploy branch</span>
-                    <input type="text" name="subdomain_auto_deploy_branch" value="{{.SubdomainAutoDeployBranch}}" placeholder="main">
-                </label>
-                <label>
-                    <span>Auto deploy command</span>
-                    <input type="text" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}" placeholder="{{.AutoDeployCommandPlaceholder}}">
-                </label>
-                <label>
-                    <span>Webhook action preset</span>
-                    <select name="subdomain_auto_deploy_preset">
-                        <option value="custom" {{if or (eq .SubdomainAutoDeployPreset "") (eq .SubdomainAutoDeployPreset "custom")}}selected{{end}}>Custom command</option>
-                        <option value="pm2_reload" {{if eq .SubdomainAutoDeployPreset "pm2_reload"}}selected{{end}}>PM2 reload process</option>
-                        <option value="pm2_restart" {{if eq .SubdomainAutoDeployPreset "pm2_restart"}}selected{{end}}>PM2 restart process</option>
-                    </select>
-                </label>
-                <label>
-                    <span>Preset PM2 process</span>
-                    <input type="text" name="subdomain_auto_deploy_pm2_process" value="{{.SubdomainAutoDeployPM2Process}}" placeholder="{{.PM2ProcessName}}">
-                </label>
-                <label>
-                    <span>Notify email</span>
-                    <input type="email" name="subdomain_auto_deploy_notify_email" value="{{.SubdomainAutoDeployNotifyEmail}}" placeholder="ops@example.com">
-                </label>
-                <label>
-                    <span>Webhook secret</span>
-                    <input type="text" name="subdomain_auto_deploy_secret" value="{{.SubdomainAutoDeploySecret}}" placeholder="Generated when enabled or rotated">
-                </label>
-                <label class="checkbox-row compact">
-                    <input type="checkbox" name="subdomain_auto_deploy_enabled" value="1" {{if .SubdomainAutoDeployEnabled}}checked{{end}}>
-                    <span>Enable auto deploy</span>
-                </label>
             </div>
             {{if .ProjectHasArtisan}}
             <div class="form-actions" style="justify-content:flex-start;gap:8px;">
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-fill-input="input[name='subdomain_post_deploy_command']" data-fill-value="composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize">Use Laravel deploy preset</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" data-fill-input="input[name='subdomain_auto_deploy_command']" data-fill-value="composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize">Use Laravel webhook preset</button>
             </div>
             {{end}}
             <div class="form-actions">
-                <button type="submit" class="btn btn-sm btn-outline-secondary">Save deploy settings</button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Save repository settings</button>
             </div>
         </form>
-        <form method="post" class="inline-form" style="margin-top:8px;">
-            <input type="hidden" name="details_action" value="rotate_subdomain_auto_deploy_secret">
-            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
-            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
-            <input type="hidden" name="subdomain_repository_url" value="{{.SubdomainRepositoryURL}}">
-            <input type="hidden" name="subdomain_branch" value="{{.SubdomainBranch}}">
-            <input type="hidden" name="subdomain_post_deploy_command" value="{{.SubdomainPostDeployCommand}}">
-            <input type="hidden" name="subdomain_auto_deploy_branch" value="{{.SubdomainAutoDeployBranch}}">
-            <input type="hidden" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}">
-            <input type="hidden" name="subdomain_auto_deploy_notify_email" value="{{.SubdomainAutoDeployNotifyEmail}}">
-            <input type="hidden" name="subdomain_auto_deploy_preset" value="{{.SubdomainAutoDeployPreset}}">
-            <input type="hidden" name="subdomain_auto_deploy_pm2_process" value="{{.SubdomainAutoDeployPM2Process}}">
-            <button type="submit" class="btn btn-sm btn-outline-secondary">Rotate webhook secret</button>
-        </form>
-        {{if .AutoDeployWebhookURL}}
-        <div class="details-note" style="margin-top:10px;word-break:break-all;">
-            <strong>Webhook URL:</strong> {{.AutoDeployWebhookURL}}
-        </div>
-        {{end}}
         <div class="site-delete-summary details-summary" style="margin-top:12px;">
             <div><strong>Deploy key</strong><span>{{if .GitAuthStatus.DeployKeyReady}}Ready{{else}}Missing{{end}}</span></div>
             <div><strong>Known host</strong><span>{{if .GitAuthStatus.KnownHostTrusted}}Trusted{{else}}Not trusted{{end}}</span></div>
@@ -210,6 +178,100 @@
                 <button type="submit" class="btn btn-sm btn-outline-secondary">Run git command</button>
             </div>
         </form>
+    </article>
+</section>
+
+<section class="grid single" data-site-tab="deploy">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Auto deploy</span>
+                <h3>{{if .SubdomainAutoDeployEnabled}}Webhook enabled{{else}}Manual only{{end}}</h3>
+            </div>
+            <span class="badge subtle-badge">Branch: {{if .SubdomainAutoDeployBranch}}{{.SubdomainAutoDeployBranch}}{{else if .SubdomainBranch}}{{.SubdomainBranch}}{{else}}main{{end}}</span>
+        </div>
+        <p class="muted details-note">Bu bölüm sadece webhook ile otomatik deploy ayarları içindir. Git clone/pull ayarları üst paneldedir.</p>
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;gap:10px;">
+            <input type="hidden" name="details_action" value="save_subdomain_deploy">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <input type="hidden" name="subdomain_repository_url" value="{{.SubdomainRepositoryURL}}">
+            <input type="hidden" name="subdomain_branch" value="{{.SubdomainBranch}}">
+            <input type="hidden" name="subdomain_post_deploy_command" value="{{.SubdomainPostDeployCommand}}">
+            <label class="checkbox-row compact">
+                <input type="checkbox" name="subdomain_auto_deploy_enabled" value="1" {{if .SubdomainAutoDeployEnabled}}checked{{end}}>
+                <span>Enable auto deploy</span>
+            </label>
+            <div class="form-grid two-up">
+                <label>
+                    <span>Auto deploy branch</span>
+                    <input type="text" name="subdomain_auto_deploy_branch" value="{{.SubdomainAutoDeployBranch}}" placeholder="main">
+                </label>
+                <label>
+                    <span>Webhook secret</span>
+                    <input type="text" name="subdomain_auto_deploy_secret" value="{{.SubdomainAutoDeploySecret}}" placeholder="Generated when enabled or rotated">
+                </label>
+                <label>
+                    <span>Webhook action preset</span>
+                    <select name="subdomain_auto_deploy_preset">
+                        <option value="custom" {{if or (eq .SubdomainAutoDeployPreset "") (eq .SubdomainAutoDeployPreset "custom")}}selected{{end}}>Custom command</option>
+                        <option value="pm2_reload" {{if eq .SubdomainAutoDeployPreset "pm2_reload"}}selected{{end}}>PM2 reload process</option>
+                        <option value="pm2_restart" {{if eq .SubdomainAutoDeployPreset "pm2_restart"}}selected{{end}}>PM2 restart process</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Preset PM2 process</span>
+                    <input type="text" name="subdomain_auto_deploy_pm2_process" value="{{.SubdomainAutoDeployPM2Process}}" placeholder="{{.PM2ProcessName}}">
+                </label>
+                <label class="span-2">
+                    <span>Auto deploy command</span>
+                    <input type="text" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}" placeholder="{{.AutoDeployCommandPlaceholder}}">
+                </label>
+                <label>
+                    <span>Notify email</span>
+                    <input type="email" name="subdomain_auto_deploy_notify_email" value="{{.SubdomainAutoDeployNotifyEmail}}" placeholder="ops@example.com">
+                </label>
+            </div>
+            {{if .ProjectHasArtisan}}
+            <div class="form-actions" style="justify-content:flex-start;gap:8px;">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-fill-input="input[name='subdomain_auto_deploy_command']" data-fill-value="composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize">Use Laravel webhook preset</button>
+            </div>
+            {{end}}
+            <div class="form-actions">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Save auto deploy</button>
+            </div>
+        </form>
+        <form method="post" class="inline-form" style="margin-top:8px;">
+            <input type="hidden" name="details_action" value="rotate_subdomain_auto_deploy_secret">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <input type="hidden" name="subdomain_repository_url" value="{{.SubdomainRepositoryURL}}">
+            <input type="hidden" name="subdomain_branch" value="{{.SubdomainBranch}}">
+            <input type="hidden" name="subdomain_post_deploy_command" value="{{.SubdomainPostDeployCommand}}">
+            <input type="hidden" name="subdomain_auto_deploy_enabled" value="{{if .SubdomainAutoDeployEnabled}}1{{else}}0{{end}}">
+            <input type="hidden" name="subdomain_auto_deploy_branch" value="{{.SubdomainAutoDeployBranch}}">
+            <input type="hidden" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}">
+            <input type="hidden" name="subdomain_auto_deploy_notify_email" value="{{.SubdomainAutoDeployNotifyEmail}}">
+            <input type="hidden" name="subdomain_auto_deploy_preset" value="{{.SubdomainAutoDeployPreset}}">
+            <input type="hidden" name="subdomain_auto_deploy_pm2_process" value="{{.SubdomainAutoDeployPM2Process}}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Rotate webhook secret</button>
+        </form>
+        {{if .AutoDeployWebhookURL}}
+        <div class="details-note" style="margin-top:10px;word-break:break-all;">
+            <strong>Webhook URL:</strong> {{.AutoDeployWebhookURL}}
+        </div>
+        {{end}}
+    </article>
+</section>
+
+<section class="grid single" data-site-tab="deploy">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Release history</span>
+                <h3>Deploy logs and rollback</h3>
+            </div>
+        </div>
         {{if .DeploymentReleases}}
         <div class="table-card" style="margin-top:16px;">
             <table class="table table-theme">
@@ -249,6 +311,8 @@
                 </tbody>
             </table>
         </div>
+        {{else}}
+        <p class="muted details-note">No deploy history recorded for this subdomain yet.</p>
         {{end}}
     </article>
 </section>
