@@ -290,6 +290,10 @@ func (m *helperRuntimeManager) InstallPM2(spec PM2InstallSpec) (string, error) {
 	return m.client.Call(context.Background(), "runtime.install_pm2", spec, nil)
 }
 
+func (m *helperRuntimeManager) InstallComposer() (string, error) {
+	return m.client.Call(context.Background(), "runtime.install_composer", map[string]any{}, nil)
+}
+
 func (m *helperRuntimeManager) StartPM2(spec PM2StartSpec) (string, error) {
 	return m.client.Call(context.Background(), "runtime.start_pm2", spec, nil)
 }
