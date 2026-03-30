@@ -755,7 +755,7 @@ func siteDetailTabForAction(action string) string {
 		return "deploy"
 	case "run_ssh_command":
 		return "ssh"
-	case "install_nvm", "install_node", "install_pm2", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "run_npm_script", "npm_install", "save_runtime_command", "delete_runtime_command":
+	case "install_nvm", "install_node", "install_pm2", "install_composer", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "run_npm_script", "npm_install", "save_runtime_command", "delete_runtime_command":
 		return "runtime"
 	case "enable_tls", "add_subdomain", "delete_subdomain", "enable_subdomain_tls":
 		return "domains"
@@ -770,7 +770,7 @@ func subdomainDetailTabForAction(action string) string {
 	switch action {
 	case "sync_subdomain_repository", "run_subdomain_git_command", "save_subdomain_deploy", "rotate_subdomain_auto_deploy_secret", "rollback_subdomain_release", "generate_subdomain_deploy_key", "trust_subdomain_git_host":
 		return "deploy"
-	case "npm_install", "run_npm_script", "run_custom_command", "install_nvm", "install_node", "install_pm2", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "list_pm2", "show_pm2_logs", "save_runtime_command", "delete_runtime_command":
+	case "npm_install", "run_npm_script", "run_custom_command", "install_nvm", "install_node", "install_pm2", "install_composer", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "list_pm2", "show_pm2_logs", "save_runtime_command", "delete_runtime_command":
 		return "runtime"
 	case "enable_subdomain_tls", "move_subdomain_root", "move_subdomain_root_preview", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "edit_subdomain_env", "delete_subdomain":
 		return "settings"
@@ -1104,6 +1104,87 @@ type helperSiteFileEntry struct {
 	Name  string `json:"name"`
 	IsDir bool   `json:"is_dir"`
 	Size  int64  `json:"size"`
+}
+
+func (a *App) detectProjectMarkers(ctx context.Context, rootDirectory string) (bool, bool) {
+	rootDirectory = strings.TrimSpace(rootDirectory)
+	if rootDirectory == "" {
+		return false, false
+	}
+	var entries []helperSiteFileEntry
+	if _, err := a.helper.Call(ctx, "files.list_dir", map[string]string{"path": rootDirectory}, &entries); err != nil {
+		return false, false
+	}
+	hasComposer := false
+	hasArtisan := false
+	hasPublicDir := false
+	hasBootstrapDir := false
+	for _, entry := range entries {
+		name := strings.TrimSpace(entry.Name)
+		if entry.IsDir {
+			switch name {
+			case "public":
+				hasPublicDir = true
+			case "bootstrap":
+				hasBootstrapDir = true
+			}
+			continue
+		}
+		switch name {
+		case "composer.json":
+			hasComposer = true
+		case "artisan":
+			hasArtisan = true
+		}
+	}
+	if !(hasComposer && hasArtisan && hasPublicDir && hasBootstrapDir) {
+		return hasComposer, false
+	}
+	publicHasIndex := false
+	bootstrapHasApp := false
+	if hasPublicDir {
+		var publicEntries []helperSiteFileEntry
+		if _, err := a.helper.Call(ctx, "files.list_dir", map[string]string{"path": filepath.Join(rootDirectory, "public")}, &publicEntries); err == nil {
+			for _, entry := range publicEntries {
+				if !entry.IsDir && strings.TrimSpace(entry.Name) == "index.php" {
+					publicHasIndex = true
+					break
+				}
+			}
+		}
+	}
+	if hasBootstrapDir {
+		var bootstrapEntries []helperSiteFileEntry
+		if _, err := a.helper.Call(ctx, "files.list_dir", map[string]string{"path": filepath.Join(rootDirectory, "bootstrap")}, &bootstrapEntries); err == nil {
+			for _, entry := range bootstrapEntries {
+				if !entry.IsDir && strings.TrimSpace(entry.Name) == "app.php" {
+					bootstrapHasApp = true
+					break
+				}
+			}
+		}
+	}
+	return hasComposer, publicHasIndex && bootstrapHasApp
+}
+
+func recommendedDeployCommand(hasComposer bool, hasLaravel bool, packageScripts []string, processName string) string {
+	processName = strings.TrimSpace(processName)
+	if hasLaravel {
+		return "composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize"
+	}
+	if len(packageScripts) > 0 {
+		if processName != "" {
+			return "npm ci && npm run build && pm2 reload " + processName
+		}
+		return "npm ci && npm run build"
+	}
+	if hasComposer {
+		return "composer install --no-dev --optimize-autoloader"
+	}
+	if processName != "" {
+		return "Optional command after deploy, for example pm2 reload " + processName
+	}
+	return "Optional command after deploy"
 }
 
 type subdomainMovePreview struct {
@@ -3892,6 +3973,9 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		data.LatestDeploymentRelease = releases[0]
 	}
 	data.PackageScripts = readPackageJSONScripts(site.RootDirectory)
+	data.ProjectHasComposer, data.ProjectHasArtisan = a.detectProjectMarkers(r.Context(), site.RootDirectory)
+	data.DeployCommandPlaceholder = recommendedDeployCommand(data.ProjectHasComposer, data.ProjectHasArtisan, data.PackageScripts, site.Name)
+	data.AutoDeployCommandPlaceholder = data.DeployCommandPlaceholder
 	data.NpmScriptNodeVersion = runtimeStatus.DefaultNodeVersion
 	if data.RuntimeCommandNodeVersion == "" {
 		data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
@@ -4106,6 +4190,9 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 	data.GitAuthStatus = gitAuthStatus
 	data.DeploymentReleases = releases
 	data.PackageScripts = readPackageJSONScripts(subdomain.RootDirectory)
+	data.ProjectHasComposer, data.ProjectHasArtisan = a.detectProjectMarkers(r.Context(), subdomain.RootDirectory)
+	data.DeployCommandPlaceholder = recommendedDeployCommand(data.ProjectHasComposer, data.ProjectHasArtisan, data.PackageScripts, subdomain.FullDomain)
+	data.AutoDeployCommandPlaceholder = data.DeployCommandPlaceholder
 	if commands, err := a.store.ListSubdomainRuntimeCommands(r.Context(), subdomain.ID); err == nil {
 		data.SubdomainRuntimeCommands = commands
 	}

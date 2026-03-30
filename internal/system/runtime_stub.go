@@ -29,6 +29,10 @@ func (stubRuntimeManager) InstallPM2(spec PM2InstallSpec) (string, error) {
 	return "", fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
 }
 
+func (stubRuntimeManager) InstallComposer() (string, error) {
+	return "", fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
+}
+
 func (stubRuntimeManager) StartPM2(spec PM2StartSpec) (string, error) {
 	return "", fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
 }
@@ -54,5 +58,9 @@ func StreamCustomRuntimeCommand(spec CustomRuntimeCommandSpec, stdout io.Writer,
 }
 
 func StreamShellCommand(spec ShellCommandSpec, stdout io.Writer, stderr io.Writer) error {
+	return fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
+}
+
+func StreamInstallComposer(stdout io.Writer, stderr io.Writer) error {
 	return fmt.Errorf("runtime management is only supported on Ubuntu target hosts")
 }

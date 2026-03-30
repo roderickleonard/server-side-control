@@ -162,6 +162,10 @@ type TemplateData struct {
 	AuditLogs      []domain.AuditLog
 	DeploymentReleases []domain.DeploymentRelease
 	PackageScripts []string
+	ProjectHasComposer bool
+	ProjectHasArtisan bool
+	DeployCommandPlaceholder string
+	AutoDeployCommandPlaceholder string
 	NpmScriptNodeVersion string
 	SiteRuntimeCommands []domain.SiteRuntimeCommand
 	SubdomainRuntimeCommands []domain.SiteRuntimeCommand

@@ -32,6 +32,7 @@ var allowedHelperActions = map[string]struct{}{
 	"runtime.install_nvm": {},
 	"runtime.install_node": {},
 	"runtime.install_pm2": {},
+	"runtime.install_composer": {},
 	"runtime.start_pm2": {},
 	"runtime.run_npm_script": {},
 	"runtime.run_npm_install": {},

@@ -103,7 +103,7 @@
                 </label>
                 <label>
                     <span>Post deploy command</span>
-                    <input type="text" name="subdomain_post_deploy_command" value="{{.SubdomainPostDeployCommand}}" placeholder="npm install && npm run build">
+                    <input type="text" name="subdomain_post_deploy_command" value="{{.SubdomainPostDeployCommand}}" placeholder="{{.DeployCommandPlaceholder}}">
                 </label>
                 <label>
                     <span>Auto deploy branch</span>
@@ -111,7 +111,7 @@
                 </label>
                 <label>
                     <span>Auto deploy command</span>
-                    <input type="text" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}" placeholder="Optional webhook command">
+                    <input type="text" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}" placeholder="{{.AutoDeployCommandPlaceholder}}">
                 </label>
                 <label>
                     <span>Webhook action preset</span>
@@ -138,6 +138,12 @@
                     <span>Enable auto deploy</span>
                 </label>
             </div>
+            {{if .ProjectHasArtisan}}
+            <div class="form-actions" style="justify-content:flex-start;gap:8px;">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-fill-input="input[name='subdomain_post_deploy_command']" data-fill-value="composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize">Use Laravel deploy preset</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-fill-input="input[name='subdomain_auto_deploy_command']" data-fill-value="composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize">Use Laravel webhook preset</button>
+            </div>
+            {{end}}
             <div class="form-actions">
                 <button type="submit" class="btn btn-sm btn-outline-secondary">Save deploy settings</button>
             </div>
@@ -261,6 +267,7 @@
             <div><strong>Home</strong><span>{{.RuntimeStatus.HomeDirectory}}</span></div>
             <div><strong>NVM</strong><span>{{if .RuntimeStatus.NVMInstalled}}Installed{{else}}Not installed{{end}}</span></div>
             <div><strong>Default node</strong><span>{{if .RuntimeStatus.DefaultNodeVersion}}{{.RuntimeStatus.DefaultNodeVersion}}{{else}}-{{end}}</span></div>
+            <div><strong>Composer</strong><span>{{if .RuntimeStatus.ComposerInstalled}}{{.RuntimeStatus.ComposerVersion}}{{else}}Not installed{{end}}</span></div>
         </div>
         {{if .RuntimeStatus.InstalledNodeVersions}}
         <div class="badge-row">
@@ -278,11 +285,33 @@
             <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
             <input type="hidden" name="npm_ci" value="0">
             <input type="hidden" name="npm_script_node_version" value="{{.NpmScriptNodeVersion}}">
+            <input type="hidden" name="runtime_command_name" id="runtime-quick-command-name" value="">
+            <input type="hidden" name="runtime_command_body" id="runtime-quick-command-body" value="">
+            <input type="hidden" name="runtime_command_node_version" id="runtime-quick-command-node-version" value="">
             <hr style="border:none;border-top:1px solid var(--border);margin:16px 0 12px;">
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="npm_install">npm install</button>
                 <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="npm_install" data-runtime-ci="1">npm ci</button>
                 <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_npm_script" data-runtime-script="build">npm run build</button>
+                {{if .ProjectHasComposer}}
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="composer install" data-runtime-command="composer install">composer install</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="composer install --no-dev --optimize-autoloader" data-runtime-command="composer install --no-dev --optimize-autoloader">composer prod install</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="composer update" data-runtime-command="composer update">composer update</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="composer dump-autoload -o" data-runtime-command="composer dump-autoload -o">dump autoload</button>
+                {{end}}
+                {{if .ProjectHasArtisan}}
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="php artisan migrate --force" data-runtime-command="php artisan migrate --force">artisan migrate</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="php artisan optimize" data-runtime-command="php artisan optimize">artisan optimize</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="php artisan config:cache" data-runtime-command="php artisan config:cache">config cache</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="php artisan route:cache" data-runtime-command="php artisan route:cache">route cache</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="php artisan optimize:clear" data-runtime-command="php artisan optimize:clear">optimize clear</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="php artisan config:clear" data-runtime-command="php artisan config:clear">config clear</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="php artisan route:clear" data-runtime-command="php artisan route:clear">route clear</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="php artisan view:clear" data-runtime-command="php artisan view:clear">view clear</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="php artisan queue:restart" data-runtime-command="php artisan queue:restart">queue restart</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="php artisan horizon:terminate" data-runtime-command="php artisan horizon:terminate">horizon terminate</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="run_custom_command" data-runtime-command-name="php artisan storage:link" data-runtime-command="php artisan storage:link">storage link</button>
+                {{end}}
             </div>
             {{if .PackageScripts}}
             <div class="site-delete-summary details-summary" style="margin-top:12px;">
@@ -370,7 +399,14 @@
                     <button type="submit">Install PM2</button>
                 </div>
             </form>
+            <form id="runtime-composer-install-form" class="inline-form details-inline-form">
+                <input type="hidden" name="details_action" value="install_composer">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-runtime-form-submit="1">Install Composer globally</button>
+            </form>
         </div>
+        <p class="muted details-note" style="margin-top:12px;">Composer is installed once on the server. Each Laravel app still runs Composer inside its own root and keeps a separate vendor directory.</p>
     </article>
 </section>
 
@@ -694,6 +730,7 @@
     const commandBody = document.getElementById('runtime-command-body');
     const commandRun = document.getElementById('runtime-custom-run');
     const commandClear = document.getElementById('runtime-command-clear');
+    const composerInstallForm = document.getElementById('runtime-composer-install-form');
     const sshTerminalMount = document.getElementById('ssh-terminal');
     const sshTerminalStatus = document.getElementById('ssh-terminal-status');
     const sshTerminalConnect = document.getElementById('ssh-terminal-connect');
@@ -807,6 +844,9 @@
         button.addEventListener('click', () => {
             runtimeForm.querySelector('#runtime-npm-action').value = button.dataset.runtimeAction || 'npm_install';
             runtimeForm.querySelector('#runtime-npm-script-name').value = button.dataset.runtimeScript || '';
+            runtimeForm.querySelector('#runtime-quick-command-name').value = button.dataset.runtimeCommandName || '';
+            runtimeForm.querySelector('#runtime-quick-command-body').value = button.dataset.runtimeCommand || '';
+            runtimeForm.querySelector('#runtime-quick-command-node-version').value = button.dataset.runtimeCommandNodeVersion || '';
             let ciInput = runtimeForm.querySelector('input[name="npm_ci"]');
             if (!ciInput) {
                 ciInput = document.createElement('input');
@@ -817,6 +857,10 @@
             ciInput.value = button.dataset.runtimeCi === '1' ? '1' : '0';
             runStream(runtimeForm, '/sites/details/runtime-stream', false);
         });
+    });
+
+    composerInstallForm?.querySelector('[data-runtime-form-submit="1"]')?.addEventListener('click', () => {
+        runStream(composerInstallForm, '/sites/details/runtime-stream', true);
     });
 
     commandSelect.addEventListener('change', () => {
@@ -839,6 +883,22 @@
         form.addEventListener('submit', (event) => {
             event.preventDefault();
             runStream(form, form.dataset.streamEndpoint || '/sites/details/action-stream', form.dataset.reloadOnSuccess === '1');
+        });
+    });
+
+    Array.from(document.querySelectorAll('[data-fill-input][data-fill-value]')).forEach((button) => {
+        button.addEventListener('click', () => {
+            const form = button.closest('form');
+            const selector = button.dataset.fillInput || '';
+            const value = button.dataset.fillValue || '';
+            const input = form ? form.querySelector(selector) : document.querySelector(selector);
+            if (!input) {
+                return;
+            }
+            input.value = value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.focus();
         });
     });
 

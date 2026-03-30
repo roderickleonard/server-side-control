@@ -151,6 +151,8 @@ type RuntimeStatus struct {
 	InstalledNodeVersions []string
 	DefaultNodeVersion string
 	PM2Installed       bool
+	ComposerInstalled  bool
+	ComposerVersion    string
 }
 
 type NodeInstallSpec struct {
@@ -205,6 +207,7 @@ type RuntimeManager interface {
 	InstallNVM(user string) (string, error)
 	InstallNode(spec NodeInstallSpec) (string, error)
 	InstallPM2(spec PM2InstallSpec) (string, error)
+	InstallComposer() (string, error)
 	StartPM2(spec PM2StartSpec) (string, error)
 	RunNPMScript(spec NPMScriptSpec) (string, error)
 	RunNPMInstall(spec NPMInstallSpec) (string, error)

@@ -52,6 +52,11 @@ func (linuxRuntimeManager) Inspect(spec RuntimeInspectSpec) (RuntimeStatus, erro
 	defer cancel()
 	pm2Output, _ := runBashAsUser(ctx, status.User, buildShellWithOptionalNVM(homeDirectory, "command -v pm2 >/dev/null 2>&1 && echo installed || true"))
 	status.PM2Installed = strings.Contains(pm2Output, "installed")
+	composerCtx, composerCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer composerCancel()
+	composerOutput, _ := runBashAsRoot(composerCtx, "command -v composer >/dev/null 2>&1 && composer --version --no-ansi 2>/dev/null || true")
+	status.ComposerVersion = strings.TrimSpace(composerOutput)
+	status.ComposerInstalled = status.ComposerVersion != ""
 	return status, nil
 }
 
@@ -113,6 +118,12 @@ func (linuxRuntimeManager) InstallPM2(spec PM2InstallSpec) (string, error) {
 		command = "npm install -g pm2"
 	}
 	return runBashAsUser(ctx, spec.User, buildNVMCommand(homeDirectory, command))
+}
+
+func (linuxRuntimeManager) InstallComposer() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	return runBashAsRoot(ctx, composerInstallScript())
 }
 
 func (linuxRuntimeManager) StartPM2(spec PM2StartSpec) (string, error) {
@@ -343,6 +354,12 @@ func StreamShellCommand(spec ShellCommandSpec, stdout io.Writer, stderr io.Write
 	return runBashAsUserStream(ctx, spec.User, buildShellWithOptionalNVM(homeDirectory, command), stdout, stderr)
 }
 
+func StreamInstallComposer(stdout io.Writer, stderr io.Writer) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	return runBashAsRootStream(ctx, composerInstallScript(), stdout, stderr)
+}
+
 func lookupUserHome(username string) (string, error) {
 	username = strings.TrimSpace(username)
 	if !usernamePattern.MatchString(username) {
@@ -398,6 +415,17 @@ func runBashAsUser(ctx context.Context, user string, script string) (string, err
 	return strings.TrimSpace(output.String()), nil
 }
 
+func runBashAsRoot(ctx context.Context, script string) (string, error) {
+	var output bytes.Buffer
+	cmd := exec.CommandContext(ctx, "bash", "-lc", script)
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Run(); err != nil {
+		return output.String(), fmt.Errorf("command failed: %w", err)
+	}
+	return strings.TrimSpace(output.String()), nil
+}
+
 func runBashAsUserStream(ctx context.Context, user string, script string, stdout io.Writer, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = io.Discard
@@ -406,6 +434,43 @@ func runBashAsUserStream(ctx context.Context, user string, script string, stdout
 		stderr = stdout
 	}
 	cmd := exec.CommandContext(ctx, "sudo", "-u", user, "--", "bash", "-lc", script)
+	cmdStdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	cmdStderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(stdout, cmdStdout)
+	}()
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(stderr, cmdStderr)
+	}()
+	err = cmd.Wait()
+	wg.Wait()
+	if err != nil {
+		return fmt.Errorf("command failed: %w", err)
+	}
+	return nil
+}
+
+func runBashAsRootStream(ctx context.Context, script string, stdout io.Writer, stderr io.Writer) error {
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = stdout
+	}
+	cmd := exec.CommandContext(ctx, "bash", "-lc", script)
 	cmdStdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -496,4 +561,22 @@ func shellJoin(args []string) string {
 		quoted = append(quoted, shellQuote(arg))
 	}
 	return strings.Join(quoted, " ")
+}
+
+func composerInstallScript() string {
+	return strings.Join([]string{
+		"set -e",
+		"if command -v composer >/dev/null 2>&1; then composer --version --no-ansi; exit 0; fi",
+		"if ! command -v php >/dev/null 2>&1; then echo 'php-cli is required to install Composer'; exit 1; fi",
+		"if command -v curl >/dev/null 2>&1; then FETCH='curl -fsSL'; elif command -v wget >/dev/null 2>&1; then FETCH='wget -qO-'; else echo 'curl or wget is required to install Composer'; exit 1; fi",
+		"tmp_dir=$(mktemp -d)",
+		"trap 'rm -rf \"$tmp_dir\"' EXIT",
+		"cd \"$tmp_dir\"",
+		"expected_signature=$($FETCH https://composer.github.io/installer.sig)",
+		"php -r \"copy('https://getcomposer.org/installer', 'composer-setup.php');\"",
+		"actual_signature=$(php -r \"echo hash_file('sha384', 'composer-setup.php');\")",
+		"if [ \"$expected_signature\" != \"$actual_signature\" ]; then echo 'Composer installer signature verification failed'; exit 1; fi",
+		"php composer-setup.php --no-ansi --install-dir=/usr/local/bin --filename=composer",
+		"composer --version --no-ansi",
+	}, "; ")
 }

@@ -67,6 +67,11 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 		label        string
 	)
 	switch action {
+	case "install_composer":
+		helperAction = "runtime.install_composer"
+		payload = map[string]any{}
+		auditAction = "runtime.install_composer"
+		label = "install composer"
 	case "npm_install":
 		nodeVersion := strings.TrimSpace(r.FormValue("npm_script_node_version"))
 		ci := r.FormValue("npm_ci") == "1"

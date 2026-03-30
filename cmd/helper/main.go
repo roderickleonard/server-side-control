@@ -114,6 +114,11 @@ func handleStreamMode() {
 			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
 			os.Exit(1)
 		}
+	case "runtime.install_composer":
+		if err := system.StreamInstallComposer(os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
 	case "runtime.run_shell_command":
 		var spec system.ShellCommandSpec
 		if err := json.Unmarshal(request.Input, &spec); err != nil {
@@ -452,7 +457,7 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		result, err := system.NewDeployManager().Inspect(spec)
 		writeSuccess(result, "", err)
-	case "runtime.inspect", "runtime.install_nvm", "runtime.install_node", "runtime.install_pm2", "runtime.start_pm2", "runtime.run_npm_script", "runtime.run_npm_install":
+	case "runtime.inspect", "runtime.install_nvm", "runtime.install_node", "runtime.install_pm2", "runtime.install_composer", "runtime.start_pm2", "runtime.run_npm_script", "runtime.run_npm_install":
 		handleRuntime(request)
 	case "git_auth.inspect", "git_auth.ensure_deploy_key", "git_auth.trust_host", "git_auth.store_credential":
 		handleGitAuth(request)
@@ -772,6 +777,9 @@ func handleRuntime(request system.HelperRequest) {
 			return
 		}
 		output, err := manager.InstallPM2(spec)
+		writeSuccess(nil, output, err)
+	case "runtime.install_composer":
+		output, err := manager.InstallComposer()
 		writeSuccess(nil, output, err)
 	case "runtime.start_pm2":
 		var spec system.PM2StartSpec
