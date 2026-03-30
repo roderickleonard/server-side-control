@@ -54,6 +54,11 @@ func main() {
 }
 
 func handleStreamMode() {
+	cfg, err := config.Load()
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "load config: %v\n", err)
+		os.Exit(1)
+	}
 	var request system.HelperRequest
 	if err := json.NewDecoder(io.LimitReader(os.Stdin, system.MaxHelperPayloadBytes)).Decode(&request); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "decode request: %v\n", err)
