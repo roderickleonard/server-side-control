@@ -4236,14 +4236,7 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		}
 	}
 	if data.ProjectHasArtisan {
-		data.LaravelPermissionCommand = strings.Join([]string{
-			"cd " + shellQuoteForDisplay(site.RootDirectory),
-			"sudo chown -R " + site.OwnerLinuxUser + ":" + site.OwnerLinuxUser + " .",
-			"sudo find . -path './.git' -prune -o -type d -exec chmod 755 {} \\;",
-			"sudo find . -path './.git' -prune -o -type f -exec chmod 644 {} \\;",
-			"sudo find storage bootstrap/cache -type d -exec chmod 775 {} \\;",
-			"sudo find storage bootstrap/cache -type f -exec chmod 664 {} \\;",
-		}, "\n")
+		data.LaravelPermissionCommand = buildLaravelPermissionDisplayCommand(site.RootDirectory, site.OwnerLinuxUser)
 	}
 	envPath := filepath.Join(site.RootDirectory, ".env")
 	var envContent string
@@ -4303,14 +4296,7 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 	data.PackageScripts = readPackageJSONScripts(subdomain.RootDirectory)
 	data.ProjectHasComposer, data.ProjectHasArtisan = a.detectProjectMarkers(r.Context(), subdomain.RootDirectory)
 	if data.ProjectHasArtisan {
-		data.LaravelPermissionCommand = strings.Join([]string{
-			"cd " + shellQuoteForDisplay(subdomain.RootDirectory),
-			"sudo chown -R " + site.OwnerLinuxUser + ":" + site.OwnerLinuxUser + " .",
-			"sudo find . -path './.git' -prune -o -type d -exec chmod 755 {} \\;",
-			"sudo find . -path './.git' -prune -o -type f -exec chmod 644 {} \\;",
-			"sudo find storage bootstrap/cache -type d -exec chmod 775 {} \\;",
-			"sudo find storage bootstrap/cache -type f -exec chmod 664 {} \\;",
-		}, "\n")
+		data.LaravelPermissionCommand = buildLaravelPermissionDisplayCommand(subdomain.RootDirectory, site.OwnerLinuxUser)
 	}
 	data.DeployCommandPlaceholder = recommendedDeployCommand(data.ProjectHasComposer, data.ProjectHasArtisan, data.PackageScripts, subdomain.FullDomain)
 	data.AutoDeployCommandPlaceholder = data.DeployCommandPlaceholder
@@ -4530,6 +4516,23 @@ func shellQuoteForDisplay(value string) string {
 		return "''"
 	}
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func buildLaravelPermissionDisplayCommand(rootDir string, ownerUser string) string {
+	commands := []string{
+		"cd " + shellQuoteForDisplay(rootDir),
+		"sudo mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache",
+		"sudo touch storage/logs/laravel.log",
+		"sudo chown -R " + ownerUser + ":" + ownerUser + " .",
+		"sudo find . -path './.git' -prune -o -type d -exec chmod 755 {} \\;",
+		"sudo find . -path './.git' -prune -o -type f -exec chmod 644 {} \\;",
+		"sudo chown -R " + ownerUser + ":www-data storage bootstrap/cache",
+		"sudo chmod -R ug+rwX storage bootstrap/cache",
+		"sudo find storage bootstrap/cache -type d -exec chmod 2775 {} \\;",
+		"sudo find storage bootstrap/cache -type f -exec chmod 664 {} \\;",
+		"if command -v setfacl >/dev/null 2>&1; then sudo setfacl -R -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage bootstrap/cache && sudo setfacl -R -d -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage bootstrap/cache; fi",
+	}
+	return strings.Join(commands, "\n")
 }
 
 func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
