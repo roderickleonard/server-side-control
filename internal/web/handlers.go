@@ -4239,10 +4239,10 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		data.LaravelPermissionCommand = strings.Join([]string{
 			"cd " + shellQuoteForDisplay(site.RootDirectory),
 			"sudo chown -R " + site.OwnerLinuxUser + ":" + site.OwnerLinuxUser + " .",
-			"sudo find . -path './.git' -prune -o -type d -exec chmod 755 {} \\\;",
-			"sudo find . -path './.git' -prune -o -type f -exec chmod 644 {} \\\;",
-			"sudo find storage bootstrap/cache -type d -exec chmod 775 {} \\\;",
-			"sudo find storage bootstrap/cache -type f -exec chmod 664 {} \\\;",
+			"sudo find . -path './.git' -prune -o -type d -exec chmod 755 {} \\;",
+			"sudo find . -path './.git' -prune -o -type f -exec chmod 644 {} \\;",
+			"sudo find storage bootstrap/cache -type d -exec chmod 775 {} \\;",
+			"sudo find storage bootstrap/cache -type f -exec chmod 664 {} \\;",
 		}, "\n")
 	}
 	envPath := filepath.Join(site.RootDirectory, ".env")
@@ -4306,10 +4306,10 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 		data.LaravelPermissionCommand = strings.Join([]string{
 			"cd " + shellQuoteForDisplay(subdomain.RootDirectory),
 			"sudo chown -R " + site.OwnerLinuxUser + ":" + site.OwnerLinuxUser + " .",
-			"sudo find . -path './.git' -prune -o -type d -exec chmod 755 {} \\\;",
-			"sudo find . -path './.git' -prune -o -type f -exec chmod 644 {} \\\;",
-			"sudo find storage bootstrap/cache -type d -exec chmod 775 {} \\\;",
-			"sudo find storage bootstrap/cache -type f -exec chmod 664 {} \\\;",
+			"sudo find . -path './.git' -prune -o -type d -exec chmod 755 {} \\;",
+			"sudo find . -path './.git' -prune -o -type f -exec chmod 644 {} \\;",
+			"sudo find storage bootstrap/cache -type d -exec chmod 775 {} \\;",
+			"sudo find storage bootstrap/cache -type f -exec chmod 664 {} \\;",
 		}, "\n")
 	}
 	data.DeployCommandPlaceholder = recommendedDeployCommand(data.ProjectHasComposer, data.ProjectHasArtisan, data.PackageScripts, subdomain.FullDomain)
