@@ -846,6 +846,14 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
             <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.SelectedSite.Name}}&tab=files&path={{urlquery .SiteBrowserParentPath}}">Up</a>
             {{end}}
         </div>
+        <div class="form-actions" style="margin-bottom:12px;justify-content:flex-start;">
+            <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1" data-confirm-message="This will permanently delete every file and folder inside {{.SelectedSite.RootDirectory}} and keep only the root directory itself. Continue?">
+                <input type="hidden" name="details_action" value="clear_root_contents">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <button type="submit" class="btn btn-sm btn-danger">Clear root contents</button>
+            </form>
+        </div>
+        <p class="muted details-note" style="margin-bottom:12px;">Use this before cloning a different repository. The root directory stays in place, but all files including hidden git files are removed.</p>
         {{if .SiteBrowserEntries}}
         <div class="table-card table-responsive">
             <table class="table table-theme mb-0">
@@ -1181,6 +1189,9 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     siteActionForms.forEach((form) => {
         form.addEventListener('submit', (event) => {
             event.preventDefault();
+            if (form.dataset.confirmMessage && !window.confirm(form.dataset.confirmMessage)) {
+                return;
+            }
             streamForm(form, form.dataset.streamEndpoint || '/sites/details/action-stream', form.dataset.reloadOnSuccess === '1');
         });
     });

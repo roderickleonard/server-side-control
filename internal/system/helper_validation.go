@@ -50,6 +50,7 @@ var allowedHelperActions = map[string]struct{}{
 	"files.read_env":   {},
 	"files.read_text":  {},
 	"files.list_dir":   {},
+	"files.clear_directory": {},
 	"git_auth.inspect": {},
 	"git_auth.ensure_deploy_key": {},
 	"git_auth.trust_host": {},

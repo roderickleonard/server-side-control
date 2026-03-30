@@ -240,6 +240,18 @@ func handleStreamMode() {
 			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
 			os.Exit(1)
 		}
+	case "files.clear_directory":
+		var input struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode clear directory spec: %v\n", err)
+			os.Exit(1)
+		}
+		if err := clearDirectoryContents(strings.TrimSpace(input.Path), os.Stdout); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
 	case "deploy.rollback":
 		var spec system.RollbackSpec
 		if err := json.Unmarshal(request.Input, &spec); err != nil {
@@ -1137,9 +1149,70 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			items = append(items, dirEntry{Name: entry.Name(), IsDir: entry.IsDir(), Size: size})
 		}
 		writeSuccess(items, "", nil)
+	case "files.clear_directory":
+		var input struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := clearDirectoryContents(strings.TrimSpace(input.Path), io.Discard)
+		writeSuccess(nil, "", err)
 	default:
 		writeFailure(fmt.Errorf("unknown helper action: %s", request.Action), "")
 	}
+}
+
+func clearDirectoryContents(path string, stdout io.Writer) error {
+	cleanPath := filepath.Clean(path)
+	if !filepath.IsAbs(cleanPath) {
+		return errors.New("path must be absolute")
+	}
+	if !isHelperSafeDeletePath(cleanPath) {
+		return errors.New("unsafe directory clear path")
+	}
+	entries, err := os.ReadDir(cleanPath)
+	if err != nil {
+		return err
+	}
+	if stdout != nil {
+		_, _ = fmt.Fprintf(stdout, "Clearing directory contents: %s\n\n", cleanPath)
+	}
+	for _, entry := range entries {
+		target := filepath.Join(cleanPath, entry.Name())
+		if stdout != nil {
+			_, _ = fmt.Fprintf(stdout, "Removing %s\n", target)
+		}
+		if err := os.RemoveAll(target); err != nil {
+			return fmt.Errorf("remove %s: %w", target, err)
+		}
+	}
+	if stdout != nil {
+		_, _ = fmt.Fprintln(stdout, "Directory contents cleared successfully.")
+	}
+	return nil
+}
+
+func isHelperSafeDeletePath(path string) bool {
+	protected := map[string]struct{}{
+		"/": {},
+		"/home": {},
+		"/opt": {},
+		"/srv": {},
+		"/var": {},
+		"/var/www": {},
+	}
+	if _, ok := protected[path]; ok {
+		return false
+	}
+	allowedPrefixes := []string{"/home/", "/opt/", "/srv/", "/var/www/"}
+	for _, prefix := range allowedPrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func readTextFile(path string, maxBytes int) (string, error) {

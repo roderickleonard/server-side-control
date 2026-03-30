@@ -1220,6 +1220,12 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		auditAction = "site.fix_laravel_permissions"
 		label = "fix laravel permissions"
 		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "target_directory": targetDirectory}
+	case "clear_root_contents":
+		helperAction = "files.clear_directory"
+		payload = map[string]any{"path": targetDirectory}
+		auditAction = "site.clear_root_contents"
+		label = "clear root contents"
+		auditMeta = map[string]any{"target_directory": targetDirectory, "run_as_user": site.OwnerLinuxUser}
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported site action"})
 		return

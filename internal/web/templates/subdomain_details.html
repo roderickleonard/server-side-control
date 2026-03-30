@@ -544,6 +544,15 @@
             <a class="btn btn-sm btn-outline-secondary" href="/sites/subdomains/details?name={{.SelectedSite.Name}}&subdomain_id={{.SelectedSubdomain.ID}}&tab=files&path={{.SiteBrowserParentPath}}">Up</a>
             {{end}}
         </div>
+        <div class="form-actions" style="margin-top:12px;justify-content:flex-start;">
+            <form method="post" class="inline-form details-inline-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1" data-confirm-message="This will permanently delete every file and folder inside {{.SelectedSubdomain.RootDirectory}} and keep only the root directory itself. Continue?">
+                <input type="hidden" name="details_action" value="clear_root_contents">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+                <button type="submit" class="btn btn-sm btn-danger">Clear root contents</button>
+            </form>
+        </div>
+        <div class="details-note" style="margin-top:10px;">Use this before cloning a different repository. The subdomain root stays in place, but all files including hidden git files are removed.</div>
         <div class="table-card" style="margin-top:12px;">
             <table class="table table-theme">
                 <thead>
@@ -853,6 +862,9 @@
     siteActionForms.forEach((form) => {
         form.addEventListener('submit', (event) => {
             event.preventDefault();
+            if (form.dataset.confirmMessage && !window.confirm(form.dataset.confirmMessage)) {
+                return;
+            }
             runStream(form, form.dataset.streamEndpoint || '/sites/details/action-stream', form.dataset.reloadOnSuccess === '1');
         });
     });
