@@ -31,6 +31,7 @@ type ManagedSite struct {
 	AutoDeployBranch string
 	AutoDeploySecret string
 	AutoDeployCommand string
+	AutoDeployNodeVersion string
 	AutoDeployNotifyEmail string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
@@ -87,6 +88,7 @@ type SiteSubdomain struct {
 	AutoDeployBranch string
 	AutoDeploySecret string
 	AutoDeployCommand string
+	AutoDeployNodeVersion string
 	AutoDeployNotifyEmail string
 	RootDirectory   string
 	NginxConfigPath string

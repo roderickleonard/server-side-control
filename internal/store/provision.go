@@ -89,9 +89,10 @@ func (s *Store) CreateManagedSite(ctx context.Context, site domain.ManagedSite) 
 		auto_deploy_branch,
 		auto_deploy_secret,
 		auto_deploy_command,
+		auto_deploy_node_version,
 		auto_deploy_notify_email,
 		nginx_config_path
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err = s.db.ExecContext(ctx, query,
 		site.Name,
@@ -105,6 +106,7 @@ func (s *Store) CreateManagedSite(ctx context.Context, site domain.ManagedSite) 
 		site.AutoDeployBranch,
 		site.AutoDeploySecret,
 		site.AutoDeployCommand,
+		site.AutoDeployNodeVersion,
 		site.AutoDeployNotifyEmail,
 		site.NginxConfigPath,
 	)

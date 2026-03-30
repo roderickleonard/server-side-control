@@ -121,6 +121,7 @@
             <input type="hidden" name="subdomain_auto_deploy_enabled" value="{{if .SubdomainAutoDeployEnabled}}1{{else}}0{{end}}">
             <input type="hidden" name="subdomain_auto_deploy_branch" value="{{.SubdomainAutoDeployBranch}}">
             <input type="hidden" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}">
+            <input type="hidden" name="subdomain_auto_deploy_node_version" value="{{.SubdomainAutoDeployNodeVersion}}">
             <input type="hidden" name="subdomain_auto_deploy_notify_email" value="{{.SubdomainAutoDeployNotifyEmail}}">
             <input type="hidden" name="subdomain_auto_deploy_secret" value="{{.SubdomainAutoDeploySecret}}">
             <input type="hidden" name="subdomain_auto_deploy_preset" value="{{.SubdomainAutoDeployPreset}}">
@@ -242,6 +243,10 @@
                     <input type="text" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}" placeholder="{{.AutoDeployCommandPlaceholder}}">
                 </label>
                 <label>
+                    <span>Node version for webhook command</span>
+                    <input type="text" name="subdomain_auto_deploy_node_version" value="{{.SubdomainAutoDeployNodeVersion}}" placeholder="Use default if empty">
+                </label>
+                <label>
                     <span>Notify email</span>
                     <input type="email" name="subdomain_auto_deploy_notify_email" value="{{.SubdomainAutoDeployNotifyEmail}}" placeholder="ops@example.com">
                 </label>
@@ -265,6 +270,7 @@
             <input type="hidden" name="subdomain_auto_deploy_enabled" value="{{if .SubdomainAutoDeployEnabled}}1{{else}}0{{end}}">
             <input type="hidden" name="subdomain_auto_deploy_branch" value="{{.SubdomainAutoDeployBranch}}">
             <input type="hidden" name="subdomain_auto_deploy_command" value="{{.SubdomainAutoDeployCommand}}">
+            <input type="hidden" name="subdomain_auto_deploy_node_version" value="{{.SubdomainAutoDeployNodeVersion}}">
             <input type="hidden" name="subdomain_auto_deploy_notify_email" value="{{.SubdomainAutoDeployNotifyEmail}}">
             <input type="hidden" name="subdomain_auto_deploy_preset" value="{{.SubdomainAutoDeployPreset}}">
             <input type="hidden" name="subdomain_auto_deploy_pm2_process" value="{{.SubdomainAutoDeployPM2Process}}">
@@ -275,6 +281,9 @@
             <strong>Webhook URL:</strong> {{.AutoDeployWebhookURL}}
         </div>
         {{end}}
+        <div class="site-delete-summary details-summary" style="margin-top:12px;">
+            <div><strong>Node version</strong><span>{{if .SubdomainAutoDeployNodeVersion}}{{.SubdomainAutoDeployNodeVersion}}{{else}}Default shell version{{end}}</span></div>
+        </div>
     </article>
 </section>
 

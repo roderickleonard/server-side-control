@@ -136,6 +136,7 @@ type TemplateData struct {
 	AutoDeployBranch string
 	AutoDeploySecret string
 	AutoDeployCommand string
+	AutoDeployNodeVersion string
 	AutoDeployNotifyEmail string
 	AutoDeployWebhookURL string
 	AutoDeployWebhookAuthHint string
@@ -204,6 +205,7 @@ type TemplateData struct {
 	SubdomainAutoDeployBranch string
 	SubdomainAutoDeploySecret string
 	SubdomainAutoDeployCommand string
+	SubdomainAutoDeployNodeVersion string
 	SubdomainAutoDeployNotifyEmail string
 	SubdomainAutoDeployPreset string
 	SubdomainAutoDeployPM2Process string

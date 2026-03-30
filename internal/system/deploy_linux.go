@@ -30,6 +30,7 @@ func (linuxDeployManager) Deploy(spec DeploySpec) (DeployResult, error) {
 	spec.TargetDirectory = strings.TrimSpace(spec.TargetDirectory)
 	spec.RunAsUser = strings.TrimSpace(spec.RunAsUser)
 	spec.GitSiteName = strings.TrimSpace(spec.GitSiteName)
+	spec.PostDeployNodeVersion = strings.TrimSpace(spec.PostDeployNodeVersion)
 	if spec.Branch == "" {
 		spec.Branch = "main"
 	}
@@ -45,6 +46,9 @@ func (linuxDeployManager) Deploy(spec DeploySpec) (DeployResult, error) {
 	}
 	if !usernamePattern.MatchString(spec.RunAsUser) {
 		return DeployResult{}, ErrInvalidRunAsUser
+	}
+	if spec.PostDeployNodeVersion != "" && !nodeVersionPattern.MatchString(spec.PostDeployNodeVersion) {
+		return DeployResult{}, ErrInvalidNodeVersion
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -92,7 +96,7 @@ func (linuxDeployManager) Deploy(spec DeploySpec) (DeployResult, error) {
 
 	if strings.TrimSpace(spec.PostDeployCommand) != "" {
 		action = action + " + post-deploy"
-		if err := runShellAsUser(ctx, spec.RunAsUser, spec.TargetDirectory, spec.PostDeployCommand, &output); err != nil {
+		if err := runShellAsUser(ctx, spec.RunAsUser, spec.TargetDirectory, spec.PostDeployCommand, spec.PostDeployNodeVersion, &output); err != nil {
 			return DeployResult{Action: action, Output: output.String(), CommitSHA: commitSHA, PreviousCommitSHA: previousCommit}, err
 		}
 	}
@@ -175,6 +179,7 @@ func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
 	spec.TargetDirectory = strings.TrimSpace(spec.TargetDirectory)
 	spec.RunAsUser = strings.TrimSpace(spec.RunAsUser)
 	spec.GitSiteName = strings.TrimSpace(spec.GitSiteName)
+	spec.PostDeployNodeVersion = strings.TrimSpace(spec.PostDeployNodeVersion)
 	if spec.Branch == "" {
 		spec.Branch = "main"
 	}
@@ -190,6 +195,9 @@ func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
 	}
 	if !usernamePattern.MatchString(spec.RunAsUser) {
 		return ErrInvalidRunAsUser
+	}
+	if spec.PostDeployNodeVersion != "" && !nodeVersionPattern.MatchString(spec.PostDeployNodeVersion) {
+		return ErrInvalidNodeVersion
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -227,7 +235,7 @@ func StreamDeploy(spec DeploySpec, stdout io.Writer, stderr io.Writer) error {
 	}
 
 	if strings.TrimSpace(spec.PostDeployCommand) != "" {
-		return runShellAsUserStream(ctx, spec.RunAsUser, spec.TargetDirectory, spec.PostDeployCommand, stdout, stderr)
+		return runShellAsUserStream(ctx, spec.RunAsUser, spec.TargetDirectory, spec.PostDeployCommand, spec.PostDeployNodeVersion, stdout, stderr)
 	}
 	return nil
 }
@@ -370,9 +378,18 @@ func envValue(env map[string]string, key string) string {
 	return env[key]
 }
 
-func runShellAsUser(ctx context.Context, username string, workingDir string, command string, output *bytes.Buffer) error {
-	// Source NVM automatically so post-deploy commands can use the user's managed Node version.
-	shellCommand := fmt.Sprintf(". ~/.nvm/nvm.sh 2>/dev/null || true; cd %s && %s", shellQuote(workingDir), command)
+func runShellAsUser(ctx context.Context, username string, workingDir string, command string, nodeVersion string, output *bytes.Buffer) error {
+	homeDirectory, err := lookupUserHome(username)
+	if err != nil {
+		return err
+	}
+	shellCommand := "cd " + shellQuote(workingDir) + " && " + command
+	if strings.TrimSpace(nodeVersion) != "" {
+		shellCommand = "nvm use " + shellQuote(strings.TrimSpace(nodeVersion)) + " && " + shellCommand
+		shellCommand = buildNVMCommand(homeDirectory, shellCommand)
+	} else {
+		shellCommand = buildShellWithOptionalNVM(homeDirectory, shellCommand)
+	}
 	cmd := exec.CommandContext(ctx, "sudo", "-u", username, "--", "bash", "-lc", shellCommand)
 	cmd.Stdout = output
 	cmd.Stderr = output
@@ -382,8 +399,18 @@ func runShellAsUser(ctx context.Context, username string, workingDir string, com
 	return nil
 }
 
-func runShellAsUserStream(ctx context.Context, username string, workingDir string, command string, stdout io.Writer, stderr io.Writer) error {
-	shellCommand := fmt.Sprintf(". ~/.nvm/nvm.sh 2>/dev/null || true; cd %s && %s", shellQuote(workingDir), command)
+func runShellAsUserStream(ctx context.Context, username string, workingDir string, command string, nodeVersion string, stdout io.Writer, stderr io.Writer) error {
+	homeDirectory, err := lookupUserHome(username)
+	if err != nil {
+		return err
+	}
+	shellCommand := "cd " + shellQuote(workingDir) + " && " + command
+	if strings.TrimSpace(nodeVersion) != "" {
+		shellCommand = "nvm use " + shellQuote(strings.TrimSpace(nodeVersion)) + " && " + shellCommand
+		shellCommand = buildNVMCommand(homeDirectory, shellCommand)
+	} else {
+		shellCommand = buildShellWithOptionalNVM(homeDirectory, shellCommand)
+	}
 	cmd := exec.CommandContext(ctx, "sudo", "-u", username, "--", "bash", "-lc", shellCommand)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr

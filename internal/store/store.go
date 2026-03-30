@@ -331,7 +331,8 @@ func (s *Store) ensureManagedSitesAutoDeployColumns(ctx context.Context) error {
 		{name: "auto_deploy_branch", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_branch VARCHAR(191) NOT NULL DEFAULT '' AFTER auto_deploy_enabled`},
 		{name: "auto_deploy_secret", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_secret VARCHAR(255) NOT NULL DEFAULT '' AFTER auto_deploy_branch`},
 		{name: "auto_deploy_command", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_command TEXT NOT NULL AFTER auto_deploy_secret`},
-		{name: "auto_deploy_notify_email", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_notify_email VARCHAR(255) NOT NULL DEFAULT '' AFTER auto_deploy_command`},
+		{name: "auto_deploy_node_version", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_node_version VARCHAR(64) NOT NULL DEFAULT '' AFTER auto_deploy_command`},
+		{name: "auto_deploy_notify_email", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_notify_email VARCHAR(255) NOT NULL DEFAULT '' AFTER auto_deploy_node_version`},
 	}
 	for _, column := range columns {
 		var count int
@@ -380,6 +381,7 @@ func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {
 			auto_deploy_branch VARCHAR(191) NOT NULL DEFAULT '',
 			auto_deploy_secret VARCHAR(255) NOT NULL DEFAULT '',
 			auto_deploy_command TEXT NOT NULL,
+			auto_deploy_node_version VARCHAR(64) NOT NULL DEFAULT '',
 			auto_deploy_notify_email VARCHAR(255) NOT NULL DEFAULT '',
 			root_directory VARCHAR(255) NOT NULL DEFAULT '',
 			nginx_config_path VARCHAR(255) NOT NULL DEFAULT '',
@@ -409,7 +411,8 @@ func (s *Store) ensureSiteSubdomainsDeployColumns(ctx context.Context) error {
 		{name: "auto_deploy_branch", statement: `ALTER TABLE site_subdomains ADD COLUMN auto_deploy_branch VARCHAR(191) NOT NULL DEFAULT '' AFTER auto_deploy_enabled`},
 		{name: "auto_deploy_secret", statement: `ALTER TABLE site_subdomains ADD COLUMN auto_deploy_secret VARCHAR(255) NOT NULL DEFAULT '' AFTER auto_deploy_branch`},
 		{name: "auto_deploy_command", statement: `ALTER TABLE site_subdomains ADD COLUMN auto_deploy_command TEXT NOT NULL AFTER auto_deploy_secret`},
-		{name: "auto_deploy_notify_email", statement: `ALTER TABLE site_subdomains ADD COLUMN auto_deploy_notify_email VARCHAR(255) NOT NULL DEFAULT '' AFTER auto_deploy_command`},
+		{name: "auto_deploy_node_version", statement: `ALTER TABLE site_subdomains ADD COLUMN auto_deploy_node_version VARCHAR(64) NOT NULL DEFAULT '' AFTER auto_deploy_command`},
+		{name: "auto_deploy_notify_email", statement: `ALTER TABLE site_subdomains ADD COLUMN auto_deploy_notify_email VARCHAR(255) NOT NULL DEFAULT '' AFTER auto_deploy_node_version`},
 	}
 	for _, column := range columns {
 		var count int

@@ -221,6 +221,10 @@
                     <span>Post-deploy command</span>
                     <input type="text" name="auto_deploy_command" value="{{.AutoDeployCommand}}" placeholder="{{.AutoDeployCommandPlaceholder}}">
                 </label>
+                <label>
+                    <span>Node version for webhook command</span>
+                    <input type="text" name="auto_deploy_node_version" value="{{.AutoDeployNodeVersion}}" placeholder="Use default if empty">
+                </label>
                 <label class="span-2">
                     <span>Notification email override</span>
                     <input type="text" name="auto_deploy_notify_email" value="{{.AutoDeployNotifyEmail}}" placeholder="Leave empty to use global SMTP recipient">
@@ -242,11 +246,13 @@
             <input type="hidden" name="auto_deploy_enabled" value="{{if .AutoDeployEnabled}}1{{else}}0{{end}}">
             <input type="hidden" name="auto_deploy_branch" value="{{.AutoDeployBranch}}">
             <input type="hidden" name="auto_deploy_command" value="{{.AutoDeployCommand}}">
+            <input type="hidden" name="auto_deploy_node_version" value="{{.AutoDeployNodeVersion}}">
             <input type="hidden" name="auto_deploy_notify_email" value="{{.AutoDeployNotifyEmail}}">
             <button type="submit" class="btn btn-sm btn-outline-secondary">Rotate webhook secret</button>
         </form>
         <div class="site-delete-summary details-summary" style="margin-top:14px;">
             <div><strong>Webhook auth</strong><span>{{.AutoDeployWebhookAuthHint}}</span></div>
+            <div><strong>Node version</strong><span>{{if .AutoDeployNodeVersion}}{{.AutoDeployNodeVersion}}{{else}}Default shell version{{end}}</span></div>
             <div><strong>Notify email</strong><span>{{if .AutoDeployNotifyEmail}}{{.AutoDeployNotifyEmail}}{{else}}Global SMTP recipient{{end}}</span></div>
             <div><strong>Last webhook</strong><span>{{if .LatestWebhookAudit.Action}}{{.LatestWebhookAudit.Outcome}} at {{.LatestWebhookAudit.CreatedAt.Format "2006-01-02 15:04:05"}}{{else}}-{{end}}</span></div>
             <div><strong>Last webhook details</strong><span>{{if .LatestWebhookAudit.Metadata}}{{.LatestWebhookAudit.Metadata}}{{else}}-{{end}}</span></div>

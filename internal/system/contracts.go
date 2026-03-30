@@ -120,6 +120,7 @@ type DeploySpec struct {
 	RunAsUser         string
 	GitSiteName       string
 	PostDeployCommand string
+	PostDeployNodeVersion string
 }
 
 type GitCommandSpec struct {
