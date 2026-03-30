@@ -34,6 +34,7 @@ type App struct {
 	pm2       system.PM2Manager
 	php       system.PHPManager
 	redis     system.RedisManager
+	supervisor system.SupervisorManager
 	helper    *system.HelperClient
 	auth      auth.Authenticator
 	sessions  *auth.SessionManager
@@ -174,6 +175,20 @@ type TemplateData struct {
 	RedisMaxMemoryMB string
 	RedisEvictionPolicy string
 	RedisLogLines string
+	SupervisorStatus system.SupervisorStatus
+	SupervisorPrograms []system.SupervisorProgram
+	SupervisorProgramName string
+	SupervisorProgramCommand string
+	SupervisorProgramDirectory string
+	SupervisorProgramUser string
+	SupervisorProgramStdoutLogfile string
+	SupervisorProgramStderrLogfile string
+	SupervisorProgramEnvironment string
+	SupervisorProgramAutostart bool
+	SupervisorProgramAutorestart bool
+	SupervisorLogLines string
+	SupervisorLogProgram string
+	SupervisorLogOutput string
 	DatabaseRestoreSQL string
 	GeneratedSecret string
 	ResultPath     string
@@ -271,6 +286,7 @@ func New(cfg config.Config, logger *slog.Logger, dataStore *store.Store, metrics
 		pm2:      system.NewHelperPM2Manager(helperClient),
 		php:      system.NewHelperPHPManager(helperClient),
 		redis:    system.NewHelperRedisManager(helperClient),
+		supervisor: system.NewHelperSupervisorManager(helperClient),
 		helper:   helperClient,
 		auth:     authenticator,
 		sessions: sessions,
@@ -318,6 +334,8 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/redis", a.handleRedis)
 	a.router.HandleFunc("/redis/stream", a.handleRedisStream)
 	a.router.HandleFunc("/redis/logs", a.handleRedisLogs)
+	a.router.HandleFunc("/supervisor", a.handleSupervisor)
+	a.router.HandleFunc("/supervisor/stream", a.handleSupervisorStream)
 	a.router.HandleFunc("/deploys", a.handleDeploys)
 	a.router.HandleFunc("/deploys/stream", a.handleDeploysStream)
 	a.router.HandleFunc("/processes", a.handleProcesses)
@@ -340,6 +358,7 @@ func (a *App) nav() []NavItem {
 		{Label: "Settings", Path: "/settings"},
 		{Label: "PHP", Path: "/php"},
 		{Label: "Redis", Path: "/redis"},
+		{Label: "Supervisor", Path: "/supervisor"},
 		{Label: "Deploys", Path: "/deploys"},
 		{Label: "Processes", Path: "/processes"},
 		{Label: "Logs", Path: "/logs"},

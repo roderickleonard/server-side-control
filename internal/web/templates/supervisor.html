@@ -1,0 +1,272 @@
+{{define "content"}}
+<section class="hero compact">
+    <div>
+        <span class="eyebrow">Supervisor</span>
+        <h2>Supervisor Service Management</h2>
+        <p class="lead">Manage the system-wide Supervisor service, create panel-managed programs, and run each program as its own Linux user where needed.</p>
+    </div>
+</section>
+
+{{if .RequestError}}
+<section class="alerts">
+    <div class="alert">{{.RequestError}}</div>
+</section>
+{{end}}
+
+{{if .SuccessMessage}}
+<section class="alerts">
+    <div class="alert success">{{.SuccessMessage}}</div>
+</section>
+{{end}}
+
+<section class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-activity" style="color:var(--accent);margin-right:6px;"></i>Service status</h3>
+        <div class="site-delete-summary details-summary">
+            <div><strong>Installed</strong><span>{{if .SupervisorStatus.Installed}}Yes{{else}}No{{end}}</span></div>
+            <div><strong>Active</strong><span>{{if .SupervisorStatus.Active}}Running{{else}}Stopped{{end}}</span></div>
+            <div><strong>Enabled</strong><span>{{if .SupervisorStatus.Enabled}}On boot{{else}}Manual{{end}}</span></div>
+            <div><strong>Service</strong><span>{{if .SupervisorStatus.ServiceName}}{{.SupervisorStatus.ServiceName}}{{else}}supervisor{{end}}</span></div>
+            <div><strong>Config dir</strong><span>{{if .SupervisorStatus.ConfigDirectory}}{{.SupervisorStatus.ConfigDirectory}}{{else}}-{{end}}</span></div>
+            <div><strong>Version</strong><span>{{if .SupervisorStatus.Version}}{{.SupervisorStatus.Version}}{{else}}-{{end}}</span></div>
+        </div>
+        <p class="muted details-note" style="margin-top:12px;">Supervisor should stay system-wide. Isolation belongs at the program level through the selected Linux user for each program.</p>
+    </article>
+    <article class="panel">
+        <h3><i class="bi bi-download" style="color:var(--muted);margin-right:6px;"></i>Service control</h3>
+        <form method="post" class="stack-form supervisor-stream-form" data-stream-endpoint="/supervisor/stream">
+            <div class="form-actions">
+                <button type="submit" name="supervisor_action" value="install">Install Supervisor</button>
+                <button type="submit" name="supervisor_action" value="start_service" class="btn btn-outline-secondary">Start</button>
+                <button type="submit" name="supervisor_action" value="stop_service" class="btn btn-outline-secondary">Stop</button>
+                <button type="submit" name="supervisor_action" value="restart_service" class="btn btn-outline-secondary">Restart</button>
+            </div>
+            <div class="form-actions" style="margin-top:12px;">
+                <button type="submit" name="supervisor_action" value="reread" class="btn btn-outline-secondary">Reread configs</button>
+                <button type="submit" name="supervisor_action" value="update" class="btn btn-outline-secondary">Update programs</button>
+            </div>
+        </form>
+        <p class="muted">`reread` detects changed config files, `update` applies add/remove changes to managed programs.</p>
+    </article>
+</section>
+
+<section class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-diagram-3" style="color:var(--accent);margin-right:6px;"></i>Create or update program</h3>
+        <div>
+            <span class="eyebrow">Quick presets</span>
+            <div class="badge-row" style="margin-top:8px;">
+                <button type="button" class="badge supervisor-preset" data-name="laravel-queue" data-command="/usr/bin/php artisan queue:work --sleep=3 --tries=3 --timeout=90" data-directory="" data-environment="APP_ENV=production" data-autostart="true" data-autorestart="true">Laravel queue:work</button>
+                <button type="button" class="badge supervisor-preset" data-name="laravel-horizon" data-command="/usr/bin/php artisan horizon" data-directory="" data-environment="APP_ENV=production" data-autostart="true" data-autorestart="true">Laravel Horizon</button>
+                <button type="button" class="badge supervisor-preset" data-name="node-worker" data-command="/usr/bin/node worker.js" data-directory="" data-environment="NODE_ENV=production" data-autostart="true" data-autorestart="true">Node worker</button>
+                <button type="button" class="badge supervisor-preset" data-name="python-gunicorn" data-command="/usr/bin/gunicorn app:app --bind 127.0.0.1:8000" data-directory="" data-environment="ENV=production" data-autostart="true" data-autorestart="true">Python gunicorn</button>
+            </div>
+        </div>
+        <form method="post" class="stack-form supervisor-stream-form" data-stream-endpoint="/supervisor/stream">
+            <input type="hidden" name="supervisor_action" value="save_program">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Program name</span>
+                    <input type="text" id="supervisor_program_name" name="supervisor_program_name" value="{{.SupervisorProgramName}}" placeholder="my-worker" required>
+                </label>
+                <label>
+                    <span>Linux user</span>
+                    <select name="supervisor_program_user">
+                        <option value="">Run as default Supervisor user</option>
+                        {{range .LinuxUsers}}
+                        <option value="{{.Username}}" {{if eq $.SupervisorProgramUser .Username}}selected{{end}}>{{.Username}}</option>
+                        {{end}}
+                    </select>
+                </label>
+                <label class="span-2">
+                    <span>Command</span>
+                    <input type="text" id="supervisor_program_command" name="supervisor_program_command" value="{{.SupervisorProgramCommand}}" placeholder="/usr/bin/php artisan queue:work --sleep=3 --tries=3" required>
+                </label>
+                <label>
+                    <span>Working directory</span>
+                    <input type="text" id="supervisor_program_directory" name="supervisor_program_directory" value="{{.SupervisorProgramDirectory}}" placeholder="/var/www/example/current">
+                </label>
+                <label>
+                    <span>Environment</span>
+                    <input type="text" id="supervisor_program_environment" name="supervisor_program_environment" value="{{.SupervisorProgramEnvironment}}" placeholder="APP_ENV=production,QUEUE=default">
+                </label>
+                <label>
+                    <span>stdout logfile</span>
+                    <input type="text" name="supervisor_program_stdout_logfile" value="{{.SupervisorProgramStdoutLogfile}}" placeholder="/var/log/supervisor/my-worker.log">
+                </label>
+                <label>
+                    <span>stderr logfile</span>
+                    <input type="text" name="supervisor_program_stderr_logfile" value="{{.SupervisorProgramStderrLogfile}}" placeholder="/var/log/supervisor/my-worker-error.log">
+                </label>
+            </div>
+            <p class="muted details-note">Environment format is Supervisor native: <strong>KEY=value,OTHER=value</strong>. Use commas between pairs. If the value itself contains commas or spaces, quote it like <strong>KEY="value with spaces"</strong>.</p>
+            <div class="form-actions" style="justify-content:flex-start;gap:18px;">
+                <label class="checkbox-row compact"><input type="checkbox" id="supervisor_program_autostart" name="supervisor_program_autostart" value="1" {{if .SupervisorProgramAutostart}}checked{{end}}><span>Autostart</span></label>
+                <label class="checkbox-row compact"><input type="checkbox" id="supervisor_program_autorestart" name="supervisor_program_autorestart" value="1" {{if .SupervisorProgramAutorestart}}checked{{end}}><span>Autorestart</span></label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Save program</button>
+            </div>
+        </form>
+        <p class="muted">This page writes panel-managed configs under the Supervisor config directory. Existing unmanaged configs remain visible but are not deleted here.</p>
+    </article>
+    <article class="panel">
+        <h3><i class="bi bi-journal-code" style="color:var(--muted);margin-right:6px;"></i>Program logs</h3>
+        <form method="post" class="stack-form supervisor-stream-form" data-stream-endpoint="/supervisor/stream">
+            <input type="hidden" name="supervisor_action" value="tail_logs">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Program</span>
+                    <select name="supervisor_log_program" required>
+                        <option value="">Select program</option>
+                        {{range .SupervisorPrograms}}
+                        <option value="{{.Name}}" {{if eq $.SupervisorLogProgram .Name}}selected{{end}}>{{.Name}} · {{if .Status}}{{.Status}}{{else}}unknown{{end}}</option>
+                        {{end}}
+                    </select>
+                </label>
+                <label>
+                    <span>Lines</span>
+                    <input type="text" name="supervisor_log_lines" value="{{.SupervisorLogLines}}" placeholder="200" required>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Load logs</button>
+            </div>
+        </form>
+        {{if .SupervisorLogOutput}}
+        <pre class="command-output" style="margin-top:12px;">{{.SupervisorLogOutput}}</pre>
+        {{else}}
+        <p class="muted">Log output will appear here when you request it without leaving the page.</p>
+        {{end}}
+    </article>
+</section>
+
+<section class="grid single">
+    <article class="panel">
+        <h3><i class="bi bi-list-ul" style="color:var(--accent);margin-right:6px;"></i>Programs</h3>
+        {{if .SupervisorPrograms}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>User</th>
+                        <th>Directory</th>
+                        <th>Command</th>
+                        <th>Config</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .SupervisorPrograms}}
+                    <tr>
+                        <td class="fw-semibold">{{.Name}}{{if .Managed}}<div><small class="muted">panel-managed</small></div>{{end}}</td>
+                        <td>{{if .Status}}{{.Status}}{{else}}unknown{{end}}</td>
+                        <td>{{if .User}}{{.User}}{{else}}-{{end}}</td>
+                        <td class="text-break">{{if .Directory}}{{.Directory}}{{else}}-{{end}}</td>
+                        <td class="text-break">{{.Command}}</td>
+                        <td class="text-break">{{.ConfigPath}}</td>
+                        <td>
+                            <div class="form-actions" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;">
+                                <a class="btn btn-sm btn-outline-secondary" href="/supervisor?edit={{.Name}}">Edit</a>
+                                <a class="btn btn-sm btn-outline-secondary" href="/supervisor?logs={{.Name}}">Logs</a>
+                                <form method="post" class="supervisor-stream-form" data-stream-endpoint="/supervisor/stream" style="display:inline;">
+                                    <input type="hidden" name="supervisor_action" value="tail_logs">
+                                    <input type="hidden" name="supervisor_log_program" value="{{.Name}}">
+                                    <input type="hidden" name="supervisor_log_lines" value="100">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Last 100</button>
+                                </form>
+                                <form method="post" class="supervisor-stream-form" data-stream-endpoint="/supervisor/stream" style="display:inline;">
+                                    <input type="hidden" name="supervisor_action" value="start_program">
+                                    <input type="hidden" name="supervisor_target_program" value="{{.Name}}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Start</button>
+                                </form>
+                                <form method="post" class="supervisor-stream-form" data-stream-endpoint="/supervisor/stream" style="display:inline;">
+                                    <input type="hidden" name="supervisor_action" value="stop_program">
+                                    <input type="hidden" name="supervisor_target_program" value="{{.Name}}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Stop</button>
+                                </form>
+                                <form method="post" class="supervisor-stream-form" data-stream-endpoint="/supervisor/stream" style="display:inline;">
+                                    <input type="hidden" name="supervisor_action" value="restart_program">
+                                    <input type="hidden" name="supervisor_target_program" value="{{.Name}}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Restart</button>
+                                </form>
+                                {{if .Managed}}
+                                <form method="post" class="supervisor-stream-form" data-stream-endpoint="/supervisor/stream" style="display:inline;">
+                                    <input type="hidden" name="supervisor_action" value="remove_program">
+                                    <input type="hidden" name="supervisor_target_program" value="{{.Name}}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                                {{end}}
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted">No Supervisor programs were found yet.</p>
+        {{end}}
+    </article>
+</section>
+
+{{if .CommandOutput}}
+<section class="grid single">
+    <article class="panel">
+        <h3><i class="bi bi-terminal" style="color:var(--accent);margin-right:6px;"></i>Last command output</h3>
+        <pre class="command-output">{{.CommandOutput}}</pre>
+    </article>
+</section>
+{{end}}
+
+<script>
+(() => {
+    const terminalDrawer = window.PanelTerminalDrawer;
+    if (!terminalDrawer) {
+        return;
+    }
+    const forms = Array.from(document.querySelectorAll('.supervisor-stream-form'));
+    const presetButtons = Array.from(document.querySelectorAll('.supervisor-preset'));
+    const nameInput = document.getElementById('supervisor_program_name');
+    const commandInput = document.getElementById('supervisor_program_command');
+    const directoryInput = document.getElementById('supervisor_program_directory');
+    const environmentInput = document.getElementById('supervisor_program_environment');
+    const autostartInput = document.getElementById('supervisor_program_autostart');
+    const autorestartInput = document.getElementById('supervisor_program_autorestart');
+
+    presetButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            if (nameInput && !nameInput.value) {
+                nameInput.value = button.dataset.name || '';
+            }
+            if (commandInput) {
+                commandInput.value = button.dataset.command || '';
+            }
+            if (directoryInput && !directoryInput.value) {
+                directoryInput.value = button.dataset.directory || '';
+            }
+            if (environmentInput && !environmentInput.value) {
+                environmentInput.value = button.dataset.environment || '';
+            }
+            if (autostartInput) {
+                autostartInput.checked = button.dataset.autostart !== 'false';
+            }
+            if (autorestartInput) {
+                autorestartInput.checked = button.dataset.autorestart !== 'false';
+            }
+        });
+    });
+
+    forms.forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            await terminalDrawer.streamForm(form, form.dataset.streamEndpoint || '/supervisor/stream', {
+                title: 'Supervisor action',
+            });
+        });
+    });
+})();
+</script>
+{{end}}

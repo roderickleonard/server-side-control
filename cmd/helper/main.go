@@ -420,6 +420,89 @@ func handleStreamMode() {
 			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
 			os.Exit(1)
 		}
+	case "supervisor.install", "supervisor.start_service", "supervisor.stop_service", "supervisor.restart_service", "supervisor.reread", "supervisor.update":
+		var (
+			output string
+			err    error
+		)
+		manager := system.NewSupervisorManager()
+		switch request.Action {
+		case "supervisor.install":
+			output, err = manager.Install()
+		case "supervisor.start_service":
+			output, err = manager.Start()
+		case "supervisor.stop_service":
+			output, err = manager.Stop()
+		case "supervisor.restart_service":
+			output, err = manager.Restart()
+		case "supervisor.reread":
+			output, err = manager.Reread()
+		default:
+			output, err = manager.Update()
+		}
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "supervisor.save_program":
+		var spec system.SupervisorProgramSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode supervisor program spec: %v\n", err)
+			os.Exit(1)
+		}
+		output, err := system.NewSupervisorManager().SaveProgram(spec)
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "supervisor.remove_program", "supervisor.start_program", "supervisor.stop_program", "supervisor.restart_program":
+		var spec system.SupervisorProgramActionSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode supervisor program action spec: %v\n", err)
+			os.Exit(1)
+		}
+		var (
+			output string
+			err    error
+		)
+		manager := system.NewSupervisorManager()
+		switch request.Action {
+		case "supervisor.remove_program":
+			output, err = manager.RemoveProgram(spec)
+		case "supervisor.start_program":
+			output, err = manager.StartProgram(spec)
+		case "supervisor.stop_program":
+			output, err = manager.StopProgram(spec)
+		default:
+			output, err = manager.RestartProgram(spec)
+		}
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "supervisor.tail_logs":
+		var spec system.SupervisorLogSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "decode supervisor log spec: %v\n", err)
+			os.Exit(1)
+		}
+		output, err := system.NewSupervisorManager().TailProgramLogs(spec)
+		if output != "" {
+			_, _ = io.WriteString(os.Stdout, output)
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
+			os.Exit(1)
+		}
 	case "deploy.run":
 		var spec system.DeploySpec
 		if err := json.Unmarshal(request.Input, &spec); err != nil {
@@ -983,6 +1066,78 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			return
 		}
 		output, err := system.NewRedisManager().Logs(input.Lines)
+		writeSuccess(nil, output, err)
+	case "supervisor.inspect":
+		status, err := system.NewSupervisorManager().Inspect()
+		writeSuccess(status, "", err)
+	case "supervisor.install":
+		output, err := system.NewSupervisorManager().Install()
+		writeSuccess(nil, output, err)
+	case "supervisor.start_service":
+		output, err := system.NewSupervisorManager().Start()
+		writeSuccess(nil, output, err)
+	case "supervisor.stop_service":
+		output, err := system.NewSupervisorManager().Stop()
+		writeSuccess(nil, output, err)
+	case "supervisor.restart_service":
+		output, err := system.NewSupervisorManager().Restart()
+		writeSuccess(nil, output, err)
+	case "supervisor.reread":
+		output, err := system.NewSupervisorManager().Reread()
+		writeSuccess(nil, output, err)
+	case "supervisor.update":
+		output, err := system.NewSupervisorManager().Update()
+		writeSuccess(nil, output, err)
+	case "supervisor.list_programs":
+		programs, err := system.NewSupervisorManager().ListPrograms()
+		writeSuccess(programs, "", err)
+	case "supervisor.save_program":
+		var spec system.SupervisorProgramSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewSupervisorManager().SaveProgram(spec)
+		writeSuccess(nil, output, err)
+	case "supervisor.remove_program":
+		var spec system.SupervisorProgramActionSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewSupervisorManager().RemoveProgram(spec)
+		writeSuccess(nil, output, err)
+	case "supervisor.start_program":
+		var spec system.SupervisorProgramActionSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewSupervisorManager().StartProgram(spec)
+		writeSuccess(nil, output, err)
+	case "supervisor.stop_program":
+		var spec system.SupervisorProgramActionSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewSupervisorManager().StopProgram(spec)
+		writeSuccess(nil, output, err)
+	case "supervisor.restart_program":
+		var spec system.SupervisorProgramActionSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewSupervisorManager().RestartProgram(spec)
+		writeSuccess(nil, output, err)
+	case "supervisor.tail_logs":
+		var spec system.SupervisorLogSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewSupervisorManager().TailProgramLogs(spec)
 		writeSuccess(nil, output, err)
 	case "cron.list":
 		var input struct {

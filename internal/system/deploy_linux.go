@@ -130,7 +130,7 @@ func (linuxDeployManager) Rollback(spec RollbackSpec) (DeployResult, error) {
 		return DeployResult{Action: "rollback", Output: output.String(), PreviousCommitSHA: previousCommit}, err
 	}
 	if strings.TrimSpace(spec.PostDeployCommand) != "" {
-		if err := runShellAsUser(ctx, spec.RunAsUser, spec.TargetDirectory, spec.PostDeployCommand, &output); err != nil {
+		if err := runShellAsUser(ctx, spec.RunAsUser, spec.TargetDirectory, spec.PostDeployCommand, "", &output); err != nil {
 			return DeployResult{Action: "rollback + post-deploy", Output: output.String(), PreviousCommitSHA: previousCommit, CommitSHA: spec.ReleaseCommitSHA}, err
 		}
 	}
@@ -255,7 +255,7 @@ func StreamGitCommand(spec GitCommandSpec, stdout io.Writer, stderr io.Writer) e
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	return runShellAsUserStream(ctx, spec.User, spec.WorkingDirectory, spec.Command, stdout, stderr)
+	return runShellAsUserStream(ctx, spec.User, spec.WorkingDirectory, spec.Command, "", stdout, stderr)
 }
 
 func currentCommit(ctx context.Context, username string, directory string, output *bytes.Buffer) (string, error) {

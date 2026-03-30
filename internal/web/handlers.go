@@ -5228,6 +5228,264 @@ func (a *App) handleRedisLogs(w http.ResponseWriter, r *http.Request) {
 	a.render(r.Context(), w, r.URL.Path, "redis_logs.html", data)
 }
 
+func (a *App) handleSupervisor(w http.ResponseWriter, r *http.Request) {
+	data := a.supervisorTemplateData(r)
+
+	if r.Method == http.MethodGet {
+		a.render(r.Context(), w, r.URL.Path, "supervisor.html", data)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		data.RequestError = "The submitted Supervisor form could not be parsed."
+		a.render(r.Context(), w, r.URL.Path, "supervisor.html", data)
+		return
+	}
+
+	data.SupervisorProgramName = strings.TrimSpace(r.FormValue("supervisor_program_name"))
+	data.SupervisorProgramCommand = strings.TrimSpace(r.FormValue("supervisor_program_command"))
+	data.SupervisorProgramDirectory = strings.TrimSpace(r.FormValue("supervisor_program_directory"))
+	data.SupervisorProgramUser = strings.TrimSpace(r.FormValue("supervisor_program_user"))
+	data.SupervisorProgramStdoutLogfile = strings.TrimSpace(r.FormValue("supervisor_program_stdout_logfile"))
+	data.SupervisorProgramStderrLogfile = strings.TrimSpace(r.FormValue("supervisor_program_stderr_logfile"))
+	data.SupervisorProgramEnvironment = strings.TrimSpace(r.FormValue("supervisor_program_environment"))
+	data.SupervisorProgramAutostart = r.FormValue("supervisor_program_autostart") == "1"
+	data.SupervisorProgramAutorestart = r.FormValue("supervisor_program_autorestart") == "1"
+	if lines := strings.TrimSpace(r.FormValue("supervisor_log_lines")); lines != "" {
+		data.SupervisorLogLines = lines
+	}
+	data.SupervisorLogProgram = strings.TrimSpace(r.FormValue("supervisor_log_program"))
+
+	action := strings.TrimSpace(r.FormValue("supervisor_action"))
+	switch action {
+	case "install":
+		output, err := a.supervisor.Install()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "Supervisor could not be installed: " + err.Error()
+			a.recordAudit(r.Context(), "supervisor.install", "supervisor", "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Supervisor installed and started successfully."
+		a.recordAudit(r.Context(), "supervisor.install", "supervisor", "success", nil)
+	case "start_service":
+		output, err := a.supervisor.Start()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "Supervisor service could not be started: " + err.Error()
+			a.recordAudit(r.Context(), "supervisor.start_service", "supervisor", "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Supervisor service started successfully."
+		a.recordAudit(r.Context(), "supervisor.start_service", "supervisor", "success", nil)
+	case "stop_service":
+		output, err := a.supervisor.Stop()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "Supervisor service could not be stopped: " + err.Error()
+			a.recordAudit(r.Context(), "supervisor.stop_service", "supervisor", "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Supervisor service stopped successfully."
+		a.recordAudit(r.Context(), "supervisor.stop_service", "supervisor", "success", nil)
+	case "restart_service":
+		output, err := a.supervisor.Restart()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "Supervisor service could not be restarted: " + err.Error()
+			a.recordAudit(r.Context(), "supervisor.restart_service", "supervisor", "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Supervisor service restarted successfully."
+		a.recordAudit(r.Context(), "supervisor.restart_service", "supervisor", "success", nil)
+	case "reread":
+		output, err := a.supervisor.Reread()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "Supervisor reread failed: " + err.Error()
+			a.recordAudit(r.Context(), "supervisor.reread", "supervisor", "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Supervisor reread completed successfully."
+		a.recordAudit(r.Context(), "supervisor.reread", "supervisor", "success", nil)
+	case "update":
+		output, err := a.supervisor.Update()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "Supervisor update failed: " + err.Error()
+			a.recordAudit(r.Context(), "supervisor.update", "supervisor", "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Supervisor update completed successfully."
+		a.recordAudit(r.Context(), "supervisor.update", "supervisor", "success", nil)
+	case "save_program":
+		spec := system.SupervisorProgramSpec{
+			Name:          data.SupervisorProgramName,
+			Command:       data.SupervisorProgramCommand,
+			Directory:     data.SupervisorProgramDirectory,
+			User:          data.SupervisorProgramUser,
+			AutoStart:     data.SupervisorProgramAutostart,
+			AutoRestart:   data.SupervisorProgramAutorestart,
+			StdoutLogfile: data.SupervisorProgramStdoutLogfile,
+			StderrLogfile: data.SupervisorProgramStderrLogfile,
+			Environment:   data.SupervisorProgramEnvironment,
+		}
+		output, err := a.supervisor.SaveProgram(spec)
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = supervisorActionErrorMessage(err)
+			a.recordAudit(r.Context(), "supervisor.save_program", spec.Name, "failure", map[string]any{"error": err.Error(), "user": spec.User})
+			break
+		}
+		data.SuccessMessage = "Supervisor program saved successfully."
+		a.recordAudit(r.Context(), "supervisor.save_program", spec.Name, "success", map[string]any{"user": spec.User})
+	case "remove_program":
+		name := strings.TrimSpace(r.FormValue("supervisor_target_program"))
+		output, err := a.supervisor.RemoveProgram(system.SupervisorProgramActionSpec{Name: name})
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = supervisorActionErrorMessage(err)
+			a.recordAudit(r.Context(), "supervisor.remove_program", name, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Supervisor program removed successfully."
+		a.recordAudit(r.Context(), "supervisor.remove_program", name, "success", nil)
+	case "start_program", "stop_program", "restart_program":
+		name := strings.TrimSpace(r.FormValue("supervisor_target_program"))
+		var (
+			output string
+			err    error
+		)
+		spec := system.SupervisorProgramActionSpec{Name: name}
+		switch action {
+		case "start_program":
+			output, err = a.supervisor.StartProgram(spec)
+		case "stop_program":
+			output, err = a.supervisor.StopProgram(spec)
+		default:
+			output, err = a.supervisor.RestartProgram(spec)
+		}
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = supervisorActionErrorMessage(err)
+			a.recordAudit(r.Context(), "supervisor."+action, name, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "Supervisor program action completed successfully."
+		a.recordAudit(r.Context(), "supervisor."+action, name, "success", nil)
+	case "tail_logs":
+		lines, err := strconv.Atoi(strings.TrimSpace(data.SupervisorLogLines))
+		if err != nil || lines <= 0 {
+			data.RequestError = "Supervisor log lines must be a positive number."
+			break
+		}
+		output, err := a.supervisor.TailProgramLogs(system.SupervisorLogSpec{Name: data.SupervisorLogProgram, Lines: lines})
+		data.SupervisorLogOutput = output
+		if err != nil {
+			data.RequestError = "Supervisor logs could not be loaded: " + supervisorActionErrorMessage(err)
+			a.recordAudit(r.Context(), "supervisor.tail_logs", data.SupervisorLogProgram, "failure", map[string]any{"error": err.Error(), "lines": lines})
+			break
+		}
+		data.SuccessMessage = "Supervisor logs loaded successfully."
+		a.recordAudit(r.Context(), "supervisor.tail_logs", data.SupervisorLogProgram, "success", map[string]any{"lines": lines})
+	default:
+		data.RequestError = "Invalid Supervisor action."
+	}
+
+	refreshed := a.supervisorTemplateData(r)
+	refreshed.RequestError = data.RequestError
+	refreshed.SuccessMessage = data.SuccessMessage
+	refreshed.CommandOutput = data.CommandOutput
+	refreshed.SupervisorLogOutput = data.SupervisorLogOutput
+	if data.SupervisorProgramName != "" {
+		refreshed.SupervisorProgramName = data.SupervisorProgramName
+		refreshed.SupervisorProgramCommand = data.SupervisorProgramCommand
+		refreshed.SupervisorProgramDirectory = data.SupervisorProgramDirectory
+		refreshed.SupervisorProgramUser = data.SupervisorProgramUser
+		refreshed.SupervisorProgramStdoutLogfile = data.SupervisorProgramStdoutLogfile
+		refreshed.SupervisorProgramStderrLogfile = data.SupervisorProgramStderrLogfile
+		refreshed.SupervisorProgramEnvironment = data.SupervisorProgramEnvironment
+		refreshed.SupervisorProgramAutostart = data.SupervisorProgramAutostart
+		refreshed.SupervisorProgramAutorestart = data.SupervisorProgramAutorestart
+	}
+	if data.SupervisorLogProgram != "" {
+		refreshed.SupervisorLogProgram = data.SupervisorLogProgram
+	}
+	if data.SupervisorLogLines != "" {
+		refreshed.SupervisorLogLines = data.SupervisorLogLines
+	}
+	a.render(r.Context(), w, r.URL.Path, "supervisor.html", refreshed)
+}
+
+func (a *App) supervisorTemplateData(r *http.Request) TemplateData {
+	status, inspectErr := a.supervisor.Inspect()
+	programs, programsErr := a.supervisor.ListPrograms()
+	data := TemplateData{
+		Title:                         "Supervisor",
+		DatabaseStatus:                a.databaseStatus(r.Context()),
+		Metrics:                       a.metrics.Snapshot(),
+		LinuxUsers:                    a.listLinuxUsers(),
+		SupervisorStatus:              status,
+		SupervisorPrograms:            programs,
+		SupervisorProgramAutostart:    true,
+		SupervisorProgramAutorestart:  true,
+		SupervisorLogLines:            "200",
+	}
+	if inspectErr != nil {
+		data.RequestError = "Supervisor status could not be loaded: " + inspectErr.Error()
+	} else if programsErr != nil {
+		data.RequestError = "Supervisor programs could not be loaded: " + programsErr.Error()
+	}
+	if editName := strings.TrimSpace(r.URL.Query().Get("edit")); editName != "" {
+		for _, program := range programs {
+			if program.Name != editName {
+				continue
+			}
+			data.SupervisorProgramName = program.Name
+			data.SupervisorProgramCommand = program.Command
+			data.SupervisorProgramDirectory = program.Directory
+			data.SupervisorProgramUser = program.User
+			data.SupervisorProgramStdoutLogfile = program.StdoutLogfile
+			data.SupervisorProgramStderrLogfile = program.StderrLogfile
+			data.SupervisorProgramEnvironment = program.Environment
+			data.SupervisorProgramAutostart = program.AutoStart
+			data.SupervisorProgramAutorestart = program.AutoRestart
+			break
+		}
+	}
+	if logProgram := strings.TrimSpace(r.URL.Query().Get("logs")); logProgram != "" {
+		data.SupervisorLogProgram = logProgram
+	}
+	return data
+}
+
+func supervisorActionErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch {
+	case errors.Is(err, system.ErrInvalidSupervisorProgramName):
+		return "Supervisor program name may contain only letters, numbers, dots, dashes, and underscores."
+	case errors.Is(err, system.ErrInvalidSupervisorCommand):
+		return "Supervisor command is required."
+	case errors.Is(err, system.ErrInvalidSupervisorDirectory):
+		return "Supervisor working directory must be an absolute path."
+	case errors.Is(err, system.ErrInvalidSupervisorUser):
+		return "Supervisor Linux user is not valid."
+	case errors.Is(err, system.ErrInvalidSupervisorLogPath):
+		return "Supervisor log paths must be absolute paths."
+	case errors.Is(err, system.ErrSupervisorManagedProgramOnly):
+		return "Only panel-managed Supervisor programs can be deleted from this page."
+	default:
+		return err.Error()
+	}
+}
+
 func (a *App) handleLogs(w http.ResponseWriter, r *http.Request) {
 	logs := []domain.AuditLog{}
 	if a.store != nil {

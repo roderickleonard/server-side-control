@@ -642,6 +642,104 @@ func (a *App) handleRedisStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *App) handleSupervisorStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid form payload"})
+		return
+	}
+	action := strings.TrimSpace(r.FormValue("supervisor_action"))
+	var (
+		helperAction string
+		payload      any
+		auditAction  string
+		target       string
+		label        string
+		auditMeta    map[string]any
+	)
+	switch action {
+	case "install":
+		helperAction = "supervisor.install"
+		payload = map[string]any{}
+		auditAction = helperAction
+		target = "supervisor"
+		label = "install supervisor"
+	case "start_service", "stop_service", "restart_service", "reread", "update":
+		helperAction = "supervisor." + action
+		payload = map[string]any{}
+		auditAction = helperAction
+		target = "supervisor"
+		label = strings.ReplaceAll(action, "_", " ")
+	case "save_program":
+		spec := system.SupervisorProgramSpec{
+			Name:          strings.TrimSpace(r.FormValue("supervisor_program_name")),
+			Command:       strings.TrimSpace(r.FormValue("supervisor_program_command")),
+			Directory:     strings.TrimSpace(r.FormValue("supervisor_program_directory")),
+			User:          strings.TrimSpace(r.FormValue("supervisor_program_user")),
+			AutoStart:     r.FormValue("supervisor_program_autostart") == "1",
+			AutoRestart:   r.FormValue("supervisor_program_autorestart") == "1",
+			StdoutLogfile: strings.TrimSpace(r.FormValue("supervisor_program_stdout_logfile")),
+			StderrLogfile: strings.TrimSpace(r.FormValue("supervisor_program_stderr_logfile")),
+			Environment:   strings.TrimSpace(r.FormValue("supervisor_program_environment")),
+		}
+		helperAction = "supervisor.save_program"
+		payload = spec
+		auditAction = helperAction
+		target = spec.Name
+		label = "save supervisor program"
+		auditMeta = map[string]any{"user": spec.User}
+	case "remove_program", "start_program", "stop_program", "restart_program":
+		name := strings.TrimSpace(r.FormValue("supervisor_target_program"))
+		helperAction = "supervisor." + action
+		payload = system.SupervisorProgramActionSpec{Name: name}
+		auditAction = helperAction
+		target = name
+		label = strings.ReplaceAll(action, "_", " ")
+	case "tail_logs":
+		lines, err := strconv.Atoi(strings.TrimSpace(r.FormValue("supervisor_log_lines")))
+		if err != nil || lines <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "supervisor log lines must be a positive number"})
+			return
+		}
+		name := strings.TrimSpace(r.FormValue("supervisor_log_program"))
+		helperAction = "supervisor.tail_logs"
+		payload = system.SupervisorLogSpec{Name: name, Lines: lines}
+		auditAction = helperAction
+		target = name
+		label = "tail supervisor logs"
+		auditMeta = map[string]any{"lines": lines}
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported supervisor action"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		_, _ = io.WriteString(w, "streaming is not supported by this server\n")
+		return
+	}
+	streamWriter := &flushWriter{writer: w, flusher: flusher}
+	_, _ = io.WriteString(streamWriter, "$ "+label+"\n\n")
+	if err := a.streamHelperAction(r.Context(), streamWriter, helperAction, payload); err != nil {
+		failureMeta := map[string]any{"error": err.Error()}
+		for key, value := range auditMeta {
+			failureMeta[key] = value
+		}
+		a.recordAudit(r.Context(), auditAction, target, "failure", failureMeta)
+		_, _ = io.WriteString(streamWriter, "\n\n[command failed]\n")
+		return
+	}
+	a.recordAudit(r.Context(), auditAction, target, "success", auditMeta)
+	_, _ = io.WriteString(streamWriter, "\n\n[command completed]\n")
+}
+
 func (a *App) handleDeploysStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})

@@ -365,6 +365,68 @@ type RedisManager interface {
 	Logs(lines int) (string, error)
 }
 
+type SupervisorStatus struct {
+	Installed       bool   `json:"installed"`
+	Active          bool   `json:"active"`
+	Enabled         bool   `json:"enabled"`
+	ServiceName     string `json:"service_name"`
+	Version         string `json:"version"`
+	ConfigDirectory string `json:"config_directory"`
+}
+
+type SupervisorProgram struct {
+	Name          string `json:"name"`
+	Command       string `json:"command"`
+	Directory     string `json:"directory"`
+	User          string `json:"user"`
+	AutoStart     bool   `json:"auto_start"`
+	AutoRestart   bool   `json:"auto_restart"`
+	StdoutLogfile string `json:"stdout_logfile"`
+	StderrLogfile string `json:"stderr_logfile"`
+	Environment   string `json:"environment"`
+	Status        string `json:"status"`
+	ConfigPath    string `json:"config_path"`
+	Managed       bool   `json:"managed"`
+}
+
+type SupervisorProgramSpec struct {
+	Name          string `json:"name"`
+	Command       string `json:"command"`
+	Directory     string `json:"directory"`
+	User          string `json:"user"`
+	AutoStart     bool   `json:"auto_start"`
+	AutoRestart   bool   `json:"auto_restart"`
+	StdoutLogfile string `json:"stdout_logfile"`
+	StderrLogfile string `json:"stderr_logfile"`
+	Environment   string `json:"environment"`
+}
+
+type SupervisorProgramActionSpec struct {
+	Name string `json:"name"`
+}
+
+type SupervisorLogSpec struct {
+	Name  string `json:"name"`
+	Lines int    `json:"lines"`
+}
+
+type SupervisorManager interface {
+	Inspect() (SupervisorStatus, error)
+	Install() (string, error)
+	Start() (string, error)
+	Stop() (string, error)
+	Restart() (string, error)
+	Reread() (string, error)
+	Update() (string, error)
+	ListPrograms() ([]SupervisorProgram, error)
+	SaveProgram(spec SupervisorProgramSpec) (string, error)
+	RemoveProgram(spec SupervisorProgramActionSpec) (string, error)
+	StartProgram(spec SupervisorProgramActionSpec) (string, error)
+	StopProgram(spec SupervisorProgramActionSpec) (string, error)
+	RestartProgram(spec SupervisorProgramActionSpec) (string, error)
+	TailProgramLogs(spec SupervisorLogSpec) (string, error)
+}
+
 type CronJob struct {
 	ID            string `json:"id"`
 	Schedule      string `json:"schedule"`

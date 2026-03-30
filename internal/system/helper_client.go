@@ -101,6 +101,8 @@ type helperPHPManager struct{ client *HelperClient }
 
 type helperRedisManager struct{ client *HelperClient }
 
+type helperSupervisorManager struct{ client *HelperClient }
+
 func NewHelperUserManager(client *HelperClient) UserManager {
 	return &helperUserManager{client: client}
 }
@@ -135,6 +137,10 @@ func NewHelperPHPManager(client *HelperClient) PHPManager {
 
 func NewHelperRedisManager(client *HelperClient) RedisManager {
 	return &helperRedisManager{client: client}
+}
+
+func NewHelperSupervisorManager(client *HelperClient) SupervisorManager {
+	return &helperSupervisorManager{client: client}
 }
 
 func (m *helperUserManager) CreateLinuxUser(username string, createHome bool, password string, grantSudo bool) error {
@@ -475,4 +481,64 @@ func (m *helperRedisManager) TestConnection(spec RedisPingSpec) (string, error) 
 
 func (m *helperRedisManager) Logs(lines int) (string, error) {
 	return m.client.Call(context.Background(), "redis.logs", map[string]any{"lines": lines}, nil)
+}
+
+func (m *helperSupervisorManager) Inspect() (SupervisorStatus, error) {
+	var status SupervisorStatus
+	_, err := m.client.Call(context.Background(), "supervisor.inspect", map[string]any{}, &status)
+	return status, err
+}
+
+func (m *helperSupervisorManager) Install() (string, error) {
+	return m.client.Call(context.Background(), "supervisor.install", map[string]any{}, nil)
+}
+
+func (m *helperSupervisorManager) Start() (string, error) {
+	return m.client.Call(context.Background(), "supervisor.start_service", map[string]any{}, nil)
+}
+
+func (m *helperSupervisorManager) Stop() (string, error) {
+	return m.client.Call(context.Background(), "supervisor.stop_service", map[string]any{}, nil)
+}
+
+func (m *helperSupervisorManager) Restart() (string, error) {
+	return m.client.Call(context.Background(), "supervisor.restart_service", map[string]any{}, nil)
+}
+
+func (m *helperSupervisorManager) Reread() (string, error) {
+	return m.client.Call(context.Background(), "supervisor.reread", map[string]any{}, nil)
+}
+
+func (m *helperSupervisorManager) Update() (string, error) {
+	return m.client.Call(context.Background(), "supervisor.update", map[string]any{}, nil)
+}
+
+func (m *helperSupervisorManager) ListPrograms() ([]SupervisorProgram, error) {
+	var programs []SupervisorProgram
+	_, err := m.client.Call(context.Background(), "supervisor.list_programs", map[string]any{}, &programs)
+	return programs, err
+}
+
+func (m *helperSupervisorManager) SaveProgram(spec SupervisorProgramSpec) (string, error) {
+	return m.client.Call(context.Background(), "supervisor.save_program", spec, nil)
+}
+
+func (m *helperSupervisorManager) RemoveProgram(spec SupervisorProgramActionSpec) (string, error) {
+	return m.client.Call(context.Background(), "supervisor.remove_program", spec, nil)
+}
+
+func (m *helperSupervisorManager) StartProgram(spec SupervisorProgramActionSpec) (string, error) {
+	return m.client.Call(context.Background(), "supervisor.start_program", spec, nil)
+}
+
+func (m *helperSupervisorManager) StopProgram(spec SupervisorProgramActionSpec) (string, error) {
+	return m.client.Call(context.Background(), "supervisor.stop_program", spec, nil)
+}
+
+func (m *helperSupervisorManager) RestartProgram(spec SupervisorProgramActionSpec) (string, error) {
+	return m.client.Call(context.Background(), "supervisor.restart_program", spec, nil)
+}
+
+func (m *helperSupervisorManager) TailProgramLogs(spec SupervisorLogSpec) (string, error) {
+	return m.client.Call(context.Background(), "supervisor.tail_logs", spec, nil)
 }
