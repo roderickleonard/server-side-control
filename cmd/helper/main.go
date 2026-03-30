@@ -477,6 +477,45 @@ func handle(cfg config.Config, request system.HelperRequest) {
 	case "php.list_versions":
 		versions, err := system.NewPHPManager().ListAvailableVersions()
 		writeSuccess(versions, "", err)
+	case "php.list_installable_versions":
+		versions, err := system.NewPHPManager().ListInstallableVersions()
+		writeSuccess(versions, "", err)
+	case "php.install_versions":
+		var input struct {
+			Versions []string `json:"versions"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewPHPManager().InstallVersions(input.Versions)
+		writeSuccess(nil, output, err)
+	case "php.list_extension_status":
+		var input struct {
+			Version string `json:"version"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		status, err := system.NewPHPManager().ListExtensionStatus(input.Version)
+		writeSuccess(status, "", err)
+	case "php.install_extensions":
+		var spec system.PHPExtensionSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewPHPManager().InstallExtensions(spec)
+		writeSuccess(nil, output, err)
+	case "php.enable_extensions":
+		var spec system.PHPExtensionSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewPHPManager().EnableExtensions(spec)
+		writeSuccess(nil, output, err)
 	case "redis.inspect":
 		status, err := system.NewRedisManager().Inspect()
 		writeSuccess(status, "", err)

@@ -373,6 +373,30 @@ func (m *helperPHPManager) ListAvailableVersions() ([]string, error) {
 	return versions, err
 }
 
+func (m *helperPHPManager) ListInstallableVersions() ([]string, error) {
+	var versions []string
+	_, err := m.client.Call(context.Background(), "php.list_installable_versions", map[string]any{}, &versions)
+	return versions, err
+}
+
+func (m *helperPHPManager) InstallVersions(versions []string) (string, error) {
+	return m.client.Call(context.Background(), "php.install_versions", map[string]any{"versions": versions}, nil)
+}
+
+func (m *helperPHPManager) ListExtensionStatus(version string) (PHPExtensionStatus, error) {
+	var status PHPExtensionStatus
+	_, err := m.client.Call(context.Background(), "php.list_extension_status", map[string]any{"version": version}, &status)
+	return status, err
+}
+
+func (m *helperPHPManager) InstallExtensions(spec PHPExtensionSpec) (string, error) {
+	return m.client.Call(context.Background(), "php.install_extensions", spec, nil)
+}
+
+func (m *helperPHPManager) EnableExtensions(spec PHPExtensionSpec) (string, error) {
+	return m.client.Call(context.Background(), "php.enable_extensions", spec, nil)
+}
+
 func (m *helperRedisManager) Inspect() (RedisStatus, error) {
 	var status RedisStatus
 	_, err := m.client.Call(context.Background(), "redis.inspect", map[string]any{}, &status)

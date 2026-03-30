@@ -4492,17 +4492,10 @@ func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handlePHP(w http.ResponseWriter, r *http.Request) {
-	sites := a.listManagedSites(r)
-	versions := a.listPHPVersions()
+	data := a.phpTemplateData(r)
 
 	if r.Method == http.MethodGet {
-		a.render(r.Context(), w, r.URL.Path, "php.html", TemplateData{
-			Title:          "PHP",
-			DatabaseStatus: a.databaseStatus(r.Context()),
-			Metrics:        a.metrics.Snapshot(),
-			ManagedSites:   sites,
-			PHPVersions:    versions,
-		})
+		a.render(r.Context(), w, r.URL.Path, "php.html", data)
 		return
 	}
 
@@ -4511,73 +4504,95 @@ func (a *App) handlePHP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if a.store == nil {
-		a.render(r.Context(), w, r.URL.Path, "php.html", TemplateData{
-			Title:          "PHP",
-			DatabaseStatus: a.databaseStatus(r.Context()),
-			Metrics:        a.metrics.Snapshot(),
-			ManagedSites:   sites,
-			PHPVersions:    versions,
-			RequestError:   "Managed site storage is not configured yet. Set PANEL_DATABASE_DSN first.",
-		})
-		return
-	}
-
 	if err := r.ParseForm(); err != nil {
-		a.render(r.Context(), w, r.URL.Path, "php.html", TemplateData{
-			Title:          "PHP",
-			DatabaseStatus: a.databaseStatus(r.Context()),
-			Metrics:        a.metrics.Snapshot(),
-			ManagedSites:   sites,
-			PHPVersions:    versions,
-			RequestError:   "The submitted PHP form could not be parsed.",
-		})
+		data.RequestError = "The submitted PHP form could not be parsed."
+		a.render(r.Context(), w, r.URL.Path, "php.html", data)
 		return
 	}
 
-	siteName := r.FormValue("site_name")
-	phpVersion := r.FormValue("php_version")
-	site, err := a.store.GetManagedSiteByName(r.Context(), siteName)
-	if err != nil {
-		a.recordAudit(r.Context(), "php.switch", siteName, "failure", map[string]any{"version": phpVersion, "error": err.Error()})
-		a.render(r.Context(), w, r.URL.Path, "php.html", TemplateData{
-			Title:          "PHP",
-			DatabaseStatus: a.databaseStatus(r.Context()),
-			Metrics:        a.metrics.Snapshot(),
-			RequestError:   "Managed site could not be found by that name.",
-		})
-		return
-	}
+	action := firstNonEmpty(strings.TrimSpace(r.FormValue("php_action")), "switch_version")
+	data.PHPExtensionVersion = strings.TrimSpace(r.FormValue("extension_version"))
+	selectedExtensions := collectPHPExtensions(r)
+	data.PHPExtensionInput = strings.Join(selectedExtensions, ", ")
 
-	if err := a.php.SwitchSiteVersion(site.NginxConfigPath, phpVersion); err != nil {
-		a.recordAudit(r.Context(), "php.switch", siteName, "failure", map[string]any{"version": phpVersion, "config_path": site.NginxConfigPath, "error": err.Error()})
-		message := err.Error()
-		if errors.Is(err, system.ErrInvalidPHPVersion) {
-			message = "PHP version must look like 8.2 or 8.3."
+	switch action {
+	case "install_versions":
+		selectedVersions := append([]string{}, r.Form["install_versions"]...)
+		output, err := a.php.InstallVersions(selectedVersions)
+		if err != nil {
+			data.RequestError = phpActionErrorMessage(err)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "php.install_versions", strings.Join(selectedVersions, ","), "failure", map[string]any{"error": err.Error(), "versions": selectedVersions})
+			a.render(r.Context(), w, r.URL.Path, "php.html", data)
+			return
 		}
-		a.render(r.Context(), w, r.URL.Path, "php.html", TemplateData{
-			Title:          "PHP",
-			DatabaseStatus: a.databaseStatus(r.Context()),
-			Metrics:        a.metrics.Snapshot(),
-			ManagedSites:   sites,
-			PHPVersions:    versions,
-			RequestError:   message,
-		})
+		data = a.phpTemplateData(r)
+		data.CommandOutput = output
+		data.SuccessMessage = "Selected PHP versions were installed successfully."
+		a.recordAudit(r.Context(), "php.install_versions", strings.Join(selectedVersions, ","), "success", map[string]any{"versions": selectedVersions})
+		a.render(r.Context(), w, r.URL.Path, "php.html", data)
+		return
+	case "install_extensions":
+		output, err := a.php.InstallExtensions(system.PHPExtensionSpec{Version: data.PHPExtensionVersion, Extensions: selectedExtensions})
+		if err != nil {
+			data.RequestError = phpActionErrorMessage(err)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "php.install_extensions", data.PHPExtensionVersion, "failure", map[string]any{"error": err.Error(), "extensions": selectedExtensions})
+			a.render(r.Context(), w, r.URL.Path, "php.html", data)
+			return
+		}
+		data = a.phpTemplateData(r)
+		data.PHPExtensionVersion = strings.TrimSpace(r.FormValue("extension_version"))
+		data.CommandOutput = output
+		data.SuccessMessage = "PHP extensions were installed and enabled successfully."
+		a.recordAudit(r.Context(), "php.install_extensions", data.PHPExtensionVersion, "success", map[string]any{"extensions": selectedExtensions})
+		a.render(r.Context(), w, r.URL.Path, "php.html", data)
+		return
+	case "enable_extensions":
+		output, err := a.php.EnableExtensions(system.PHPExtensionSpec{Version: data.PHPExtensionVersion, Extensions: selectedExtensions})
+		if err != nil {
+			data.RequestError = phpActionErrorMessage(err)
+			data.CommandOutput = output
+			a.recordAudit(r.Context(), "php.enable_extensions", data.PHPExtensionVersion, "failure", map[string]any{"error": err.Error(), "extensions": selectedExtensions})
+			a.render(r.Context(), w, r.URL.Path, "php.html", data)
+			return
+		}
+		data = a.phpTemplateData(r)
+		data.PHPExtensionVersion = strings.TrimSpace(r.FormValue("extension_version"))
+		data.CommandOutput = output
+		data.SuccessMessage = "Selected PHP extensions were enabled successfully."
+		a.recordAudit(r.Context(), "php.enable_extensions", data.PHPExtensionVersion, "success", map[string]any{"extensions": selectedExtensions})
+		a.render(r.Context(), w, r.URL.Path, "php.html", data)
+		return
+	default:
+		if a.store == nil {
+			data.RequestError = "Managed site storage is not configured yet. Set PANEL_DATABASE_DSN first."
+			a.render(r.Context(), w, r.URL.Path, "php.html", data)
+			return
+		}
+		siteName := r.FormValue("site_name")
+		phpVersion := r.FormValue("php_version")
+		site, err := a.store.GetManagedSiteByName(r.Context(), siteName)
+		if err != nil {
+			a.recordAudit(r.Context(), "php.switch", siteName, "failure", map[string]any{"version": phpVersion, "error": err.Error()})
+			data.RequestError = "Managed site could not be found by that name."
+			a.render(r.Context(), w, r.URL.Path, "php.html", data)
+			return
+		}
+		if err := a.php.SwitchSiteVersion(site.NginxConfigPath, phpVersion); err != nil {
+			a.recordAudit(r.Context(), "php.switch", siteName, "failure", map[string]any{"version": phpVersion, "config_path": site.NginxConfigPath, "error": err.Error()})
+			data.RequestError = phpActionErrorMessage(err)
+			a.render(r.Context(), w, r.URL.Path, "php.html", data)
+			return
+		}
+		_ = a.store.UpdateManagedSitePHPVersion(r.Context(), siteName, phpVersion)
+		a.recordAudit(r.Context(), "php.switch", siteName, "success", map[string]any{"version": phpVersion, "config_path": site.NginxConfigPath})
+		data = a.phpTemplateData(r)
+		data.SuccessMessage = "PHP-FPM version switched successfully."
+		data.ResultPath = site.NginxConfigPath
+		a.render(r.Context(), w, r.URL.Path, "php.html", data)
 		return
 	}
-
-	_ = a.store.UpdateManagedSitePHPVersion(r.Context(), siteName, phpVersion)
-	a.recordAudit(r.Context(), "php.switch", siteName, "success", map[string]any{"version": phpVersion, "config_path": site.NginxConfigPath})
-	sites = a.listManagedSites(r)
-	a.render(r.Context(), w, r.URL.Path, "php.html", TemplateData{
-		Title:          "PHP",
-		DatabaseStatus: a.databaseStatus(r.Context()),
-		Metrics:        a.metrics.Snapshot(),
-		ManagedSites:   sites,
-		PHPVersions:    versions,
-		SuccessMessage: "PHP-FPM version switched successfully.",
-		ResultPath:     site.NginxConfigPath,
-	})
 }
 
 func (a *App) listLinuxUsers() []system.LinuxUser {
@@ -4635,6 +4650,83 @@ func (a *App) listPHPVersions() []string {
 		return nil
 	}
 	return versions
+}
+
+func (a *App) listPHPInstallableVersions() []string {
+	if a.php == nil {
+		return nil
+	}
+	versions, err := a.php.ListInstallableVersions()
+	if err != nil {
+		return nil
+	}
+	return versions
+}
+
+func (a *App) listPHPExtensionStatuses(versions []string) []system.PHPExtensionStatus {
+	statuses := make([]system.PHPExtensionStatus, 0, len(versions))
+	for _, version := range versions {
+		status, err := a.php.ListExtensionStatus(version)
+		if err != nil {
+			continue
+		}
+		statuses = append(statuses, status)
+	}
+	return statuses
+}
+
+func (a *App) phpTemplateData(r *http.Request) TemplateData {
+	versions := a.listPHPVersions()
+	return TemplateData{
+		Title:                "PHP",
+		DatabaseStatus:       a.databaseStatus(r.Context()),
+		Metrics:              a.metrics.Snapshot(),
+		ManagedSites:         a.listManagedSites(r),
+		PHPVersions:          versions,
+		PHPInstallableVersions: a.listPHPInstallableVersions(),
+		PHPExtensionStatuses: a.listPHPExtensionStatuses(versions),
+		PHPCommonExtensions:  phpCommonExtensions(),
+	}
+}
+
+func phpCommonExtensions() []string {
+	return []string{"bcmath", "bz2", "curl", "gd", "gmp", "imagick", "intl", "mbstring", "mysql", "opcache", "pgsql", "redis", "soap", "sqlite3", "xml", "zip"}
+}
+
+func collectPHPExtensions(r *http.Request) []string {
+	items := make([]string, 0)
+	items = append(items, r.Form["php_extensions"]...)
+	for _, raw := range strings.FieldsFunc(r.FormValue("php_extension_input"), func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+	}) {
+		items = append(items, raw)
+	}
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.ToLower(strings.TrimSpace(item))
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		result = append(result, item)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func phpActionErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := err.Error()
+	if errors.Is(err, system.ErrInvalidPHPVersion) {
+		return "PHP version must look like 8.1, 8.2, 8.3, or 8.4."
+	}
+	return message
 }
 
 func (a *App) handleRedis(w http.ResponseWriter, r *http.Request) {

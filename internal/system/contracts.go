@@ -270,6 +270,22 @@ type PM2Manager interface {
 type PHPManager interface {
 	SwitchSiteVersion(configPath string, version string) error
 	ListAvailableVersions() ([]string, error)
+	ListInstallableVersions() ([]string, error)
+	InstallVersions(versions []string) (string, error)
+	ListExtensionStatus(version string) (PHPExtensionStatus, error)
+	InstallExtensions(spec PHPExtensionSpec) (string, error)
+	EnableExtensions(spec PHPExtensionSpec) (string, error)
+}
+
+type PHPExtensionSpec struct {
+	Version    string   `json:"version"`
+	Extensions []string `json:"extensions"`
+}
+
+type PHPExtensionStatus struct {
+	Version           string   `json:"version"`
+	InstalledModules  []string `json:"installed_modules"`
+	EnabledModules    []string `json:"enabled_modules"`
 }
 
 type RedisStatus struct {

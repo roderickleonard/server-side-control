@@ -22,10 +22,39 @@
 </section>
 {{end}}
 
+{{if .CommandOutput}}
+<section class="alerts">
+    <div class="alert success">
+        <strong>Command output</strong>
+        <pre class="command-output" style="margin-top:10px;">{{.CommandOutput}}</pre>
+    </div>
+</section>
+{{end}}
+
 <section class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-download" style="color:var(--accent);margin-right:6px;"></i>Install PHP versions</h3>
+        <form method="post" class="stack-form compact-form">
+            <input type="hidden" name="php_action" value="install_versions">
+            {{if .PHPInstallableVersions}}
+            <div class="site-delete-summary details-summary">
+                {{range .PHPInstallableVersions}}
+                <label class="checkbox-row compact"><input type="checkbox" name="install_versions" value="{{.}}"><span>PHP {{.}}</span></label>
+                {{end}}
+            </div>
+            <p class="muted details-note">Selected versions install `phpX.Y-fpm`, `phpX.Y-cli`, and `phpX.Y-common` on the server.</p>
+            <div class="form-actions">
+                <button type="submit">Install selected PHP versions</button>
+            </div>
+            {{else}}
+            <p class="muted">No installable PHP versions were detected from the current apt sources.</p>
+            {{end}}
+        </form>
+    </article>
     <article class="panel">
         <h3><i class="bi bi-arrow-left-right" style="color:var(--accent);margin-right:6px;"></i>Switch version</h3>
         <form method="post" class="stack-form">
+            <input type="hidden" name="php_action" value="switch_version">
             <div class="form-grid two-up">
                 <label>
                     <span>Managed site</span>
@@ -48,6 +77,45 @@
             </div>
             <div class="form-actions">
                 <button type="submit">Switch PHP-FPM version</button>
+            </div>
+        </form>
+    </article>
+</section>
+
+<section class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-puzzle" style="color:var(--accent);margin-right:6px;"></i>Install or enable extensions</h3>
+        <form method="post" class="stack-form compact-form">
+            <div class="form-grid two-up">
+                <input type="hidden" name="php_action" value="install_extensions" id="php-extension-action">
+                <label>
+                    <span>PHP version</span>
+                    <select name="extension_version" required>
+                        <option value="">Select installed PHP version</option>
+                        {{range .PHPVersions}}
+                        <option value="{{.}}" {{if eq $.PHPExtensionVersion .}}selected{{end}}>PHP {{.}}</option>
+                        {{end}}
+                    </select>
+                </label>
+                <label>
+                    <span>Custom extension names</span>
+                    <input type="text" name="php_extension_input" value="{{.PHPExtensionInput}}" placeholder="redis, imagick, xdebug">
+                </label>
+            </div>
+            {{if .PHPCommonExtensions}}
+            <div>
+                <span class="eyebrow">Common extensions</span>
+                <div class="site-delete-summary details-summary" style="margin-top:8px;">
+                    {{range .PHPCommonExtensions}}
+                    <label class="checkbox-row compact"><input type="checkbox" name="php_extensions" value="{{.}}"><span>{{.}}</span></label>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+            <p class="muted details-note">Install first if the extension package is missing. Enable only if the module already exists for that PHP version.</p>
+            <div class="form-actions">
+                <button type="submit" onclick="document.getElementById('php-extension-action').value='install_extensions'">Install and enable</button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('php-extension-action').value='enable_extensions'">Enable only</button>
             </div>
         </form>
     </article>
@@ -85,7 +153,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {{range .ManagedSites}}
+                        <li>Only versions detected from the host are shown in the switch and extension dropdowns.</li>
                     <tr>
                         <td class="fw-semibold">{{.Name}}</td>
                         <td>{{.DomainName}}</td>
@@ -105,10 +173,42 @@
 
 <section class="grid single">
     <article class="panel">
+        <h3><i class="bi bi-list-check" style="color:var(--accent);margin-right:6px;"></i>Extensions by PHP version</h3>
+        {{if .PHPExtensionStatuses}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>PHP</th>
+                        <th>Installed modules</th>
+                        <th>Enabled modules</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .PHPExtensionStatuses}}
+                    <tr>
+                        <td class="fw-semibold">PHP {{.Version}}</td>
+                        <td class="text-break">{{if .InstalledModules}}{{range $index, $module := .InstalledModules}}{{if $index}}, {{end}}{{$module}}{{end}}{{else}}-{{end}}</td>
+                        <td class="text-break">{{if .EnabledModules}}{{range $index, $module := .EnabledModules}}{{if $index}}, {{end}}{{$module}}{{end}}{{else}}-{{end}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted">Install at least one PHP version to inspect extensions.</p>
+        {{end}}
+    </article>
+</section>
+
+<section class="grid single">
+    <article class="panel">
         <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current behavior</h3>
         <ul>
             <li>The panel uses the stored Nginx config path for the managed site.</li>
             <li>The config is edited only when a PHP-FPM socket entry exists.</li>
+            <li>Version installs use the current apt sources available on the server.</li>
+            <li>Extension installs try the matching `phpX.Y-extension` package first, then enable the module for CLI and FPM.</li>
             <li>Only versions detected from the host are shown in the dropdown.</li>
         </ul>
     </article>

@@ -101,6 +101,11 @@ type TemplateData struct {
 	SelectedSite   domain.ManagedSite
 	SelectedSubdomain domain.SiteSubdomain
 	PHPVersions    []string
+	PHPInstallableVersions []string
+	PHPExtensionStatuses []system.PHPExtensionStatus
+	PHPExtensionVersion string
+	PHPExtensionInput string
+	PHPCommonExtensions []string
 	RepositoryStatus system.RepositoryStatus
 	RuntimeStatus  system.RuntimeStatus
 	GitAuthStatus  system.GitAuthStatus
