@@ -3514,7 +3514,12 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 
 	repositoryStatus, runtimeStatus, gitAuthStatus, releases, inspectErr := inspectState(subdomain)
 	if r.Method == http.MethodGet {
-		data := TemplateData{SiteDetailTab: firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("tab")), "overview")}
+		data := TemplateData{
+			SiteDetailTab: firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("tab")), "overview"),
+			CronFilter:    firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("cron_filter")), "subdomain"),
+			CronEditID:    strings.TrimSpace(r.URL.Query().Get("cron_edit")),
+			CronLogID:     strings.TrimSpace(r.URL.Query().Get("cron_log")),
+		}
 		if inspectErr != nil {
 			data.RequestError = inspectErr.Error()
 		}
@@ -3553,6 +3558,12 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 		RuntimeCommandName:              strings.TrimSpace(r.FormValue("runtime_command_name")),
 		RuntimeCommandNodeVersion:       strings.TrimSpace(r.FormValue("runtime_command_node_version")),
 		RuntimeCommandBody:              r.FormValue("env_content"),
+		CronSchedule:                    strings.TrimSpace(r.FormValue("cron_schedule")),
+		CronCommand:                     strings.TrimSpace(r.FormValue("cron_command")),
+		CronRunInSiteRoot:               r.FormValue("cron_run_in_site_root") != "0",
+		CronFilter:                      firstNonEmpty(strings.TrimSpace(r.FormValue("cron_filter")), "subdomain"),
+		CronEditID:                      strings.TrimSpace(r.FormValue("cron_id")),
+		CronLogID:                       strings.TrimSpace(r.FormValue("cron_log_id")),
 		GitCredentialHost:               firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
 	}
 	data.RuntimeCommandBody = firstNonEmpty(r.FormValue("runtime_command_body"), data.RuntimeCommandBody)
@@ -3718,6 +3729,110 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 		}
 		a.recordAudit(r.Context(), "site.subdomain.deploy.rotate_secret", subdomain.FullDomain, "success", nil)
 		successMessage = "Subdomain auto deploy secret rotated."
+	case "create_cron_job":
+		output, actionErr := a.helper.Call(r.Context(), "cron.create", system.CronJobSpec{
+			User:             site.OwnerLinuxUser,
+			Schedule:         data.CronSchedule,
+			Command:          data.CronCommand,
+			SiteName:         subdomain.FullDomain,
+			WorkingDirectory: subdomain.RootDirectory,
+			RunInSiteRoot:    data.CronRunInSiteRoot,
+		}, nil)
+		if actionErr != nil {
+			message := actionErr.Error()
+			switch {
+			case errors.Is(actionErr, system.ErrInvalidUsername):
+				message = "Subdomain owner Linux user is invalid for cron management."
+			case errors.Is(actionErr, system.ErrInvalidCronSchedule):
+				message = "Cron schedule must be a standard 5-field expression or a supported @shortcut."
+			case errors.Is(actionErr, system.ErrInvalidCronCommand):
+				message = "Cron command cannot be empty."
+			case errors.Is(actionErr, system.ErrInvalidTargetDirectory):
+				message = "Subdomain root directory is invalid for run-in-root cron jobs."
+			}
+			data.RequestError = message
+			a.recordAudit(r.Context(), "site.subdomain.cron.create", subdomain.FullDomain, "failure", map[string]any{"user": site.OwnerLinuxUser, "schedule": data.CronSchedule, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		a.recordAudit(r.Context(), "site.subdomain.cron.create", subdomain.FullDomain, "success", map[string]any{"user": site.OwnerLinuxUser, "schedule": data.CronSchedule, "run_in_site_root": data.CronRunInSiteRoot})
+		data.CronSchedule = ""
+		data.CronCommand = ""
+		data.CronRunInSiteRoot = true
+		successMessage = "Cron job created for the subdomain successfully."
+	case "update_cron_job":
+		if strings.TrimSpace(data.CronEditID) == "" {
+			data.RequestError = "Select a panel-managed cron job for this subdomain to edit."
+			break
+		}
+		output, actionErr := a.helper.Call(r.Context(), "cron.update", system.CronJobUpdateSpec{
+			User:             site.OwnerLinuxUser,
+			ID:               data.CronEditID,
+			Schedule:         data.CronSchedule,
+			Command:          data.CronCommand,
+			SiteName:         subdomain.FullDomain,
+			WorkingDirectory: subdomain.RootDirectory,
+			RunInSiteRoot:    data.CronRunInSiteRoot,
+		}, nil)
+		if actionErr != nil {
+			message := actionErr.Error()
+			switch {
+			case errors.Is(actionErr, system.ErrInvalidUsername):
+				message = "Subdomain owner Linux user is invalid for cron management."
+			case errors.Is(actionErr, system.ErrInvalidCronSchedule):
+				message = "Cron schedule must be a standard 5-field expression or a supported @shortcut."
+			case errors.Is(actionErr, system.ErrInvalidCronCommand):
+				message = "Cron command cannot be empty."
+			}
+			data.RequestError = message
+			a.recordAudit(r.Context(), "site.subdomain.cron.update", subdomain.FullDomain, "failure", map[string]any{"user": site.OwnerLinuxUser, "cron_id": data.CronEditID, "schedule": data.CronSchedule, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		a.recordAudit(r.Context(), "site.subdomain.cron.update", subdomain.FullDomain, "success", map[string]any{"user": site.OwnerLinuxUser, "cron_id": data.CronEditID, "schedule": data.CronSchedule, "run_in_site_root": data.CronRunInSiteRoot})
+		data.CronEditID = ""
+		data.CronSchedule = ""
+		data.CronCommand = ""
+		data.CronRunInSiteRoot = true
+		successMessage = "Cron job updated successfully."
+	case "delete_cron_job":
+		cronRawLine := strings.TrimSpace(r.FormValue("cron_raw_line"))
+		cronID := strings.TrimSpace(r.FormValue("cron_id"))
+		output, actionErr := a.helper.Call(r.Context(), "cron.delete", system.CronJobDeleteSpec{User: site.OwnerLinuxUser, ID: cronID, RawLine: cronRawLine}, nil)
+		if actionErr != nil {
+			data.RequestError = "Cron job could not be deleted: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.subdomain.cron.delete", subdomain.FullDomain, "failure", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		a.recordAudit(r.Context(), "site.subdomain.cron.delete", subdomain.FullDomain, "success", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID})
+		successMessage = "Cron job deleted successfully."
+	case "clear_cron_log":
+		cronID := strings.TrimSpace(r.FormValue("cron_id"))
+		data.CronLogID = cronID
+		output, actionErr := a.helper.Call(r.Context(), "cron.clear_log", map[string]string{"user": site.OwnerLinuxUser, "id": cronID}, nil)
+		if actionErr != nil {
+			data.RequestError = "Cron log could not be cleared: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.subdomain.cron.clear_log", subdomain.FullDomain, "failure", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		data.CronLogNotice = "Cron log was cleared."
+		a.recordAudit(r.Context(), "site.subdomain.cron.clear_log", subdomain.FullDomain, "success", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID})
+		successMessage = "Cron log cleared successfully."
+	case "rotate_cron_log":
+		cronID := strings.TrimSpace(r.FormValue("cron_id"))
+		data.CronLogID = cronID
+		output, actionErr := a.helper.Call(r.Context(), "cron.rotate_log", map[string]string{"user": site.OwnerLinuxUser, "id": cronID}, nil)
+		if actionErr != nil {
+			data.RequestError = "Cron log could not be rotated: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.subdomain.cron.rotate_log", subdomain.FullDomain, "failure", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID, "error": actionErr.Error()})
+			break
+		}
+		data.CommandOutput = output
+		data.CronLogNotice = "Cron log was rotated to: " + output
+		a.recordAudit(r.Context(), "site.subdomain.cron.rotate_log", subdomain.FullDomain, "success", map[string]any{"user": site.OwnerLinuxUser, "cron_id": cronID, "rotated_path": output})
+		successMessage = "Cron log rotated successfully."
 	case "move_subdomain_root_preview":
 		preview := a.inspectSubdomainMovePreview(r.Context(), site, subdomain, firstNonEmpty(data.SubdomainDirectoryName, subdomain.Subdomain))
 		data.PreviewSubdomainID = subdomain.ID
@@ -4137,7 +4252,7 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		}
 	}
 	if data.CronFilter == "" {
-		data.CronFilter = "site"
+		data.CronFilter = "subdomain"
 	}
 	var allCronJobs []system.CronJob
 	if _, err := a.helper.Call(r.Context(), "cron.list", map[string]string{"user": site.OwnerLinuxUser}, &allCronJobs); err == nil {
@@ -4148,19 +4263,19 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 				filteredJobs = append(filteredJobs, job)
 				continue
 			}
-			if job.Managed && job.SiteName == site.Name {
+			if job.Managed && job.SiteName == subdomain.FullDomain {
 				filteredJobs = append(filteredJobs, job)
 			}
 		}
 		data.CronJobs = filteredJobs
 		for _, job := range allCronJobs {
-			if data.CronEditID != "" && job.Managed && job.SiteName == site.Name && job.ID == data.CronEditID {
+			if data.CronEditID != "" && job.Managed && job.SiteName == subdomain.FullDomain && job.ID == data.CronEditID {
 				data.CronSchedule = firstNonEmpty(data.CronSchedule, job.Schedule)
 				data.CronCommand = firstNonEmpty(data.CronCommand, job.Command)
 				data.CronRunInSiteRoot = job.RunInSiteRoot
 			}
 			if data.CronLogID != "" && job.ID == data.CronLogID && job.LogPath != "" {
-				data.CronLogTitle = firstNonEmpty(job.SiteName, site.Name) + " · " + job.Schedule
+				data.CronLogTitle = firstNonEmpty(job.SiteName, subdomain.FullDomain) + " · " + job.Schedule
 				var logContent string
 				if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": job.LogPath, "max_bytes": 65536}, &logContent); err == nil {
 					data.CronLogContent = logContent
