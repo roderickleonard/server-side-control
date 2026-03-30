@@ -756,7 +756,7 @@ func siteDetailTabForAction(action string) string {
 		return "deploy"
 	case "run_ssh_command":
 		return "ssh"
-	case "install_nvm", "install_node", "install_pm2", "install_composer", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "run_npm_script", "npm_install", "save_runtime_command", "delete_runtime_command":
+	case "install_nvm", "install_node", "install_pm2", "install_composer", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "run_npm_script", "npm_install", "save_runtime_command", "delete_runtime_command", "save_node_version":
 		return "runtime"
 	case "enable_tls", "add_subdomain", "delete_subdomain", "enable_subdomain_tls":
 		return "domains"
@@ -771,7 +771,7 @@ func subdomainDetailTabForAction(action string) string {
 	switch action {
 	case "sync_subdomain_repository", "run_subdomain_git_command", "save_subdomain_deploy", "rotate_subdomain_auto_deploy_secret", "rollback_subdomain_release", "generate_subdomain_deploy_key", "trust_subdomain_git_host":
 		return "deploy"
-	case "npm_install", "run_npm_script", "run_custom_command", "install_nvm", "install_node", "install_pm2", "install_composer", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "list_pm2", "show_pm2_logs", "save_runtime_command", "delete_runtime_command":
+	case "npm_install", "run_npm_script", "run_custom_command", "install_nvm", "install_node", "install_pm2", "install_composer", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "list_pm2", "show_pm2_logs", "save_runtime_command", "delete_runtime_command", "save_node_version":
 		return "runtime"
 	case "enable_subdomain_tls", "move_subdomain_root", "move_subdomain_root_preview", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "edit_subdomain_env", "delete_subdomain":
 		return "settings"
@@ -819,6 +819,43 @@ func detectAutoDeployPreset(command string) (string, string) {
 		}
 	}
 	return "custom", ""
+}
+
+var panelNodeVersionPattern = regexp.MustCompile(`^(?:lts(?:/[A-Za-z0-9*._-]+)?|node|v?[0-9]+(?:\.[0-9]+){0,2})$`)
+
+func validNodeVersionSelection(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return trimmed == "" || panelNodeVersionPattern.MatchString(trimmed)
+}
+
+func mergeNodeVersionOptions(groups ...[]string) []string {
+	seen := make(map[string]struct{})
+	options := make([]string, 0)
+	for _, group := range groups {
+		for _, raw := range group {
+			value := strings.TrimSpace(raw)
+			if value == "" || !validNodeVersionSelection(value) {
+				continue
+			}
+			if _, exists := seen[value]; exists {
+				continue
+			}
+			seen[value] = struct{}{}
+			options = append(options, value)
+		}
+	}
+	return options
+}
+
+func singleNodeVersionOptions(values ...string) []string {
+	items := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			items = append(items, trimmed)
+		}
+	}
+	return items
 }
 
 func describeCronNextRun(schedule string, now time.Time) string {
@@ -1521,7 +1558,7 @@ func (a *App) handleSiteDeployWebhook(w http.ResponseWriter, r *http.Request) {
 	targetBranch := firstNonEmpty(site.AutoDeployBranch, "main")
 	targetSecret := strings.TrimSpace(site.AutoDeploySecret)
 	targetCommand := strings.TrimSpace(site.AutoDeployCommand)
-	targetNodeVersion := strings.TrimSpace(site.AutoDeployNodeVersion)
+	targetNodeVersion := firstNonEmpty(strings.TrimSpace(site.AutoDeployNodeVersion), strings.TrimSpace(site.NodeVersion))
 	targetNotifyEmail := strings.TrimSpace(site.AutoDeployNotifyEmail)
 	autoDeployEnabled := site.AutoDeployEnabled
 	var webhookSubdomain domain.SiteSubdomain
@@ -1542,7 +1579,7 @@ func (a *App) handleSiteDeployWebhook(w http.ResponseWriter, r *http.Request) {
 		targetBranch = firstNonEmpty(webhookSubdomain.AutoDeployBranch, webhookSubdomain.BranchName, "main")
 		targetSecret = strings.TrimSpace(webhookSubdomain.AutoDeploySecret)
 		targetCommand = strings.TrimSpace(webhookSubdomain.AutoDeployCommand)
-		targetNodeVersion = strings.TrimSpace(webhookSubdomain.AutoDeployNodeVersion)
+		targetNodeVersion = firstNonEmpty(strings.TrimSpace(webhookSubdomain.AutoDeployNodeVersion), strings.TrimSpace(webhookSubdomain.NodeVersion))
 		targetNotifyEmail = strings.TrimSpace(webhookSubdomain.AutoDeployNotifyEmail)
 		autoDeployEnabled = webhookSubdomain.AutoDeployEnabled
 	}
@@ -2615,6 +2652,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		AutoDeployNodeVersion: strings.TrimSpace(r.FormValue("auto_deploy_node_version")),
 		AutoDeployNotifyEmail: strings.TrimSpace(r.FormValue("auto_deploy_notify_email")),
 		RuntimeNodeVersion:  strings.TrimSpace(r.FormValue("node_version")),
+		PreferredNodeVersion: strings.TrimSpace(r.FormValue("preferred_node_version")),
 		PM2NodeVersion:      strings.TrimSpace(r.FormValue("pm2_node_version")),
 		PM2ProcessName:      firstNonEmpty(strings.TrimSpace(r.FormValue("process_name")), site.Name),
 		PM2ScriptPath:       strings.TrimSpace(r.FormValue("script_path")),
@@ -2681,6 +2719,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			RunAsUser:         site.OwnerLinuxUser,
 			GitSiteName:       site.Name,
 			PostDeployCommand: data.GitPostDeployCommand,
+			PostDeployNodeVersion: strings.TrimSpace(data.PreferredNodeVersion),
 		}
 		wasGitRepo := repositoryStatus.IsGitRepo
 		result, err := a.deploys.Deploy(spec)
@@ -2728,7 +2767,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		data.CommandOutput = output
 		successMessage = "Node version was installed successfully for the site owner."
 	case "install_pm2":
-		output, actionErr = a.runtime.InstallPM2(system.PM2InstallSpec{User: site.OwnerLinuxUser, NodeVersion: data.PM2NodeVersion})
+		output, actionErr = a.runtime.InstallPM2(system.PM2InstallSpec{User: site.OwnerLinuxUser, NodeVersion: firstNonEmpty(data.PM2NodeVersion, data.PreferredNodeVersion)})
 		if actionErr != nil {
 			data.RequestError = runtimeErrorMessage(actionErr)
 			data.CommandOutput = output
@@ -2739,7 +2778,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		data.CommandOutput = output
 		successMessage = "PM2 was installed successfully for the site owner."
 	case "start_pm2":
-		output, actionErr = a.runtime.StartPM2(system.PM2StartSpec{User: site.OwnerLinuxUser, WorkingDirectory: site.RootDirectory, ProcessName: data.PM2ProcessName, ScriptPath: data.PM2ScriptPath, Arguments: data.PM2Arguments, NodeVersion: data.PM2NodeVersion})
+		output, actionErr = a.runtime.StartPM2(system.PM2StartSpec{User: site.OwnerLinuxUser, WorkingDirectory: site.RootDirectory, ProcessName: data.PM2ProcessName, ScriptPath: data.PM2ScriptPath, Arguments: data.PM2Arguments, NodeVersion: firstNonEmpty(data.PM2NodeVersion, data.PreferredNodeVersion)})
 		if actionErr != nil {
 			data.RequestError = runtimeErrorMessage(actionErr)
 			data.CommandOutput = output
@@ -2775,7 +2814,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		successMessage = "Git host was added to known_hosts successfully."
 	case "run_npm_script":
 		scriptName := strings.TrimSpace(r.FormValue("script_name"))
-		nodeVersion := strings.TrimSpace(r.FormValue("npm_script_node_version"))
+		nodeVersion := firstNonEmpty(strings.TrimSpace(r.FormValue("npm_script_node_version")), data.PreferredNodeVersion)
 		output, actionErr = a.runtime.RunNPMScript(system.NPMScriptSpec{
 			User:             site.OwnerLinuxUser,
 			WorkingDirectory: site.RootDirectory,
@@ -2833,7 +2872,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		a.recordAudit(r.Context(), "site.edit_env", site.Name, "success", nil)
 		successMessage = ".env file saved successfully."
 	case "npm_install":
-		nodeVersion := strings.TrimSpace(r.FormValue("npm_script_node_version"))
+		nodeVersion := firstNonEmpty(strings.TrimSpace(r.FormValue("npm_script_node_version")), data.PreferredNodeVersion)
 		ci := r.FormValue("npm_ci") == "1"
 		output, actionErr = a.runtime.RunNPMInstall(system.NPMInstallSpec{
 			User:             site.OwnerLinuxUser,
@@ -2868,7 +2907,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if data.RuntimeCommandNodeVersion == "" {
-			data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
+			data.RuntimeCommandNodeVersion = data.PreferredNodeVersion
 		}
 		commandID, err := a.store.UpsertSiteRuntimeCommand(r.Context(), domain.SiteRuntimeCommand{
 			ID:          data.RuntimeCommandID,
@@ -2896,9 +2935,21 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		a.recordAudit(r.Context(), "site.delete_runtime_command", site.Name, "success", map[string]any{"command_id": data.RuntimeCommandID, "profile": data.RuntimeCommandName})
 		data.RuntimeCommandID = 0
 		data.RuntimeCommandName = ""
-		data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
+		data.RuntimeCommandNodeVersion = data.PreferredNodeVersion
 		data.RuntimeCommandBody = ""
 		successMessage = "Runtime command profile deleted."
+	case "save_node_version":
+		if !validNodeVersionSelection(data.PreferredNodeVersion) {
+			data.RequestError = "Node version is invalid. Use installed versions, exact semver, or aliases like lts/* or node."
+			break
+		}
+		if err := a.store.UpdateManagedSiteNodeVersion(r.Context(), site.Name, strings.TrimSpace(data.PreferredNodeVersion)); err != nil {
+			data.RequestError = "Could not save site node version: " + err.Error()
+			break
+		}
+		site.NodeVersion = strings.TrimSpace(data.PreferredNodeVersion)
+		a.recordAudit(r.Context(), "site.node_version.save", site.Name, "success", map[string]any{"node_version": site.NodeVersion})
+		successMessage = "Site node version saved."
 	case "save_auto_deploy":
 		if data.AutoDeployBranch == "" {
 			data.AutoDeployBranch = firstNonEmpty(branch, "main")
@@ -3113,7 +3164,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			data.RequestError = "Release commit is required for rollback."
 			break
 		}
-		result, actionErr := a.deploys.Rollback(system.RollbackSpec{TargetDirectory: subdomain.RootDirectory, RunAsUser: site.OwnerLinuxUser, ReleaseCommitSHA: releaseCommit, PostDeployCommand: firstNonEmpty(strings.TrimSpace(r.FormValue("rollback_post_deploy_command")), subdomain.PostDeployCommand)})
+		result, actionErr := a.deploys.Rollback(system.RollbackSpec{TargetDirectory: subdomain.RootDirectory, RunAsUser: site.OwnerLinuxUser, ReleaseCommitSHA: releaseCommit, PostDeployCommand: firstNonEmpty(strings.TrimSpace(r.FormValue("rollback_post_deploy_command")), subdomain.PostDeployCommand), PostDeployNodeVersion: strings.TrimSpace(subdomain.NodeVersion)})
 		if actionErr != nil {
 			data.RequestError = actionErr.Error()
 			data.CommandOutput = result.Output
@@ -3549,7 +3600,8 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 		SubdomainAutoDeployPM2Process:   strings.TrimSpace(r.FormValue("subdomain_auto_deploy_pm2_process")),
 		SubdomainTLSEmail:               strings.TrimSpace(r.FormValue("subdomain_tls_email")),
 		NginxConfigContent:              r.FormValue("nginx_config_content"),
-		RuntimeNodeVersion:              strings.TrimSpace(r.FormValue("npm_script_node_version")),
+		RuntimeNodeVersion:              strings.TrimSpace(r.FormValue("node_version")),
+		PreferredNodeVersion:            strings.TrimSpace(r.FormValue("preferred_node_version")),
 		PM2NodeVersion:                  strings.TrimSpace(r.FormValue("pm2_node_version")),
 		PM2ProcessName:                  firstNonEmpty(strings.TrimSpace(r.FormValue("process_name")), subdomain.FullDomain),
 		PM2ScriptPath:                   strings.TrimSpace(r.FormValue("script_path")),
@@ -3597,7 +3649,7 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 		data.CommandOutput = output
 		successMessage = "Node version was installed successfully for the site owner."
 	case "install_pm2":
-		output, actionErr := a.runtime.InstallPM2(system.PM2InstallSpec{User: site.OwnerLinuxUser, NodeVersion: data.PM2NodeVersion})
+		output, actionErr := a.runtime.InstallPM2(system.PM2InstallSpec{User: site.OwnerLinuxUser, NodeVersion: firstNonEmpty(data.PM2NodeVersion, data.PreferredNodeVersion)})
 		if actionErr != nil {
 			data.RequestError = runtimeErrorMessage(actionErr)
 			data.CommandOutput = output
@@ -3606,7 +3658,7 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 		data.CommandOutput = output
 		successMessage = "PM2 was installed successfully for the site owner."
 	case "start_pm2":
-		output, actionErr := a.runtime.StartPM2(system.PM2StartSpec{User: site.OwnerLinuxUser, WorkingDirectory: subdomain.RootDirectory, ProcessName: data.PM2ProcessName, ScriptPath: data.PM2ScriptPath, Arguments: data.PM2Arguments, NodeVersion: data.PM2NodeVersion})
+		output, actionErr := a.runtime.StartPM2(system.PM2StartSpec{User: site.OwnerLinuxUser, WorkingDirectory: subdomain.RootDirectory, ProcessName: data.PM2ProcessName, ScriptPath: data.PM2ScriptPath, Arguments: data.PM2Arguments, NodeVersion: firstNonEmpty(data.PM2NodeVersion, data.PreferredNodeVersion)})
 		if actionErr != nil {
 			data.RequestError = runtimeErrorMessage(actionErr)
 			data.CommandOutput = output
@@ -3670,7 +3722,7 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if data.RuntimeCommandNodeVersion == "" {
-			data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
+			data.RuntimeCommandNodeVersion = data.PreferredNodeVersion
 		}
 		commandID, err := a.store.UpsertSubdomainRuntimeCommand(r.Context(), domain.SiteRuntimeCommand{ID: data.RuntimeCommandID, SubdomainID: subdomain.ID, Name: data.RuntimeCommandName, CommandBody: data.RuntimeCommandBody, NodeVersion: data.RuntimeCommandNodeVersion})
 		if err != nil {
@@ -3690,9 +3742,21 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 		}
 		data.RuntimeCommandID = 0
 		data.RuntimeCommandName = ""
-		data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
+		data.RuntimeCommandNodeVersion = data.PreferredNodeVersion
 		data.RuntimeCommandBody = ""
 		successMessage = "Runtime command profile deleted."
+	case "save_node_version":
+		if !validNodeVersionSelection(data.PreferredNodeVersion) {
+			data.RequestError = "Node version is invalid. Use installed versions, exact semver, or aliases like lts/* or node."
+			break
+		}
+		if err := a.store.UpdateSiteSubdomainNodeVersion(r.Context(), site.ID, subdomain.ID, strings.TrimSpace(data.PreferredNodeVersion)); err != nil {
+			data.RequestError = "Could not save subdomain node version: " + err.Error()
+			break
+		}
+		subdomain.NodeVersion = strings.TrimSpace(data.PreferredNodeVersion)
+		a.recordAudit(r.Context(), "site.subdomain.node_version.save", subdomain.FullDomain, "success", map[string]any{"node_version": subdomain.NodeVersion})
+		successMessage = "Subdomain node version saved."
 	case "save_subdomain_deploy":
 		if data.SubdomainAutoDeployPreset != "custom" && strings.TrimSpace(firstNonEmpty(data.SubdomainAutoDeployPM2Process, data.PM2ProcessName, subdomain.FullDomain)) == "" {
 			data.RequestError = "Select a PM2 process name for the webhook preset action."
@@ -3876,7 +3940,7 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 			data.RequestError = "Release commit is required for rollback."
 			break
 		}
-		result, actionErr := a.deploys.Rollback(system.RollbackSpec{TargetDirectory: subdomain.RootDirectory, RunAsUser: site.OwnerLinuxUser, ReleaseCommitSHA: releaseCommit, PostDeployCommand: firstNonEmpty(strings.TrimSpace(r.FormValue("rollback_post_deploy_command")), subdomain.PostDeployCommand)})
+		result, actionErr := a.deploys.Rollback(system.RollbackSpec{TargetDirectory: subdomain.RootDirectory, RunAsUser: site.OwnerLinuxUser, ReleaseCommitSHA: releaseCommit, PostDeployCommand: firstNonEmpty(strings.TrimSpace(r.FormValue("rollback_post_deploy_command")), subdomain.PostDeployCommand), PostDeployNodeVersion: strings.TrimSpace(subdomain.NodeVersion)})
 		if actionErr != nil {
 			data.RequestError = actionErr.Error()
 			data.CommandOutput = result.Output
@@ -4005,6 +4069,7 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 	users := a.listLinuxUsers()
+	nodeVersionOptions := a.collectDeployNodeVersionOptions(users)
 	releases := []domain.DeploymentRelease{}
 	if a.store != nil {
 		if entries, err := a.store.ListDeploymentReleases(r.Context(), 12); err == nil {
@@ -4018,6 +4083,7 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
 			LinuxUsers:     users,
+			NodeVersionOptions: nodeVersionOptions,
 			DeploymentReleases: releases,
 		})
 		return
@@ -4034,6 +4100,7 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
 			LinuxUsers:     users,
+				NodeVersionOptions: nodeVersionOptions,
 			RequestError:   "The submitted deploy form could not be parsed.",
 			DeploymentReleases: releases,
 		})
@@ -4053,6 +4120,7 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 		RunAsUser:         r.FormValue("run_as_user"),
 		GitSiteName:       r.FormValue("git_site_name"),
 		PostDeployCommand: r.FormValue("post_deploy_command"),
+		PostDeployNodeVersion: strings.TrimSpace(r.FormValue("post_deploy_node_version")),
 	}
 
 	result, err := a.deploys.Deploy(spec)
@@ -4074,6 +4142,8 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
 			LinuxUsers:     users,
+			NodeVersionOptions: nodeVersionOptions,
+			DeployNodeVersion: spec.PostDeployNodeVersion,
 			RequestError:   message,
 			CommandOutput:  result.Output,
 			DeploymentReleases: releases,
@@ -4118,6 +4188,8 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
 		LinuxUsers:     users,
+		NodeVersionOptions: nodeVersionOptions,
+		DeployNodeVersion: spec.PostDeployNodeVersion,
 		SuccessMessage: "Repository deploy completed successfully.",
 		ResultPath:     spec.TargetDirectory,
 		CommandOutput:  result.Output,
@@ -4128,11 +4200,13 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, users []system.LinuxUser, releases []domain.DeploymentRelease) {
+	nodeVersionOptions := a.collectDeployNodeVersionOptions(users)
 	spec := system.RollbackSpec{
 		TargetDirectory:   r.FormValue("rollback_target_directory"),
 		RunAsUser:         r.FormValue("rollback_run_as_user"),
 		ReleaseCommitSHA:  r.FormValue("release_commit_sha"),
 		PostDeployCommand: r.FormValue("rollback_post_deploy_command"),
+		PostDeployNodeVersion: strings.TrimSpace(r.FormValue("rollback_post_deploy_node_version")),
 	}
 
 	result, err := a.deploys.Rollback(spec)
@@ -4143,6 +4217,8 @@ func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, users
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
 			LinuxUsers:     users,
+			NodeVersionOptions: nodeVersionOptions,
+			RollbackNodeVersion: spec.PostDeployNodeVersion,
 			RequestError:   err.Error(),
 			CommandOutput:  result.Output,
 			DeploymentReleases: releases,
@@ -4173,6 +4249,8 @@ func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, users
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
 		LinuxUsers:     users,
+		NodeVersionOptions: nodeVersionOptions,
+		RollbackNodeVersion: spec.PostDeployNodeVersion,
 		SuccessMessage: "Rollback completed successfully.",
 		ResultPath:     spec.TargetDirectory,
 		CommandOutput:  result.Output,
@@ -4195,11 +4273,12 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.RuntimeStatus = runtimeStatus
 	data.GitAuthStatus = gitAuthStatus
 	data.DeploymentReleases = releases
+	data.PreferredNodeVersion = firstNonEmpty(data.PreferredNodeVersion, site.NodeVersion)
 	data.AutoDeployEnabled = data.AutoDeployEnabled || site.AutoDeployEnabled
 	data.AutoDeployBranch = firstNonEmpty(data.AutoDeployBranch, site.AutoDeployBranch, repositoryStatus.Branch, "main")
 	data.AutoDeploySecret = firstNonEmpty(data.AutoDeploySecret, site.AutoDeploySecret)
 	data.AutoDeployCommand = firstNonEmpty(data.AutoDeployCommand, site.AutoDeployCommand)
-	data.AutoDeployNodeVersion = firstNonEmpty(data.AutoDeployNodeVersion, site.AutoDeployNodeVersion)
+	data.AutoDeployNodeVersion = firstNonEmpty(data.AutoDeployNodeVersion, site.AutoDeployNodeVersion, data.PreferredNodeVersion)
 	data.AutoDeployNotifyEmail = firstNonEmpty(data.AutoDeployNotifyEmail, site.AutoDeployNotifyEmail)
 	data.AutoDeployWebhookURL = buildAutoDeployWebhookURL(requestExternalBaseURL(r, a.cfg.BaseURL), site.Name, data.AutoDeploySecret)
 	data.AutoDeployWebhookAuthHint = autoDeployWebhookAuthHint()
@@ -4210,9 +4289,9 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	data.ProjectHasComposer, data.ProjectHasArtisan = a.detectProjectMarkers(r.Context(), site.RootDirectory)
 	data.DeployCommandPlaceholder = recommendedDeployCommand(data.ProjectHasComposer, data.ProjectHasArtisan, data.PackageScripts, site.Name)
 	data.AutoDeployCommandPlaceholder = data.DeployCommandPlaceholder
-	data.NpmScriptNodeVersion = runtimeStatus.DefaultNodeVersion
+	data.NpmScriptNodeVersion = firstNonEmpty(data.NpmScriptNodeVersion, data.PreferredNodeVersion)
 	if data.RuntimeCommandNodeVersion == "" {
-		data.RuntimeCommandNodeVersion = runtimeStatus.DefaultNodeVersion
+		data.RuntimeCommandNodeVersion = data.PreferredNodeVersion
 	}
 	data.DatabaseAccess, _ = a.databases.ListDatabaseAccess()
 	data.LinuxUsers = a.listLinuxUsers()
@@ -4387,10 +4466,10 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		}
 	}
 	if data.RuntimeNodeVersion == "" {
-		data.RuntimeNodeVersion = runtimeStatus.DefaultNodeVersion
+		data.RuntimeNodeVersion = firstNonEmpty(data.PreferredNodeVersion, runtimeStatus.DefaultNodeVersion)
 	}
 	if data.PM2NodeVersion == "" {
-		data.PM2NodeVersion = firstNonEmpty(runtimeStatus.DefaultNodeVersion, data.RuntimeNodeVersion)
+		data.PM2NodeVersion = firstNonEmpty(data.PreferredNodeVersion, runtimeStatus.DefaultNodeVersion, data.RuntimeNodeVersion)
 	}
 	if data.PM2ProcessName == "" {
 		data.PM2ProcessName = site.Name
@@ -4409,6 +4488,15 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	if data.GitCredentialHost == "" {
 		data.GitCredentialHost = gitAuthStatus.RepositoryHost
 	}
+	data.NodeVersionOptions = mergeNodeVersionOptions(
+		singleNodeVersionOptions(data.PreferredNodeVersion, data.AutoDeployNodeVersion, data.NpmScriptNodeVersion, data.RuntimeCommandNodeVersion, data.PM2NodeVersion),
+		runtimeStatus.InstalledNodeVersions,
+	)
+	data.InstallNodeVersionOptions = mergeNodeVersionOptions(
+		singleNodeVersionOptions(data.RuntimeNodeVersion, data.PreferredNodeVersion),
+		runtimeStatus.AvailableNodeVersions,
+		runtimeStatus.InstalledNodeVersions,
+	)
 	a.render(r.Context(), w, r.URL.Path, "site_details.html", data)
 }
 
@@ -4426,6 +4514,7 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 	data.RuntimeStatus = runtimeStatus
 	data.GitAuthStatus = gitAuthStatus
 	data.DeploymentReleases = releases
+	data.PreferredNodeVersion = firstNonEmpty(data.PreferredNodeVersion, subdomain.NodeVersion)
 	data.PackageScripts = readPackageJSONScripts(subdomain.RootDirectory)
 	data.ProjectHasComposer, data.ProjectHasArtisan = a.detectProjectMarkers(r.Context(), subdomain.RootDirectory)
 	if data.ProjectHasArtisan {
@@ -4438,7 +4527,7 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 	}
 	data.AutoDeployWebhookURL = buildSubdomainAutoDeployWebhookURL(requestExternalBaseURL(r, a.cfg.BaseURL), site.Name, subdomain.ID, firstNonEmpty(data.SubdomainAutoDeploySecret, subdomain.AutoDeploySecret))
 	data.AutoDeployWebhookAuthHint = autoDeployWebhookAuthHint()
-	data.SubdomainAutoDeployNodeVersion = firstNonEmpty(data.SubdomainAutoDeployNodeVersion, subdomain.AutoDeployNodeVersion)
+	data.SubdomainAutoDeployNodeVersion = firstNonEmpty(data.SubdomainAutoDeployNodeVersion, subdomain.AutoDeployNodeVersion, data.PreferredNodeVersion)
 	if len(releases) > 0 {
 		data.LatestDeploymentRelease = releases[0]
 	}
@@ -4466,10 +4555,10 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 	if data.SubdomainAutoDeployPreset == "" {
 		data.SubdomainAutoDeployPreset, data.SubdomainAutoDeployPM2Process = detectAutoDeployPreset(data.SubdomainAutoDeployCommand)
 	}
-	data.NpmScriptNodeVersion = firstNonEmpty(data.NpmScriptNodeVersion, runtimeStatus.DefaultNodeVersion)
-	data.RuntimeNodeVersion = firstNonEmpty(data.RuntimeNodeVersion, runtimeStatus.DefaultNodeVersion)
-	data.RuntimeCommandNodeVersion = firstNonEmpty(data.RuntimeCommandNodeVersion, runtimeStatus.DefaultNodeVersion)
-	data.PM2NodeVersion = firstNonEmpty(data.PM2NodeVersion, runtimeStatus.DefaultNodeVersion)
+	data.NpmScriptNodeVersion = firstNonEmpty(data.NpmScriptNodeVersion, data.PreferredNodeVersion)
+	data.RuntimeNodeVersion = firstNonEmpty(data.RuntimeNodeVersion, data.PreferredNodeVersion, runtimeStatus.DefaultNodeVersion)
+	data.RuntimeCommandNodeVersion = firstNonEmpty(data.RuntimeCommandNodeVersion, data.PreferredNodeVersion)
+	data.PM2NodeVersion = firstNonEmpty(data.PM2NodeVersion, data.PreferredNodeVersion, runtimeStatus.DefaultNodeVersion)
 	data.PM2ProcessName = firstNonEmpty(data.PM2ProcessName, subdomain.FullDomain)
 	data.PM2LogLines = firstNonEmpty(data.PM2LogLines, "100")
 	data.SubdomainAutoDeployPM2Process = firstNonEmpty(data.SubdomainAutoDeployPM2Process, data.PM2ProcessName)
@@ -4551,6 +4640,15 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 				return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
 			})
 			data.SiteBrowserEntries = entries
+		data.NodeVersionOptions = mergeNodeVersionOptions(
+			singleNodeVersionOptions(data.PreferredNodeVersion, data.SubdomainAutoDeployNodeVersion, data.NpmScriptNodeVersion, data.RuntimeCommandNodeVersion, data.PM2NodeVersion),
+			runtimeStatus.InstalledNodeVersions,
+		)
+		data.InstallNodeVersionOptions = mergeNodeVersionOptions(
+			singleNodeVersionOptions(data.RuntimeNodeVersion, data.PreferredNodeVersion),
+			runtimeStatus.AvailableNodeVersions,
+			runtimeStatus.InstalledNodeVersions,
+		)
 		}
 	}
 	selectedFile := strings.TrimSpace(r.URL.Query().Get("file"))
@@ -4964,6 +5062,18 @@ func (a *App) listManagedSites(r *http.Request) []domain.ManagedSite {
 		return nil
 	}
 	return sites
+}
+
+func (a *App) collectDeployNodeVersionOptions(users []system.LinuxUser) []string {
+	groups := [][]string{singleNodeVersionOptions("node", "lts/*", "22", "20", "18", "16", "14", "12", "10", "8.17.0")}
+	for _, user := range users {
+		status, err := a.runtime.Inspect(system.RuntimeInspectSpec{User: user.Username})
+		if err != nil {
+			continue
+		}
+		groups = append(groups, status.InstalledNodeVersions, status.AvailableNodeVersions, singleNodeVersionOptions(status.DefaultNodeVersion))
+	}
+	return mergeNodeVersionOptions(groups...)
 }
 
 func (a *App) listSiteDeploymentReleases(r *http.Request, targetDirectory string, runAsUser string) []domain.DeploymentRelease {

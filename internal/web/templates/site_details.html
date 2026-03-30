@@ -223,7 +223,12 @@
                 </label>
                 <label>
                     <span>Node version for webhook command</span>
-                    <input type="text" name="auto_deploy_node_version" value="{{.AutoDeployNodeVersion}}" placeholder="Use default if empty">
+                    <select name="auto_deploy_node_version">
+                        <option value="">Use site's assigned node</option>
+                        {{range .NodeVersionOptions}}
+                        <option value="{{.}}" {{if eq . $.AutoDeployNodeVersion}}selected{{end}}>{{.}}</option>
+                        {{end}}
+                    </select>
                 </label>
                 <label class="span-2">
                     <span>Notification email override</span>
@@ -252,7 +257,7 @@
         </form>
         <div class="site-delete-summary details-summary" style="margin-top:14px;">
             <div><strong>Webhook auth</strong><span>{{.AutoDeployWebhookAuthHint}}</span></div>
-            <div><strong>Node version</strong><span>{{if .AutoDeployNodeVersion}}{{.AutoDeployNodeVersion}}{{else}}Default shell version{{end}}</span></div>
+            <div><strong>Node version</strong><span>{{if .AutoDeployNodeVersion}}{{.AutoDeployNodeVersion}}{{else if .PreferredNodeVersion}}{{.PreferredNodeVersion}}{{else}}Shell default / none{{end}}</span></div>
             <div><strong>Notify email</strong><span>{{if .AutoDeployNotifyEmail}}{{.AutoDeployNotifyEmail}}{{else}}Global SMTP recipient{{end}}</span></div>
             <div><strong>Last webhook</strong><span>{{if .LatestWebhookAudit.Action}}{{.LatestWebhookAudit.Outcome}} at {{.LatestWebhookAudit.CreatedAt.Format "2006-01-02 15:04:05"}}{{else}}-{{end}}</span></div>
             <div><strong>Last webhook details</strong><span>{{if .LatestWebhookAudit.Metadata}}{{.LatestWebhookAudit.Metadata}}{{else}}-{{end}}</span></div>
@@ -578,15 +583,40 @@
         {{else}}
         <p class="muted details-note">No Node versions are installed for this Linux user yet.</p>
         {{end}}
+        <form method="post" class="stack-form compact-form" style="margin-top:16px;">
+            <input type="hidden" name="details_action" value="save_node_version">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <label>
+                <span>Assigned node version for this site</span>
+                <select name="preferred_node_version">
+                    <option value="">No node / shell default</option>
+                    {{range .NodeVersionOptions}}
+                    <option value="{{.}}" {{if eq . $.PreferredNodeVersion}}selected{{end}}>{{.}}</option>
+                    {{end}}
+                </select>
+                <small class="muted details-note">Normal deploy, auto deploy, npm actions, saved runtime commands and PM2 start/install default to this version for this site.</small>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Save site node version</button>
+            </div>
+        </form>
         <form method="post" class="stack-form compact-form" id="runtime-npm-actions" style="margin-top:16px;">
             <input type="hidden" name="details_action" id="runtime-npm-action" value="npm_install">
             <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
             <input type="hidden" name="script_name" id="runtime-npm-script-name" value="">
             <input type="hidden" name="npm_ci" value="0">
-            <input type="hidden" name="npm_script_node_version" value="{{.NpmScriptNodeVersion}}">
             <input type="hidden" name="runtime_command_name" id="runtime-quick-command-name" value="">
             <input type="hidden" name="runtime_command_body" id="runtime-quick-command-body" value="">
             <input type="hidden" name="runtime_command_node_version" id="runtime-quick-command-node-version" value="">
+            <label>
+                <span>Node version for npm actions</span>
+                <select name="npm_script_node_version">
+                    <option value="">Use site's assigned node</option>
+                    {{range .NodeVersionOptions}}
+                    <option value="{{.}}" {{if eq . $.NpmScriptNodeVersion}}selected{{end}}>{{.}}</option>
+                    {{end}}
+                </select>
+            </label>
             <hr style="border:none;border-top:1px solid var(--border);margin:16px 0 12px;">
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button type="button" class="btn btn-sm btn-secondary" data-runtime-action="npm_install">npm install</button>
@@ -633,7 +663,12 @@
                 </label>
                 <label>
                     <span>Node version</span>
-                    <input type="text" name="runtime_command_node_version" id="runtime-command-node-version" value="{{.RuntimeCommandNodeVersion}}" placeholder="Use default if empty">
+                    <select name="runtime_command_node_version" id="runtime-command-node-version">
+                        <option value="">Use site's assigned node</option>
+                        {{range .NodeVersionOptions}}
+                        <option value="{{.}}" {{if eq . $.RuntimeCommandNodeVersion}}selected{{end}}>{{.}}</option>
+                        {{end}}
+                    </select>
                 </label>
             </div>
             <label style="margin-top:12px;display:block;">
@@ -662,7 +697,11 @@
                 <div class="form-grid two-up">
                     <label>
                         <span>Node version</span>
-                        <input type="text" name="node_version" value="{{.RuntimeNodeVersion}}" placeholder="20 or lts/*" required>
+                        <select name="node_version" required>
+                            {{range .InstallNodeVersionOptions}}
+                            <option value="{{.}}" {{if eq . $.RuntimeNodeVersion}}selected{{end}}>{{.}}</option>
+                            {{end}}
+                        </select>
                     </label>
                     <label class="checkbox-row compact checkbox-align-end">
                         <input type="checkbox" name="set_default_node" value="1" checked>
@@ -679,7 +718,12 @@
                 <div class="form-grid two-up">
                     <label>
                         <span>Node version for PM2</span>
-                        <input type="text" name="pm2_node_version" value="{{.PM2NodeVersion}}" placeholder="Use default if left empty">
+                        <select name="pm2_node_version">
+                            <option value="">Use site's assigned node</option>
+                            {{range .NodeVersionOptions}}
+                            <option value="{{.}}" {{if eq . $.PM2NodeVersion}}selected{{end}}>{{.}}</option>
+                            {{end}}
+                        </select>
                     </label>
                 </div>
                 <div class="form-actions">
@@ -711,7 +755,12 @@
                 </label>
                 <label>
                     <span>Node version</span>
-                    <input type="text" name="pm2_node_version" value="{{.PM2NodeVersion}}" placeholder="20">
+                    <select name="pm2_node_version">
+                        <option value="">Use site's assigned node</option>
+                        {{range .NodeVersionOptions}}
+                        <option value="{{.}}" {{if eq . $.PM2NodeVersion}}selected{{end}}>{{.}}</option>
+                        {{end}}
+                    </select>
                 </label>
                 <label>
                     <span>Start script</span>
@@ -1021,6 +1070,7 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
                 <thead>
                     <tr>
                         <th>Subdomain</th>
+                        <th>Node</th>
                         <th>Root path</th>
                         <th>Actions</th>
                     </tr>
@@ -1029,6 +1079,7 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
                     {{range .SiteSubdomains}}
                     <tr>
                         <td>{{.FullDomain}}</td>
+                        <td>{{if .NodeVersion}}<span class="badge subtle-badge">{{.NodeVersion}}</span>{{else}}-{{end}}</td>
                         <td>{{.RootDirectory}}</td>
                         <td>
                             <a href="/sites/subdomains/details?name={{$.SelectedSite.Name}}&subdomain_id={{.ID}}" class="btn btn-sm btn-outline-secondary">Details</a>

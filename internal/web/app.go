@@ -130,6 +130,8 @@ type TemplateData struct {
 	GitRepositoryURL string
 	GitBranch      string
 	GitPostDeployCommand string
+	DeployNodeVersion string
+	RollbackNodeVersion string
 	GitCustomCommand string
 	SSHWorkingDirectory string
 	SSHCommandBody string
@@ -144,6 +146,7 @@ type TemplateData struct {
 	LatestWebhookAudit domain.AuditLog
 	LatestDeploymentRelease domain.DeploymentRelease
 	RuntimeNodeVersion string
+	PreferredNodeVersion string
 	PM2NodeVersion string
 	PM2ProcessName string
 	PM2ScriptPath string
@@ -237,6 +240,8 @@ type TemplateData struct {
 	RuntimeCommandName string
 	RuntimeCommandNodeVersion string
 	RuntimeCommandBody string
+	NodeVersionOptions []string
+	InstallNodeVersionOptions []string
 	CronJobs []system.CronJob
 	CronSchedule string
 	CronCommand string

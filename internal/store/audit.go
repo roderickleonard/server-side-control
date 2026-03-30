@@ -82,7 +82,7 @@ func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.M
 	}
 
 	var site domain.ManagedSite
-	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
+	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
 	if err := s.db.QueryRowContext(ctx, query, name).Scan(
 		&site.ID,
 		&site.Name,
@@ -92,6 +92,7 @@ func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.M
 		&site.Runtime,
 		&site.UpstreamURL,
 		&site.PHPVersion,
+		&site.NodeVersion,
 		&site.DatabaseName,
 		&site.AutoDeployEnabled,
 		&site.AutoDeployBranch,
@@ -113,7 +114,7 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 		return nil, errors.New("store is not configured")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list managed sites: %w", err)
 	}
@@ -131,6 +132,7 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 			&site.Runtime,
 			&site.UpstreamURL,
 			&site.PHPVersion,
+			&site.NodeVersion,
 			&site.DatabaseName,
 			&site.AutoDeployEnabled,
 			&site.AutoDeployBranch,
@@ -148,6 +150,17 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 	}
 
 	return sites, rows.Err()
+}
+
+func (s *Store) UpdateManagedSiteNodeVersion(ctx context.Context, name string, nodeVersion string) error {
+	if s == nil {
+		return errors.New("store is not configured")
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET node_version = ? WHERE name = ?`, nodeVersion, name)
+	if err != nil {
+		return fmt.Errorf("update managed site node version: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) DeleteManagedSite(ctx context.Context, name string) error {

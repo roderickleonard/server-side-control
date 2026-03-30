@@ -107,6 +107,7 @@
                         <th>Domain</th>
                         <th>Owner</th>
                         <th>Mode</th>
+                        <th>Node</th>
                         <th>Upstream</th>
                         <th>PHP</th>
                         <th>Root</th>
@@ -122,6 +123,7 @@
                         <td>{{.DomainName}}</td>
                         <td>{{if .OwnerLinuxUser}}{{.OwnerLinuxUser}}{{else}}-{{end}}</td>
                         <td><span class="badge subtle-badge">{{.Runtime}}</span></td>
+                        <td>{{if .NodeVersion}}<span class="badge subtle-badge">{{.NodeVersion}}</span>{{else}}-{{end}}</td>
                         <td class="text-break">{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}-{{end}}</td>
                         <td>{{if eq .Runtime "php"}}{{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}{{else}}-{{end}}</td>
                         <td class="text-break">{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}</td>

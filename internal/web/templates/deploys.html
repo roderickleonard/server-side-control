@@ -59,6 +59,15 @@
                     <span>Post-deploy command</span>
                     <input type="text" name="post_deploy_command" placeholder="npm ci && pm2 restart app">
                 </label>
+                <label>
+                    <span>Node version for post-deploy command</span>
+                    <select name="post_deploy_node_version">
+                        <option value="">Use shell default</option>
+                        {{range .NodeVersionOptions}}
+                        <option value="{{.}}" {{if eq . $.DeployNodeVersion}}selected{{end}}>{{.}}</option>
+                        {{end}}
+                    </select>
+                </label>
             </div>
             <div class="form-actions">
                 <button type="submit">Deploy repository</button>
@@ -91,6 +100,15 @@
                     <span>Post-rollback command</span>
                     <input type="text" name="rollback_post_deploy_command" placeholder="pm2 restart app">
                 </label>
+                <label>
+                    <span>Node version for post-rollback command</span>
+                    <select name="rollback_post_deploy_node_version">
+                        <option value="">Use shell default</option>
+                        {{range .NodeVersionOptions}}
+                        <option value="{{.}}" {{if eq . $.RollbackNodeVersion}}selected{{end}}>{{.}}</option>
+                        {{end}}
+                    </select>
+                </label>
             </div>
             <div class="form-actions">
                 <button type="submit">Rollback to commit</button>
@@ -105,7 +123,7 @@
         <ul>
             <li>If the target directory already contains a git repository, the panel fetches and fast-forward pulls the selected branch.</li>
             <li>If the target directory is empty, the panel clones the repository directly into it.</li>
-            <li>The optional post-deploy command runs through `sh -lc` as the selected user.</li>
+            <li>The optional post-deploy command runs through `sh -lc` as the selected user, and can use the selected Node version via NVM.</li>
             <li>Every successful deploy or rollback records the resulting commit SHA and previous commit in release history.</li>
         </ul>
     </article>

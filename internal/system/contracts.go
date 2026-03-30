@@ -134,6 +134,7 @@ type RollbackSpec struct {
 	RunAsUser         string
 	ReleaseCommitSHA  string
 	PostDeployCommand string
+	PostDeployNodeVersion string
 }
 
 type DeployResult struct {
@@ -158,6 +159,7 @@ type RuntimeStatus struct {
 	HomeDirectory      string
 	NVMInstalled       bool
 	InstalledNodeVersions []string
+	AvailableNodeVersions []string
 	DefaultNodeVersion string
 	PM2Installed       bool
 	ComposerInstalled  bool

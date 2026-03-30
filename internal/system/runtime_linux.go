@@ -38,6 +38,7 @@ func (linuxRuntimeManager) Inspect(spec RuntimeInspectSpec) (RuntimeStatus, erro
 		return RuntimeStatus{}, err
 	}
 	status := RuntimeStatus{User: strings.TrimSpace(spec.User), HomeDirectory: homeDirectory}
+	status.AvailableNodeVersions = commonNodeVersionChoices()
 	nvmScriptPath := filepath.Join(homeDirectory, ".nvm", "nvm.sh")
 	if _, err := os.Stat(nvmScriptPath); err == nil {
 		status.NVMInstalled = true
@@ -47,6 +48,7 @@ func (linuxRuntimeManager) Inspect(spec RuntimeInspectSpec) (RuntimeStatus, erro
 		status.InstalledNodeVersions = uniqueSortedMatches(installedNodePattern.FindAllString(versionsOutput, -1))
 		defaultOutput, _ := runBashAsUser(ctx, status.User, buildNVMCommand(homeDirectory, "nvm alias default"))
 		status.DefaultNodeVersion = parseDefaultNodeVersion(defaultOutput)
+		status.AvailableNodeVersions = listAvailableNodeVersions(status.User, homeDirectory)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -612,6 +614,82 @@ func parseDefaultNodeVersion(output string) string {
 		}
 	}
 	return ""
+}
+
+func listAvailableNodeVersions(user string, homeDirectory string) []string {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	output, err := runBashAsUser(ctx, user, buildNVMCommand(homeDirectory, "nvm ls-remote --no-colors"))
+	if err != nil {
+		return commonNodeVersionChoices()
+	}
+	versions := installedNodePattern.FindAllString(output, -1)
+	if len(versions) == 0 {
+		return commonNodeVersionChoices()
+	}
+	latestByMajor := make(map[int][3]int)
+	for _, version := range versions {
+		parsed, ok := parseNodeVersion(version)
+		if !ok {
+			continue
+		}
+		current, exists := latestByMajor[parsed[0]]
+		if !exists || compareNodeVersionParts(parsed, current) > 0 {
+			latestByMajor[parsed[0]] = parsed
+		}
+	}
+	if len(latestByMajor) == 0 {
+		return commonNodeVersionChoices()
+	}
+	majors := make([]int, 0, len(latestByMajor))
+	for major := range latestByMajor {
+		majors = append(majors, major)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(majors)))
+	available := make([]string, 0, len(majors))
+	for _, major := range majors {
+		parts := latestByMajor[major]
+		available = append(available, fmt.Sprintf("v%d.%d.%d", parts[0], parts[1], parts[2]))
+	}
+	return available
+}
+
+func parseNodeVersion(raw string) ([3]int, bool) {
+	trimmed := strings.TrimSpace(strings.TrimPrefix(raw, "v"))
+	parts := strings.Split(trimmed, ".")
+	if len(parts) != 3 {
+		return [3]int{}, false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return [3]int{}, false
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return [3]int{}, false
+	}
+	patch, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return [3]int{}, false
+	}
+	return [3]int{major, minor, patch}, true
+}
+
+func compareNodeVersionParts(left [3]int, right [3]int) int {
+	for index := 0; index < len(left); index++ {
+		if left[index] == right[index] {
+			continue
+		}
+		if left[index] > right[index] {
+			return 1
+		}
+		return -1
+	}
+	return 0
+}
+
+func commonNodeVersionChoices() []string {
+	return []string{"node", "lts/*", "22", "20", "18", "16", "14", "12", "10", "8.17.0"}
 }
 
 func shellJoin(args []string) string {

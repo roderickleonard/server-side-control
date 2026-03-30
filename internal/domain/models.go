@@ -25,6 +25,7 @@ type ManagedSite struct {
 	Runtime         string
 	UpstreamURL     string
 	PHPVersion      string
+	NodeVersion     string
 	NginxConfigPath string
 	DatabaseName    string
 	AutoDeployEnabled bool
@@ -79,6 +80,7 @@ type SiteSubdomain struct {
 	Runtime         string
 	UpstreamURL     string
 	PHPVersion      string
+	NodeVersion     string
 	RepositoryURL   string
 	BranchName      string
 	GitCredentialProtocol string

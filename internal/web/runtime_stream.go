@@ -99,11 +99,13 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 	action := strings.TrimSpace(r.FormValue("details_action"))
 	targetDirectory := site.RootDirectory
 	targetLabel := site.Name
+	targetNodeVersion := strings.TrimSpace(site.NodeVersion)
 	if subdomainID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subdomain_id")), 10, 64); err == nil && subdomainID > 0 {
 		if subdomains, listErr := a.store.ListSiteSubdomains(r.Context(), site.ID); listErr == nil {
 			if subdomain, ok := findSiteSubdomain(subdomains, subdomainID); ok {
 				targetDirectory = subdomain.RootDirectory
 				targetLabel = subdomain.FullDomain
+				targetNodeVersion = strings.TrimSpace(subdomain.NodeVersion)
 			}
 		}
 	}
@@ -120,7 +122,7 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 		auditAction = "runtime.install_composer"
 		label = "install composer"
 	case "npm_install":
-		nodeVersion := strings.TrimSpace(r.FormValue("npm_script_node_version"))
+		nodeVersion := firstNonEmpty(strings.TrimSpace(r.FormValue("npm_script_node_version")), targetNodeVersion)
 		ci := r.FormValue("npm_ci") == "1"
 		helperAction = "runtime.run_npm_install"
 		payload = system.NPMInstallSpec{
@@ -135,7 +137,7 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 			label = "npm ci"
 		}
 	case "run_npm_script":
-		nodeVersion := strings.TrimSpace(r.FormValue("npm_script_node_version"))
+		nodeVersion := firstNonEmpty(strings.TrimSpace(r.FormValue("npm_script_node_version")), targetNodeVersion)
 		scriptName := strings.TrimSpace(r.FormValue("script_name"))
 		if scriptName == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "script name is required"})
@@ -161,7 +163,7 @@ func (a *App) handleSiteRuntimeStream(w http.ResponseWriter, r *http.Request) {
 			User:             site.OwnerLinuxUser,
 			WorkingDirectory: targetDirectory,
 			CommandBody:      commandBody,
-			NodeVersion:      strings.TrimSpace(r.FormValue("runtime_command_node_version")),
+			NodeVersion:      firstNonEmpty(strings.TrimSpace(r.FormValue("runtime_command_node_version")), targetNodeVersion),
 		}
 		auditAction = "runtime.run_custom_command"
 		label = firstNonEmpty(strings.TrimSpace(r.FormValue("runtime_command_name")), "custom script")
@@ -764,6 +766,7 @@ func (a *App) handleDeploysStream(w http.ResponseWriter, r *http.Request) {
 			RunAsUser: strings.TrimSpace(r.FormValue("rollback_run_as_user")),
 			ReleaseCommitSHA: strings.TrimSpace(r.FormValue("release_commit_sha")),
 			PostDeployCommand: r.FormValue("rollback_post_deploy_command"),
+			PostDeployNodeVersion: strings.TrimSpace(r.FormValue("rollback_post_deploy_node_version")),
 		}
 		helperAction = "deploy.rollback"
 		payload = spec
@@ -779,6 +782,7 @@ func (a *App) handleDeploysStream(w http.ResponseWriter, r *http.Request) {
 			RunAsUser: strings.TrimSpace(r.FormValue("run_as_user")),
 			GitSiteName: strings.TrimSpace(r.FormValue("git_site_name")),
 			PostDeployCommand: r.FormValue("post_deploy_command"),
+			PostDeployNodeVersion: strings.TrimSpace(r.FormValue("post_deploy_node_version")),
 		}
 		helperAction = "deploy.run"
 		payload = spec
@@ -1129,6 +1133,7 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 			RunAsUser:         site.OwnerLinuxUser,
 			GitSiteName:       site.Name,
 			PostDeployCommand: postDeployCommand,
+			PostDeployNodeVersion: strings.TrimSpace(site.NodeVersion),
 		}
 		auditAction = "deploy.site_sync"
 		label = "git sync"
@@ -1167,6 +1172,7 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 			RunAsUser:         targetUser,
 			GitSiteName:       subdomain.FullDomain,
 			PostDeployCommand: subdomain.PostDeployCommand,
+			PostDeployNodeVersion: strings.TrimSpace(subdomain.NodeVersion),
 		}
 		auditAction = "deploy.subdomain_sync"
 		label = "git sync " + subdomain.FullDomain

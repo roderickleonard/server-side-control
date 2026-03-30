@@ -90,6 +90,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("ensure managed_sites auto deploy columns: %w", err)
 	}
 
+	if err := s.ensureManagedSitesNodeVersionColumn(ctx); err != nil {
+		return fmt.Errorf("ensure managed_sites node version column: %w", err)
+	}
+
 	if err := s.ensureSiteRuntimeCommandsTable(ctx); err != nil {
 		return fmt.Errorf("ensure site_runtime_commands table: %w", err)
 	}
@@ -104,6 +108,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 
 	if err := s.ensureSiteSubdomainsDeployColumns(ctx); err != nil {
 		return fmt.Errorf("ensure site_subdomains deploy columns: %w", err)
+	}
+
+	if err := s.ensureSiteSubdomainsNodeVersionColumn(ctx); err != nil {
+		return fmt.Errorf("ensure site_subdomains node version column: %w", err)
 	}
 
 	if err := s.ensureNginxConfigRevisionsTable(ctx); err != nil {
@@ -359,6 +367,34 @@ func (s *Store) ensureManagedSitesAutoDeployColumns(ctx context.Context) error {
 	return nil
 }
 
+func (s *Store) ensureManagedSitesNodeVersionColumn(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = DATABASE()
+		  AND table_name = 'managed_sites'
+		  AND column_name = 'node_version'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE managed_sites ADD COLUMN node_version VARCHAR(64) NOT NULL DEFAULT '' AFTER php_version`)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {
 	if s == nil {
 		return nil
@@ -372,6 +408,7 @@ func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {
 			runtime VARCHAR(32) NOT NULL,
 			upstream_url VARCHAR(255) NOT NULL DEFAULT '',
 			php_version VARCHAR(32) NOT NULL DEFAULT '',
+			node_version VARCHAR(64) NOT NULL DEFAULT '',
 			repository_url VARCHAR(255) NOT NULL DEFAULT '',
 			branch_name VARCHAR(191) NOT NULL DEFAULT '',
 			git_credential_protocol VARCHAR(32) NOT NULL DEFAULT '',
@@ -392,6 +429,34 @@ func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {
 			CONSTRAINT fk_site_subdomains_site FOREIGN KEY (site_id) REFERENCES managed_sites(id) ON DELETE CASCADE
 		)`)
 	return err
+}
+
+func (s *Store) ensureSiteSubdomainsNodeVersionColumn(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = DATABASE()
+		  AND table_name = 'site_subdomains'
+		  AND column_name = 'node_version'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE site_subdomains ADD COLUMN node_version VARCHAR(64) NOT NULL DEFAULT '' AFTER php_version`)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Store) ensureSiteSubdomainsDeployColumns(ctx context.Context) error {
