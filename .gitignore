@@ -1,6 +1,3 @@
 build/
 config/panel.env
 .DS_Store
-/panel
-/installer
-/helper
