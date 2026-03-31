@@ -57,6 +57,17 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Rate limit all POST login attempts by client IP
+	clientIP := a.clientAddress(r)
+	if err := a.loginRateLimiter.Check(clientIP, ""); err != nil {
+		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
+			Title:        "Login",
+			LoginStage:   "username",
+			RequestError: "Too many login attempts. Please wait before trying again.",
+		})
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
 			Title:        "Login",
@@ -108,7 +119,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			remainingHashes := make([]string, 0, len(security.RecoveryCodes))
 			matched := false
 			for _, storedHash := range security.RecoveryCodes {
-				if !matched && strings.TrimSpace(storedHash) == recoveryHash {
+				if !matched && subtle.ConstantTimeCompare([]byte(strings.TrimSpace(storedHash)), []byte(recoveryHash)) == 1 {
 					matched = true
 					continue
 				}
@@ -116,6 +127,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			}
 			if !matched {
 				a.recordAudit(r.Context(), "auth.login.recovery", pendingLogin.Identity.Username, "failure", map[string]any{"provider": pendingLogin.Identity.AuthProvider})
+				a.loginRateLimiter.RecordFailure(clientIP, pendingLogin.Identity.Username)
 				data.RequestError = "Recovery code is invalid."
 				a.render(r.Context(), w, r.URL.Path, "login.html", data)
 				return
@@ -128,6 +140,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			verifiedWithRecoveryCode = true
 		} else if !auth.ValidateTOTP(security.TOTPSecret, data.TOTPCode, time.Now()) {
 			a.recordAudit(r.Context(), "auth.login.2fa", pendingLogin.Identity.Username, "failure", map[string]any{"provider": pendingLogin.Identity.AuthProvider})
+			a.loginRateLimiter.RecordFailure(clientIP, pendingLogin.Identity.Username)
 			data.RequestError = "Verification code is invalid."
 			a.render(r.Context(), w, r.URL.Path, "login.html", data)
 			return
@@ -138,6 +151,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "session error", http.StatusInternalServerError)
 			return
 		}
+		a.loginRateLimiter.RecordSuccess(clientIP, pendingLogin.Identity.Username)
 		_ = a.store.TouchPanelUserLastLogin(r.Context(), pendingLogin.Identity.Username)
 		a.pendingLogins.Delete(r.Context(), pendingLogin.ID)
 		a.clearPendingLoginCookie(w)
@@ -190,6 +204,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	identity, err := a.auth.Authenticate(r.Context(), username, password)
 	if err != nil {
 		a.recordAudit(r.Context(), "auth.login", username, "failure", map[string]any{"provider": "login-form"})
+		a.loginRateLimiter.RecordFailure(clientIP, username)
 		message := "Invalid username or password."
 		if errors.Is(err, auth.ErrUnsupported) {
 			message = "PAM authentication is not available on this host. Use the bootstrap account until the Ubuntu target environment is ready."
@@ -235,6 +250,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.loginRateLimiter.RecordSuccess(clientIP, identity.Username)
 	_ = a.store.TouchPanelUserLastLogin(r.Context(), identity.Username)
 	a.clearPendingLoginCookie(w)
 	ctx := auth.ContextWithIdentity(r.Context(), *identity)

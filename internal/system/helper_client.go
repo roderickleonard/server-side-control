@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -73,7 +74,7 @@ func (c *HelperClient) Call(ctx context.Context, action string, input any, outpu
 		return stdout.String(), fmt.Errorf("decode helper response: %w", err)
 	}
 	if !response.OK {
-		return response.Output, fmt.Errorf(response.Error)
+		return response.Output, errors.New(response.Error)
 	}
 	if output != nil && len(response.Data) > 0 {
 		if err := json.Unmarshal(response.Data, output); err != nil {
