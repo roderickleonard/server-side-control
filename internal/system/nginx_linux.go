@@ -29,29 +29,6 @@ var ErrInvalidPHPVersion = errors.New("invalid php version")
 var ErrInvalidEmail = errors.New("invalid email")
 var ErrUnsafeDeletePath = errors.New("unsafe site delete path")
 
-type SiteSpec struct {
-	Name          string
-	OwnerLinuxUser string
-	Domain        string
-	Mode          string
-	RootDirectory string
-	UpstreamURL   string
-	PHPVersion    string
-}
-
-type SiteRemoval struct {
-	Name          string
-	Domain        string
-	RootDirectory string
-	ConfigPath    string
-}
-
-type TLSRequest struct {
-	Domain   string
-	Email    string
-	Redirect bool
-}
-
 type linuxNginxManager struct {
 	availableDir string
 	enabledDir   string

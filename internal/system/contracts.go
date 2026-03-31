@@ -100,6 +100,29 @@ type DatabaseQueryResult struct {
 	Truncated bool `json:"truncated"`
 }
 
+type SiteSpec struct {
+	Name           string
+	OwnerLinuxUser string
+	Domain         string
+	Mode           string
+	RootDirectory  string
+	UpstreamURL    string
+	PHPVersion     string
+}
+
+type SiteRemoval struct {
+	Name          string
+	Domain        string
+	RootDirectory string
+	ConfigPath    string
+}
+
+type TLSRequest struct {
+	Domain   string
+	Email    string
+	Redirect bool
+}
+
 type NginxManager interface {
 	ApplySite(spec SiteSpec) (string, error)
 	DeleteSite(site SiteRemoval) error
