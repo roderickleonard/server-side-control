@@ -1442,13 +1442,21 @@ li + li {
 
 /* ── Modal ─────────────────────────────────────────────────────────────── */
 
-.site-modal .modal-content {
+.modal {
+    display: none;
+}
+
+.modal.show {
+    display: block;
+}
+
+.modal-content.site-modal {
     border-radius: var(--r-xl);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-lg);
 }
 
-.site-modal .modal-header {
+.modal-content.site-modal .modal-header {
     border-bottom-color: var(--border-light);
     background: var(--surface-alt);
     border-radius: var(--r-xl) var(--r-xl) 0 0;
