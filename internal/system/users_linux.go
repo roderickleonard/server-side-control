@@ -19,11 +19,6 @@ import (
 
 var usernamePattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 
-var ErrInvalidUsername = errors.New("invalid linux username")
-var ErrUserExists = errors.New("linux user already exists")
-var ErrUserNotFound = errors.New("linux user not found")
-var ErrProtectedUser = errors.New("linux user is protected")
-
 var protectedLinuxUsers = map[string]struct{}{
 	"root":                {},
 	"server-side-control": {},
