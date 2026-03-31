@@ -511,15 +511,6 @@ func formatDatabaseBytes(size int64) string {
 	return fmt.Sprintf("%d B", size)
 }
 
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
-}
-
 func databaseTableExists(tables []DatabaseTableSummary, name string) bool {
 	for _, table := range tables {
 		if table.Name == name {
