@@ -21,6 +21,34 @@
             <h3 style="margin-bottom:0;"><i class="bi bi-journal-code" style="color:var(--accent);"></i>Recent audit logs</h3>
             <span class="count-chip">{{len .AuditLogs}}</span>
         </div>
+        <form method="get" class="inline-form details-inline-form bottom-gap">
+            <label>
+                <span>Sort by</span>
+                <select name="sort">
+                    <option value="created_at" {{if eq .AuditSort "created_at"}}selected{{end}}>Time</option>
+                    <option value="outcome" {{if eq .AuditSort "outcome"}}selected{{end}}>Outcome</option>
+                    <option value="actor" {{if eq .AuditSort "actor"}}selected{{end}}>Actor</option>
+                    <option value="action" {{if eq .AuditSort "action"}}selected{{end}}>Action</option>
+                </select>
+            </label>
+            <label>
+                <span>Direction</span>
+                <select name="direction">
+                    <option value="desc" {{if eq .AuditDirection "desc"}}selected{{end}}>Descending</option>
+                    <option value="asc" {{if eq .AuditDirection "asc"}}selected{{end}}>Ascending</option>
+                </select>
+            </label>
+            <label>
+                <span>Outcome</span>
+                <select name="outcome">
+                    <option value="" {{if eq .AuditOutcomeFilter ""}}selected{{end}}>All</option>
+                    <option value="success" {{if eq .AuditOutcomeFilter "success"}}selected{{end}}>Success</option>
+                    <option value="failure" {{if eq .AuditOutcomeFilter "failure"}}selected{{end}}>Failure</option>
+                    <option value="unknown" {{if eq .AuditOutcomeFilter "unknown"}}selected{{end}}>Unknown</option>
+                </select>
+            </label>
+            <button type="submit">Apply</button>
+        </form>
         {{if .AuditLogs}}
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">
@@ -31,6 +59,7 @@
                         <th>Action</th>
                         <th>Target</th>
                         <th>Outcome</th>
+                        <th>Details</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -45,10 +74,17 @@
                             {{else if eq .Outcome "failure"}}<span class="status-pill failure">failure</span>
                             {{else}}<span class="status-pill unknown">{{.Outcome}}</span>{{end}}
                         </td>
+                        <td>
+                            {{if .Metadata}}
+                            <button type="button" class="btn btn-sm btn-outline-secondary audit-log-toggle" data-audit-target="audit-log-{{.ID}}">Details</button>
+                            {{else}}
+                            <span class="muted">-</span>
+                            {{end}}
+                        </td>
                     </tr>
                     {{if .Metadata}}
-                    <tr class="table-note-row">
-                        <td colspan="5"><pre class="command-output mt-0">{{.Metadata}}</pre></td>
+                    <tr class="table-note-row" id="audit-log-{{.ID}}" hidden>
+                        <td colspan="6"><pre class="command-output mt-0">{{.Metadata}}</pre></td>
                     </tr>
                     {{end}}
                     {{end}}
@@ -63,4 +99,29 @@
         {{end}}
     </article>
 </div>
+<script>
+(() => {
+    const toggles = Array.from(document.querySelectorAll('.audit-log-toggle'));
+    toggles.forEach((toggle) => {
+        toggle.addEventListener('click', () => {
+            const targetId = toggle.getAttribute('data-audit-target');
+            if (!targetId) {
+                return;
+            }
+            const row = document.getElementById(targetId);
+            if (!row) {
+                return;
+            }
+            const isHidden = row.hasAttribute('hidden');
+            if (isHidden) {
+                row.removeAttribute('hidden');
+                toggle.textContent = 'Hide';
+            } else {
+                row.setAttribute('hidden', 'hidden');
+                toggle.textContent = 'Details';
+            }
+        });
+    });
+})();
+</script>
 {{end}}

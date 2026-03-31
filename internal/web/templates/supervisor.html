@@ -280,6 +280,7 @@
             event.preventDefault();
             await terminalDrawer.streamForm(form, form.dataset.streamEndpoint || '/supervisor/stream', {
                 title: 'Supervisor action',
+                submitter: event.submitter,
             });
         });
     });

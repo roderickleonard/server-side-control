@@ -304,6 +304,7 @@
                     }
 
                     async function streamForm(form, endpoint, options) {
+                        const submitter = options && options.submitter ? options.submitter : null;
                         const buttons = Array.from(form.querySelectorAll('button'));
                         buttons.forEach((button) => {
                             button.disabled = true;
@@ -315,6 +316,9 @@
                         });
                         try {
                             const formData = new FormData(form);
+                            if (submitter && submitter.name) {
+                                formData.append(submitter.name, submitter.value || '');
+                            }
                             const hasFiles = Array.from(form.querySelectorAll('input[type="file"]')).some((input) => input.files && input.files.length > 0);
                             const wantsMultipart = hasFiles || String(form.enctype || form.getAttribute('enctype') || '').toLowerCase().includes('multipart/form-data');
                             const requestOptions = {

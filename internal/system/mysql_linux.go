@@ -4,9 +4,11 @@ package system
 
 import (
 	"bufio"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -260,9 +262,13 @@ func (m mysqlDatabaseManager) InspectDatabase(spec DatabaseInspectSpec) (Databas
 			RowCount:  rowCount,
 			DataSize:  dataSize,
 			IndexSize: indexSize,
+			DataSizeDisplay: formatDatabaseBytes(dataSize),
+			IndexSizeDisplay: formatDatabaseBytes(indexSize),
+			TotalSizeDisplay: formatDatabaseBytes(dataSize + indexSize),
 		})
 		details.ApproximateSize += dataSize + indexSize
 	}
+	details.ApproximateSizeDisplay = formatDatabaseBytes(details.ApproximateSize)
 
 	if len(details.Tables) == 0 {
 		return details, nil
@@ -353,6 +359,165 @@ func (m mysqlDatabaseManager) previewTable(ctx context.Context, databaseName str
 		preview.Rows = append(preview.Rows, strings.Split(line, "\t"))
 	}
 	return preview, scanner.Err()
+}
+
+func ExecuteDatabaseQuery(adminDefaultsFile string, databaseName string, statement string, maxRows int) (DatabaseQueryResult, error) {
+	manager := mysqlDatabaseManager{adminDefaultsFile: adminDefaultsFile}
+	return manager.executeQuery(databaseName, statement, maxRows)
+}
+
+func ExportDatabase(adminDefaultsFile string, databaseName string, filePath string) (string, error) {
+	manager := mysqlDatabaseManager{adminDefaultsFile: adminDefaultsFile}
+	return manager.exportDatabase(databaseName, filePath)
+}
+
+func (m mysqlDatabaseManager) executeQuery(databaseName string, statement string, maxRows int) (DatabaseQueryResult, error) {
+	databaseName = strings.TrimSpace(databaseName)
+	statement = strings.TrimSpace(statement)
+	if !mysqlProvisionNamePattern.MatchString(databaseName) {
+		return DatabaseQueryResult{}, ErrInvalidDatabaseName
+	}
+	if statement == "" {
+		return DatabaseQueryResult{}, ErrInvalidDatabaseQuery
+	}
+	if maxRows <= 0 || maxRows > 500 {
+		maxRows = 250
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	args := []string{
+		"--defaults-extra-file=" + m.adminDefaultsFile,
+		"--database=" + databaseName,
+		"--batch",
+		"--raw",
+		"--execute",
+		statement,
+	}
+	cmd := exec.CommandContext(ctx, "mysql", args...)
+	output, err := cmd.CombinedOutput()
+	trimmed := strings.TrimSpace(string(output))
+	if err != nil {
+		return DatabaseQueryResult{}, fmt.Errorf("mysql query failed: %w: %s", err, trimmed)
+	}
+	result := DatabaseQueryResult{Message: firstNonEmptyString(trimmed, "Query executed successfully.")}
+	if trimmed == "" {
+		return result, nil
+	}
+	scanner := bufio.NewScanner(strings.NewReader(trimmed))
+	if !scanner.Scan() {
+		return result, nil
+	}
+	result.Columns = strings.Split(scanner.Text(), "\t")
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if len(result.Rows) >= maxRows {
+			result.Truncated = true
+			break
+		}
+		result.Rows = append(result.Rows, strings.Split(line, "\t"))
+	}
+	if err := scanner.Err(); err != nil {
+		return DatabaseQueryResult{}, err
+	}
+	if len(result.Columns) > 0 {
+		result.RowCount = len(result.Rows)
+		if result.Truncated {
+			result.Message = fmt.Sprintf("Showing the first %d rows returned by the query.", maxRows)
+		} else if result.RowCount > 0 {
+			result.Message = fmt.Sprintf("Query returned %d rows.", result.RowCount)
+		} else {
+			result.Message = "Query returned no rows."
+		}
+	}
+	return result, nil
+}
+
+func (m mysqlDatabaseManager) exportDatabase(databaseName string, filePath string) (string, error) {
+	databaseName = strings.TrimSpace(databaseName)
+	filePath = strings.TrimSpace(filePath)
+	if !mysqlProvisionNamePattern.MatchString(databaseName) {
+		return "", ErrInvalidDatabaseName
+	}
+	if !filepath.IsAbs(filePath) {
+		return "", ErrInvalidRestorePath
+	}
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		return "", err
+	}
+	file, err := os.Create(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	gzipWriter := gzip.NewWriter(file)
+	defer gzipWriter.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	args := []string{
+		"--defaults-extra-file=" + m.adminDefaultsFile,
+		"--single-transaction",
+		"--routines",
+		"--triggers",
+		"--events",
+		databaseName,
+	}
+	cmd := exec.CommandContext(ctx, "mysqldump", args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return "", err
+	}
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(gzipWriter, stdout); err != nil {
+		_ = cmd.Process.Kill()
+		return "", err
+	}
+	stderrBytes, _ := io.ReadAll(stderr)
+	if err := gzipWriter.Close(); err != nil {
+		return "", err
+	}
+	if err := cmd.Wait(); err != nil {
+		return "", fmt.Errorf("mysqldump failed: %w: %s", err, strings.TrimSpace(string(stderrBytes)))
+	}
+	return filePath, nil
+}
+
+func formatDatabaseBytes(size int64) string {
+	if size <= 0 {
+		return "0 MB"
+	}
+	const (
+		kb = 1024
+		mb = 1024 * kb
+		gb = 1024 * mb
+	)
+	if size >= gb {
+		return fmt.Sprintf("%.2f GB", float64(size)/float64(gb))
+	}
+	if size >= mb {
+		return fmt.Sprintf("%.2f MB", float64(size)/float64(mb))
+	}
+	if size >= kb {
+		return fmt.Sprintf("%.2f KB", float64(size)/float64(kb))
+	}
+	return fmt.Sprintf("%d B", size)
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func databaseTableExists(tables []DatabaseTableSummary, name string) bool {

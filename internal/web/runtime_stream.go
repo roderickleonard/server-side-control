@@ -1048,29 +1048,44 @@ func (a *App) handleDatabaseDetailsStream(w http.ResponseWriter, r *http.Request
 		return
 	}
 	action := strings.TrimSpace(r.FormValue("database_details_action"))
-	if action != "restore" {
-		_, _ = io.WriteString(streamWriter, "Unsupported database action.\n\n[command failed]\n")
-		return
-	}
 	databaseName := strings.TrimSpace(r.FormValue("database_name"))
 	if databaseName == "" {
 		_, _ = io.WriteString(streamWriter, "Database name is required.\n\n[command failed]\n")
 		return
 	}
-	tempPath, _, err := writeDatabaseRestoreTempFile(r, a.cfg.DatabaseRestoreMaxBytes)
-	if err != nil {
-		_, _ = io.WriteString(streamWriter, err.Error()+"\n\n[command failed]\n")
-		return
+	switch action {
+	case "restore":
+		tempPath, _, err := writeDatabaseRestoreTempFile(r, a.cfg.DatabaseRestoreMaxBytes)
+		if err != nil {
+			_, _ = io.WriteString(streamWriter, err.Error()+"\n\n[command failed]\n")
+			return
+		}
+		defer os.Remove(tempPath)
+		_, _ = io.WriteString(streamWriter, "$ restore database\n\n")
+		if err := a.streamHelperAction(r.Context(), streamWriter, "mysql.restore_database", map[string]any{"database_name": databaseName, "file_path": tempPath}); err != nil {
+			a.recordAudit(r.Context(), "database.restore", databaseName, "failure", map[string]any{"error": err.Error()})
+			_, _ = io.WriteString(streamWriter, "\n\n[command failed]\n")
+			return
+		}
+		a.recordAudit(r.Context(), "database.restore", databaseName, "success", nil)
+		_, _ = io.WriteString(streamWriter, "\n\n[command completed]\n")
+	case "backup":
+		recipient := strings.TrimSpace(r.FormValue("backup_email"))
+		if recipient == "" {
+			_, _ = io.WriteString(streamWriter, "Backup email is required.\n\n[command failed]\n")
+			return
+		}
+		_, _ = io.WriteString(streamWriter, "$ export database backup\n\nGenerating compressed dump file...\n")
+		if err := a.generateAndEmailDatabaseBackup(r.Context(), databaseName, recipient); err != nil {
+			a.recordAudit(r.Context(), "database.backup", databaseName, "failure", map[string]any{"error": err.Error(), "recipient": recipient})
+			_, _ = io.WriteString(streamWriter, err.Error()+"\n\n[command failed]\n")
+			return
+		}
+		a.recordAudit(r.Context(), "database.backup", databaseName, "success", map[string]any{"recipient": recipient})
+		_, _ = io.WriteString(streamWriter, "Backup generated and download link emailed successfully.\n\n[command completed]\n")
+	default:
+		_, _ = io.WriteString(streamWriter, "Unsupported database action.\n\n[command failed]\n")
 	}
-	defer os.Remove(tempPath)
-	_, _ = io.WriteString(streamWriter, "$ restore database\n\n")
-	if err := a.streamHelperAction(r.Context(), streamWriter, "mysql.restore_database", map[string]any{"database_name": databaseName, "file_path": tempPath}); err != nil {
-		a.recordAudit(r.Context(), "database.restore", databaseName, "failure", map[string]any{"error": err.Error()})
-		_, _ = io.WriteString(streamWriter, "\n\n[command failed]\n")
-		return
-	}
-	a.recordAudit(r.Context(), "database.restore", databaseName, "success", nil)
-	_, _ = io.WriteString(streamWriter, "\n\n[command completed]\n")
 }
 
 func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {

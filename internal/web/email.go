@@ -61,6 +61,28 @@ func sendSMTPTestEmail(cfg config.Config) error {
 	return sendSMTPMail(cfg, []string{recipient}, message)
 }
 
+func sendDatabaseBackupReadyEmail(cfg config.Config, databaseName string, recipient string, downloadURL string, expiresAt time.Time) error {
+	if strings.TrimSpace(cfg.SMTPHost) == "" || strings.TrimSpace(cfg.SMTPFrom) == "" || strings.TrimSpace(recipient) == "" {
+		return fmt.Errorf("smtp host, from email and recipient are required")
+	}
+	subject := fmt.Sprintf("[Server Side Control] Database backup ready: %s", databaseName)
+	plainBody := strings.Join([]string{
+		fmt.Sprintf("Database: %s", databaseName),
+		fmt.Sprintf("Download link: %s", downloadURL),
+		fmt.Sprintf("Expires at: %s", expiresAt.Format(time.RFC3339)),
+		"",
+		"The link is single-use. After the first successful download, the backup file is deleted from the server.",
+	}, "\n")
+	htmlBody := fmt.Sprintf(`<html><body style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.5;">
+<h2 style="margin:0 0 12px;">Database Backup Ready</h2>
+<p>A backup for <strong>%s</strong> has been generated.</p>
+<p><a href="%s" style="display:inline-block;padding:10px 16px;background:#166534;color:#fff;text-decoration:none;border-radius:8px;">Download backup</a></p>
+<p style="margin-top:14px;">This link expires at <strong>%s</strong> and becomes invalid immediately after the first successful download.</p>
+</body></html>`, html.EscapeString(databaseName), html.EscapeString(downloadURL), html.EscapeString(expiresAt.Format(time.RFC3339)))
+	message := buildMultipartEmail(cfg.SMTPFrom, recipient, subject, plainBody, htmlBody)
+	return sendSMTPMail(cfg, []string{recipient}, message)
+}
+
 func buildMultipartEmail(from string, to string, subject string, plainBody string, htmlBody string) []byte {
 	boundary := "ssc-boundary-20260326"
 	message := strings.Join([]string{

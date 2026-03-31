@@ -28,15 +28,15 @@
         <div class="section-head">
             <div>
                 <span class="eyebrow">Summary</span>
-                <h3 style="margin-bottom:0;">Database overview</h3>
+                <h3 style="margin-bottom:0;">Database workspace</h3>
             </div>
             <a class="btn btn-sm btn-outline-secondary" href="/databases">Back to databases</a>
         </div>
         <div class="info-grid" style="margin-top:12px;">
             <div class="info-grid-item"><span class="info-label">Database</span><span>{{.DatabaseDetails.DatabaseName}}</span></div>
             <div class="info-grid-item"><span class="info-label">Tables</span><span>{{len .DatabaseDetails.Tables}}</span></div>
-            <div class="info-grid-item"><span class="info-label">Approx size</span><span>{{.DatabaseDetails.ApproximateSize}} bytes</span></div>
-            <div class="info-grid-item"><span class="info-label">Selected table</span><span>{{if .DatabaseDetails.SelectedTable}}{{.DatabaseDetails.SelectedTable}}{{else}}-{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Approx size</span><span>{{.DatabaseDetails.ApproximateSizeDisplay}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Selected table</span><span id="db-selected-table-label">{{if .DatabaseDetails.SelectedTable}}{{.DatabaseDetails.SelectedTable}}{{else}}-{{end}}</span></div>
         </div>
         {{if .SelectedDatabaseEntries}}
         <div class="table-card table-responsive top-gap">
@@ -60,11 +60,150 @@
         {{end}}
     </article>
     <article class="panel">
+        <h3><i class="bi bi-envelope-paper" style="color:var(--accent);"></i>Email a backup link</h3>
+        <form method="post" class="stack-form database-stream-form" data-stream-endpoint="/databases/details/stream">
+            <input type="hidden" name="database_details_action" value="backup">
+            <input type="hidden" name="database_name" value="{{.DatabaseDetails.DatabaseName}}">
+            <label>
+                <span>Recipient email</span>
+                <input type="email" name="backup_email" placeholder="dba@example.com" required>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Generate backup and email link</button>
+            </div>
+        </form>
+        <p class="muted details-note">The backup link is single-use. After the first successful download, the file is deleted from the server automatically.</p>
+    </article>
+</div>
+
+<div class="grid">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Schema browser</span>
+                <h3 style="margin-bottom:0;"><i class="bi bi-table" style="color:var(--accent);"></i>Tables</h3>
+            </div>
+            <span class="count-chip">{{len .DatabaseDetails.Tables}}</span>
+        </div>
+        {{if .DatabaseDetails.Tables}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Table</th>
+                        <th>Engine</th>
+                        <th>Rows</th>
+                        <th>Data</th>
+                        <th>Index</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .DatabaseDetails.Tables}}
+                    <tr class="db-table-row {{if eq $.DatabaseDetails.SelectedTable .Name}}is-active{{end}}" data-preview-table="{{.Name}}">
+                        <td><button type="button" class="table-link-button" data-preview-table="{{.Name}}">{{.Name}}</button></td>
+                        <td>{{if .Engine}}{{.Engine}}{{else}}-{{end}}</td>
+                        <td>{{.RowCount}}</td>
+                        <td>{{.DataSizeDisplay}}</td>
+                        <td>{{.IndexSizeDisplay}}</td>
+                        <td>{{.TotalSizeDisplay}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <div class="empty-state">
+            <i class="bi bi-table"></i>
+            <p>No tables found in this database yet.</p>
+        </div>
+        {{end}}
+    </article>
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Live preview</span>
+                <h3 style="margin-bottom:0;"><i class="bi bi-eye" style="color:var(--muted);"></i>Table contents</h3>
+            </div>
+            <span class="count-chip" id="db-preview-meta">Up to 100 rows</span>
+        </div>
+        <p class="muted details-note" id="db-preview-hint">Select any table on the left to refresh the preview without reloading the page.</p>
+        <div class="table-card table-responsive" id="db-preview-wrap">
+            <table class="table table-hover align-middle table-theme mb-0" id="db-preview-table">
+                <thead>
+                    <tr>
+                        {{range .DatabaseDetails.Preview.Columns}}
+                        <th>{{.}}</th>
+                        {{end}}
+                    </tr>
+                </thead>
+                <tbody>
+                    {{if .DatabaseDetails.Preview.Rows}}
+                    {{range .DatabaseDetails.Preview.Rows}}
+                    <tr>
+                        {{range .}}
+                        <td class="text-break">{{.}}</td>
+                        {{end}}
+                    </tr>
+                    {{end}}
+                    {{else if .DatabaseDetails.Preview.Columns}}
+                    <tr>
+                        <td colspan="{{len .DatabaseDetails.Preview.Columns}}" class="text-secondary">No rows found in this table.</td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td class="text-secondary">Select a table to load a preview.</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</div>
+
+<div class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-terminal" style="color:var(--accent);"></i>Run MySQL command</h3>
+        <form class="stack-form" id="database-query-form">
+            <input type="hidden" name="database_name" value="{{.DatabaseDetails.DatabaseName}}">
+            <label>
+                <span>SQL</span>
+                <textarea name="query_sql" rows="10" placeholder="SELECT * FROM users ORDER BY id DESC LIMIT 100;" required></textarea>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Run SQL</button>
+            </div>
+        </form>
+        <p class="muted details-note">All MySQL commands are allowed here. Changes are executed immediately and audited, so review destructive statements carefully before running them.</p>
+    </article>
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Query result</span>
+                <h3 style="margin-bottom:0;">Live output</h3>
+            </div>
+            <span class="count-chip" id="db-query-status">Idle</span>
+        </div>
+        <p class="muted details-note" id="db-query-message">Run a query to inspect rows or execute schema changes without leaving this page.</p>
+        <div class="table-card table-responsive" id="db-query-results-wrap">
+            <table class="table table-hover align-middle table-theme mb-0" id="db-query-results">
+                <tbody>
+                    <tr>
+                        <td class="text-secondary">No query has been executed yet.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </article>
+</div>
+
+<div class="grid">
+    <article class="panel">
         <h3><i class="bi bi-cloud-upload" style="color:var(--accent);"></i>Restore database</h3>
         <form method="post" enctype="multipart/form-data" class="stack-form database-stream-form" data-stream-endpoint="/databases/details/stream" data-reload-on-success="1">
             <input type="hidden" name="database_details_action" value="restore">
             <input type="hidden" name="database_name" value="{{.DatabaseDetails.DatabaseName}}">
-            <input type="hidden" name="selected_table" value="{{.DatabaseDetails.SelectedTable}}">
+            <input type="hidden" name="selected_table" value="{{.DatabaseDetails.SelectedTable}}" data-selected-table-input>
             <div class="form-grid">
                 <label>
                     <span>Upload SQL file</span>
@@ -82,95 +221,6 @@
         <p class="muted details-note">The restore runs through the saved MySQL admin defaults file against this database only.</p>
     </article>
 </div>
-
-<div class="grid">
-    <article class="panel">
-        <div class="section-head">
-            <div>
-                <span class="eyebrow">Schema</span>
-                <h3 style="margin-bottom:0;"><i class="bi bi-table" style="color:var(--accent);"></i>Tables</h3>
-            </div>
-            <span class="count-chip">{{len .DatabaseDetails.Tables}}</span>
-        </div>
-        {{if .DatabaseDetails.Tables}}
-        <form method="get" class="inline-form details-inline-form bottom-gap">
-            <input type="hidden" name="name" value="{{.DatabaseDetails.DatabaseName}}">
-            <label>
-                <span>Preview table</span>
-                <select name="table">
-                    {{range .DatabaseDetails.Tables}}
-                    <option value="{{.Name}}" {{if eq $.DatabaseDetails.SelectedTable .Name}}selected{{end}}>{{.Name}}</option>
-                    {{end}}
-                </select>
-            </label>
-            <button type="submit">Load preview</button>
-        </form>
-        <div class="table-card table-responsive">
-            <table class="table table-hover align-middle table-theme mb-0">
-                <thead>
-                    <tr>
-                        <th>Table</th>
-                        <th>Engine</th>
-                        <th>Rows</th>
-                        <th>Data size</th>
-                        <th>Index size</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{range .DatabaseDetails.Tables}}
-                    <tr>
-                        <td class="fw-semibold">{{.Name}}</td>
-                        <td>{{if .Engine}}{{.Engine}}{{else}}-{{end}}</td>
-                        <td>{{.RowCount}}</td>
-                        <td>{{.DataSize}}</td>
-                        <td>{{.IndexSize}}</td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
-        </div>
-        {{else}}
-        <div class="empty-state">
-            <i class="bi bi-table"></i>
-            <p>No tables found in this database yet.</p>
-        </div>
-        {{end}}
-    </article>
-    <article class="panel">
-        <h3><i class="bi bi-eye" style="color:var(--muted);"></i>Table preview</h3>
-        {{if .DatabaseDetails.Preview.Columns}}
-        <p class="muted">Showing up to 25 rows from {{.DatabaseDetails.Preview.Name}}.</p>
-        <div class="table-card table-responsive">
-            <table class="table table-hover align-middle table-theme mb-0">
-                <thead>
-                    <tr>
-                        {{range .DatabaseDetails.Preview.Columns}}
-                        <th>{{.}}</th>
-                        {{end}}
-                    </tr>
-                </thead>
-                <tbody>
-                    {{if .DatabaseDetails.Preview.Rows}}
-                    {{range .DatabaseDetails.Preview.Rows}}
-                    <tr>
-                        {{range .}}
-                        <td class="text-break">{{.}}</td>
-                        {{end}}
-                    </tr>
-                    {{end}}
-                    {{else}}
-                    <tr>
-                        <td colspan="{{len .DatabaseDetails.Preview.Columns}}" class="text-secondary">No rows found in this table.</td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
-        </div>
-        {{else}}
-        <p class="muted">Select a table to load a preview.</p>
-        {{end}}
-    </article>
-</div>
 <script>
 (() => {
     const terminalDrawer = window.PanelTerminalDrawer;
@@ -178,12 +228,136 @@
         return;
     }
     const forms = Array.from(document.querySelectorAll('.database-stream-form'));
+    const previewButtons = Array.from(document.querySelectorAll('[data-preview-table]'));
+    const previewTable = document.getElementById('db-preview-table');
+    const previewMeta = document.getElementById('db-preview-meta');
+    const previewHint = document.getElementById('db-preview-hint');
+    const selectedTableLabel = document.getElementById('db-selected-table-label');
+    const queryForm = document.getElementById('database-query-form');
+    const queryResults = document.getElementById('db-query-results');
+    const queryStatus = document.getElementById('db-query-status');
+    const queryMessage = document.getElementById('db-query-message');
+    const selectedTableInputs = Array.from(document.querySelectorAll('[data-selected-table-input]'));
+    const databaseName = {{printf "%q" .DatabaseDetails.DatabaseName}};
+
+    const renderGrid = (tableEl, columns, rows, emptyMessage) => {
+        if (!tableEl) {
+            return;
+        }
+        const safeColumns = Array.isArray(columns) ? columns : [];
+        const safeRows = Array.isArray(rows) ? rows : [];
+        const thead = document.createElement('thead');
+        const body = document.createElement('tbody');
+        if (safeColumns.length) {
+            const headerRow = document.createElement('tr');
+            safeColumns.forEach((column) => {
+                const cell = document.createElement('th');
+                cell.textContent = column;
+                headerRow.appendChild(cell);
+            });
+            thead.appendChild(headerRow);
+        }
+        if (safeRows.length) {
+            safeRows.forEach((row) => {
+                const tr = document.createElement('tr');
+                row.forEach((value) => {
+                    const td = document.createElement('td');
+                    td.className = 'text-break';
+                    td.textContent = value;
+                    tr.appendChild(td);
+                });
+                body.appendChild(tr);
+            });
+        } else {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.className = 'text-secondary';
+            td.textContent = emptyMessage;
+            td.colSpan = Math.max(safeColumns.length, 1);
+            tr.appendChild(td);
+            body.appendChild(tr);
+        }
+        tableEl.replaceChildren(thead, body);
+    };
+
+    const markActiveTable = (tableName) => {
+        previewButtons.forEach((button) => {
+            const row = button.closest('.db-table-row');
+            const active = button.getAttribute('data-preview-table') === tableName;
+            row?.classList.toggle('is-active', active);
+        });
+    };
+
+    const loadPreview = async (tableName) => {
+        previewHint.textContent = 'Loading table preview...';
+        try {
+            const response = await fetch('/databases/details/preview?name=' + encodeURIComponent(databaseName) + '&table=' + encodeURIComponent(tableName), {
+                headers: { Accept: 'application/json' },
+            });
+            const payload = await response.json();
+            if (!response.ok) {
+                throw new Error(payload.error || 'Preview could not be loaded.');
+            }
+            const preview = payload.preview || {};
+            const previewColumns = preview.columns || preview.Columns || [];
+            const previewRows = preview.rows || preview.Rows || [];
+            renderGrid(previewTable, previewColumns, previewRows, 'No rows found in this table.');
+            const activeTable = payload.selected_table || tableName;
+            selectedTableLabel.textContent = activeTable;
+            selectedTableInputs.forEach((input) => {
+                input.value = activeTable;
+            });
+            previewMeta.textContent = 'Up to 100 rows';
+            const tableSummary = payload.table_summary || {};
+            const totalSizeDisplay = tableSummary.total_size_display || tableSummary.TotalSizeDisplay || 'table';
+            previewHint.textContent = payload.table_summary ? ('Showing ' + totalSizeDisplay + ' from ' + activeTable + '.') : 'Preview refreshed.';
+            markActiveTable(activeTable);
+        } catch (error) {
+            previewHint.textContent = String(error);
+        }
+    };
+
+    previewButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const tableName = button.getAttribute('data-preview-table') || '';
+            if (tableName) {
+                void loadPreview(tableName);
+            }
+        });
+    });
+
+    queryForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        queryStatus.textContent = 'Running';
+        queryMessage.textContent = 'Executing SQL command...';
+        const formData = new FormData(queryForm);
+        try {
+            const response = await fetch('/databases/details/query', {
+                method: 'POST',
+                headers: { Accept: 'application/json' },
+                body: new URLSearchParams(formData),
+            });
+            const payload = await response.json();
+            if (!response.ok) {
+                throw new Error(payload.error || 'Query failed.');
+            }
+            renderGrid(queryResults, payload.columns || [], payload.rows || [], payload.message || 'Query executed successfully.');
+            queryStatus.textContent = payload.truncated ? 'Partial' : 'Done';
+            queryMessage.textContent = payload.message || 'Query executed successfully.';
+        } catch (error) {
+            renderGrid(queryResults, [], [], String(error));
+            queryStatus.textContent = 'Failed';
+            queryMessage.textContent = String(error);
+        }
+    });
+
     forms.forEach((form) => {
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
             await terminalDrawer.streamForm(form, form.dataset.streamEndpoint || '/databases/details/stream', {
                 title: 'Database restore',
                 reloadOnSuccess: form.dataset.reloadOnSuccess === '1',
+                submitter: event.submitter,
             });
         });
     });

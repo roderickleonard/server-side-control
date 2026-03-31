@@ -37,3 +37,11 @@ func (stubDatabaseManager) InspectDatabase(spec DatabaseInspectSpec) (DatabaseDe
 func (stubDatabaseManager) RestoreDatabase(name string, filePath string) (string, error) {
 	return "", fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
 }
+
+func ExecuteDatabaseQuery(adminDefaultsFile string, databaseName string, statement string, maxRows int) (DatabaseQueryResult, error) {
+	return DatabaseQueryResult{}, fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}
+
+func ExportDatabase(adminDefaultsFile string, databaseName string, filePath string) (string, error) {
+	return "", fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}

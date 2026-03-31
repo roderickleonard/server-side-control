@@ -32,12 +32,15 @@
         <form method="post" class="stack-form compact-form php-stream-form" data-stream-endpoint="/php/stream" data-reload-on-success="1">
             <input type="hidden" name="php_action" value="install_versions">
             {{if .PHPInstallableVersions}}
-            <div class="info-grid">
-                {{range .PHPInstallableVersions}}
-                <label class="checkbox-row compact"><input type="checkbox" name="install_versions" value="{{.}}"><span>PHP {{.}}</span></label>
-                {{end}}
-            </div>
-            <p class="muted details-note">Selected versions install `phpX.Y-fpm`, `phpX.Y-cli`, and `phpX.Y-common` from the server's apt sources.</p>
+            <label>
+                <span>Select PHP versions to install</span>
+                <select name="install_versions" multiple size="6">
+                    {{range .PHPInstallableVersions}}
+                    <option value="{{.}}">PHP {{.}}{{if or (eq . "7.4") (eq . "8.0")}} · legacy setup{{end}}</option>
+                    {{end}}
+                </select>
+            </label>
+            <p class="muted details-note">Use Command or Control to select multiple versions. Legacy branches such as 7.4 and 8.0 automatically use the alternate package-source flow before package install.</p>
             <div class="form-actions">
                 <button type="submit">Install selected versions</button>
             </div>

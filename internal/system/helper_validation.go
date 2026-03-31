@@ -21,6 +21,8 @@ var allowedHelperActions = map[string]struct{}{
 	"mysql.rotate_admin_password": {},
 	"mysql.inspect_database": {},
 	"mysql.restore_database": {},
+	"mysql.execute_query": {},
+	"mysql.export_database": {},
 	"nginx.apply_site": {},
 	"nginx.delete_site": {},
 	"nginx.validate":   {},

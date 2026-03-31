@@ -219,28 +219,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	security, securityErr := a.store.GetPanelUserSecurity(r.Context(), identity.Username)
-	if securityErr != nil {
-		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
-			Title:        "Login",
-			RequestError: "Two-step verification status could not be loaded: " + securityErr.Error(),
-		})
-		return
-	}
-	if security.TOTPEnabled && strings.TrimSpace(security.TOTPSecret) != "" {
-		pendingLogin, err := a.pendingLogins.Create(r.Context(), *identity, a.clientAddress(r))
-		if err != nil {
-			http.Error(w, "login challenge error", http.StatusInternalServerError)
-			return
-		}
-		a.setPendingLoginCookie(w, r, pendingLogin)
-		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
-			Title:             "Login",
-			SuccessMessage:    "Password accepted. Enter the 6-digit verification code from Apple Passwords or another authenticator app.",
-				LoginStage:        "totp",
-			LoginRequiresTOTP: true,
-			LoginUsername:     identity.Username,
-		})
+	if a.beginSecondFactorLogin(w, r, *identity, "Password accepted. Enter the 6-digit verification code from Apple Passwords or another authenticator app.") {
 		return
 	}
 
@@ -617,6 +596,47 @@ func (a *App) completeAuthenticatedLogin(w http.ResponseWriter, r *http.Request,
 	return true
 }
 
+func (a *App) beginSecondFactorLogin(w http.ResponseWriter, r *http.Request, identity auth.Identity, successMessage string) bool {
+	security, securityErr := a.store.GetPanelUserSecurity(r.Context(), identity.Username)
+	if securityErr != nil {
+		message := "Two-step verification status could not be loaded: " + securityErr.Error()
+		if strings.Contains(r.Header.Get("Accept"), "application/json") {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": message})
+			return true
+		}
+		a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
+			Title:        "Login",
+			RequestError: message,
+		})
+		return true
+	}
+	if !security.TOTPEnabled || strings.TrimSpace(security.TOTPSecret) == "" {
+		return false
+	}
+	pendingLogin, err := a.pendingLogins.Create(r.Context(), identity, a.clientAddress(r))
+	if err != nil {
+		if strings.Contains(r.Header.Get("Accept"), "application/json") {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "login challenge error"})
+			return true
+		}
+		http.Error(w, "login challenge error", http.StatusInternalServerError)
+		return true
+	}
+	a.setPendingLoginCookie(w, r, pendingLogin)
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		writeJSON(w, http.StatusOK, map[string]string{"redirect": "/login"})
+		return true
+	}
+	a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
+		Title:             "Login",
+		SuccessMessage:    successMessage,
+		LoginStage:        "totp",
+		LoginRequiresTOTP: true,
+		LoginUsername:     identity.Username,
+	})
+	return true
+}
+
 func (a *App) handlePasskeyLoginBegin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -699,6 +719,9 @@ func (a *App) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	identity := auth.Identity{Username: challenge.Username, DisplayName: challenge.Username, AuthProvider: "passkey"}
 	a.webauthnChallenges.Delete(r.Context(), challenge.ID)
+	if a.beginSecondFactorLogin(w, r, identity, "Passkey accepted. Complete Two-Step Verification to sign in.") {
+		return
+	}
 	if !a.completeAuthenticatedLogin(w, r, identity, "passkey") {
 		return
 	}
@@ -4860,6 +4883,9 @@ func buildLaravelPermissionDisplayCommand(rootDir string, ownerUser string) stri
 
 func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
 	users := a.listLinuxUsers()
+	selectedUser := strings.TrimSpace(r.URL.Query().Get("run_as_user"))
+	selectedAction := firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("action")), "list")
+	processNames := a.pm2ProcessNames(selectedUser)
 
 	if r.Method == http.MethodGet {
 		a.render(r.Context(), w, r.URL.Path, "processes.html", TemplateData{
@@ -4867,6 +4893,9 @@ func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
 			LinuxUsers:     users,
+			ProcessNames:   processNames,
+			ProcessSelectedUser: selectedUser,
+			ProcessSelectedAction: selectedAction,
 		})
 		return
 	}
@@ -4891,6 +4920,7 @@ func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
 	action := r.FormValue("action")
 	processName := r.FormValue("process_name")
 	logLines, _ := strconv.Atoi(r.FormValue("log_lines"))
+	processNames = a.pm2ProcessNames(strings.TrimSpace(user))
 
 	var (
 		output  string
@@ -4928,6 +4958,9 @@ func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
 			DatabaseStatus: a.databaseStatus(r.Context()),
 			Metrics:        a.metrics.Snapshot(),
 			LinuxUsers:     users,
+				ProcessNames:   processNames,
+				ProcessSelectedUser: strings.TrimSpace(user),
+				ProcessSelectedAction: firstNonEmpty(strings.TrimSpace(action), "list"),
 			RequestError:   err.Error(),
 			CommandOutput:  output,
 		})
@@ -4940,9 +4973,63 @@ func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
 		LinuxUsers:     users,
+		ProcessNames:   processNames,
+		ProcessSelectedUser: strings.TrimSpace(user),
+		ProcessSelectedAction: firstNonEmpty(strings.TrimSpace(action), "list"),
 		SuccessMessage: message,
 		CommandOutput:  output,
 	})
+}
+
+func (a *App) handleProcessOptions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	user := strings.TrimSpace(r.URL.Query().Get("run_as_user"))
+	if user == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "run_as_user is required"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"process_names": a.pm2ProcessNames(user)})
+}
+
+func (a *App) pm2ProcessNames(user string) []string {
+	user = strings.TrimSpace(user)
+	if user == "" {
+		return nil
+	}
+	output, err := a.pm2.List(user)
+	if err != nil {
+		return nil
+	}
+	return parsePM2ProcessNames(output)
+}
+
+func parsePM2ProcessNames(output string) []string {
+	seen := map[string]struct{}{}
+	names := make([]string, 0)
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || !strings.Contains(trimmed, "│") {
+			continue
+		}
+		parts := strings.Split(trimmed, "│")
+		if len(parts) < 4 {
+			continue
+		}
+		name := strings.TrimSpace(parts[2])
+		if name == "" || strings.EqualFold(name, "name") || strings.HasPrefix(name, "[") {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (a *App) handlePHP(w http.ResponseWriter, r *http.Request) {
@@ -5804,8 +5891,11 @@ func supervisorActionErrorMessage(err error) string {
 
 func (a *App) handleLogs(w http.ResponseWriter, r *http.Request) {
 	logs := []domain.AuditLog{}
+	sortField := firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("sort")), "created_at")
+	sortDirection := firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("direction")), "desc")
+	outcomeFilter := strings.TrimSpace(r.URL.Query().Get("outcome"))
 	if a.store != nil {
-		if entries, err := a.store.ListAuditLogs(r.Context(), 50); err == nil {
+		if entries, err := a.store.ListAuditLogsFiltered(r.Context(), 50, sortField, sortDirection, outcomeFilter); err == nil {
 			logs = entries
 		}
 	}
@@ -5814,6 +5904,9 @@ func (a *App) handleLogs(w http.ResponseWriter, r *http.Request) {
 		DatabaseStatus: a.databaseStatus(r.Context()),
 		Metrics:        a.metrics.Snapshot(),
 		AuditLogs:      logs,
+		AuditSort:      sortField,
+		AuditDirection: sortDirection,
+		AuditOutcomeFilter: outcomeFilter,
 	})
 }
 

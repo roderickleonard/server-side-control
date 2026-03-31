@@ -84,30 +84,37 @@
         </div>
         {{if .DatabaseAccess}}
         <div class="table-card table-responsive">
-            <table class="table table-hover align-middle table-theme mb-0">
+            <table class="table table-hover align-middle table-theme mb-0 table-nowrap">
                 <thead>
                     <tr>
                         <th>Database</th>
-                        <th>User</th>
-                        <th>Host</th>
+                        <th>Access</th>
                         <th>Password</th>
                         <th>Actions</th>
-                        <th>Delete</th>
                     </tr>
                 </thead>
                 <tbody>
                     {{range .DatabaseAccess}}
                     <tr>
-                        <td class="fw-semibold">{{.DatabaseName}}</td>
-                        <td>{{if .Username}}{{.Username}}{{else}}-{{end}}</td>
-                        <td>{{if .Host}}{{.Host}}{{else}}-{{end}}</td>
+                        <td>
+                            <div class="row-summary">
+                                <strong>{{.DatabaseName}}</strong>
+                                <span>Managed MySQL schema</span>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="row-summary row-summary-muted">
+                                <strong>{{if .Username}}{{.Username}}@{{if .Host}}{{.Host}}{{else}}localhost{{end}}{{else}}No scoped user{{end}}</strong>
+                                <span>{{if .Username}}Scoped access account{{else}}Details and admin operations only{{end}}</span>
+                            </div>
+                        </td>
                         <td>
                             {{if .Username}}
-                            <form method="post" class="inline-form table-action-form">
+                            <form method="post" class="inline-form inline-action-form">
                                 <input type="hidden" name="database_action" value="rotate_user_password">
                                 <input type="hidden" name="rotate_database_user" value="{{.Username}}">
                                 <input type="hidden" name="rotate_database_host" value="{{.Host}}">
-                                <input type="password" name="rotate_database_password" placeholder="Leave blank to generate">
+                                <input type="password" name="rotate_database_password" class="inline-input-xs" placeholder="Leave blank to generate">
                                 <button type="submit">Change password</button>
                             </form>
                             {{else}}
@@ -115,22 +122,22 @@
                             {{end}}
                         </td>
                         <td>
-                            <div class="table-actions">
-                                <a class="btn btn-sm btn-outline-secondary" href="/databases/details?name={{.DatabaseName}}">Details</a>
+                            <div class="inline-action-cluster">
+                                <div class="table-actions">
+                                    <a class="btn btn-sm btn-outline-secondary" href="/databases/details?name={{.DatabaseName}}">Details</a>
+                                </div>
+                                <form method="post" class="inline-form inline-action-form inline-action-form-danger">
+                                    <input type="hidden" name="database_action" value="delete_access">
+                                    <input type="hidden" name="delete_database_name" value="{{.DatabaseName}}">
+                                    <input type="hidden" name="delete_database_user" value="{{.Username}}">
+                                    <input type="hidden" name="delete_database_host" value="{{.Host}}">
+                                    <label class="checkbox-row compact inline-checkbox">
+                                        <input type="checkbox" name="drop_database" value="1">
+                                        <span>Delete contents too</span>
+                                    </label>
+                                    <button type="submit">Delete</button>
+                                </form>
                             </div>
-                        </td>
-                        <td>
-                            <form method="post" class="inline-form table-action-form">
-                                <input type="hidden" name="database_action" value="delete_access">
-                                <input type="hidden" name="delete_database_name" value="{{.DatabaseName}}">
-                                <input type="hidden" name="delete_database_user" value="{{.Username}}">
-                                <input type="hidden" name="delete_database_host" value="{{.Host}}">
-                                <label class="checkbox-row compact">
-                                    <input type="checkbox" name="drop_database" value="1">
-                                    <span>Delete contents too</span>
-                                </label>
-                                <button type="submit">Delete</button>
-                            </form>
                         </td>
                     </tr>
                     {{end}}

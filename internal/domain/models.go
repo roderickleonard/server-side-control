@@ -61,6 +61,17 @@ type AuditLog struct {
 	CreatedAt   time.Time
 }
 
+type DatabaseBackupToken struct {
+	Token          string
+	DatabaseName   string
+	RecipientEmail string
+	FilePath       string
+	CreatedBy      string
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+	DownloadedAt   *time.Time
+}
+
 type SiteRuntimeCommand struct {
 	ID          int64     `json:"id"`
 	SiteID      int64     `json:"site_id"`

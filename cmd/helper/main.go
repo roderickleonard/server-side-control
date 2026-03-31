@@ -735,6 +735,29 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		output, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).RestoreDatabase(input.DatabaseName, input.FilePath)
 		writeSuccess(nil, output, err)
+	case "mysql.execute_query":
+		var input struct {
+			DatabaseName string `json:"database_name"`
+			QuerySQL     string `json:"query_sql"`
+			MaxRows      int    `json:"max_rows"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		result, err := system.ExecuteDatabaseQuery(cfg.MySQLAdminDefaultsFile, input.DatabaseName, input.QuerySQL, input.MaxRows)
+		writeSuccess(result, "", err)
+	case "mysql.export_database":
+		var input struct {
+			DatabaseName string `json:"database_name"`
+			FilePath     string `json:"file_path"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		outputPath, err := system.ExportDatabase(cfg.MySQLAdminDefaultsFile, input.DatabaseName, input.FilePath)
+		writeSuccess(map[string]string{"file_path": outputPath}, outputPath, err)
 	case "panel.write_env":
 		var input struct {
 			Content string `json:"content"`

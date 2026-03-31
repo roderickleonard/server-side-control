@@ -16,6 +16,8 @@ func TestValidateHelperAction(t *testing.T) {
 		{name: "allowed git auth", action: "git_auth.ensure_deploy_key", wantErr: false},
 		{name: "allowed mysql provisioning", action: "mysql.provision_database", wantErr: false},
 		{name: "allowed mysql inspect", action: "mysql.inspect_database", wantErr: false},
+		{name: "allowed mysql query", action: "mysql.execute_query", wantErr: false},
+		{name: "allowed mysql export", action: "mysql.export_database", wantErr: false},
 		{name: "allowed mysql admin password rotation", action: "mysql.rotate_admin_password", wantErr: false},
 		{name: "allowed tls", action: "nginx.enable_tls", wantErr: false},
 		{name: "allowed site delete", action: "nginx.delete_site", wantErr: false},

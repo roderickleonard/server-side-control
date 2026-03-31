@@ -15,7 +15,7 @@ import (
 
 var fastCGIPassPattern = regexp.MustCompile(`fastcgi_pass\s+unix:/run/php/php[0-9.]+-fpm\.sock;`)
 var phpExtensionPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_+-]*$`)
-var phpInstallCandidateVersions = []string{"8.1", "8.2", "8.3", "8.4"}
+var phpInstallCandidateVersions = []string{"7.4", "8.0", "8.1", "8.2", "8.3", "8.4"}
 var phpINIByteValuePattern = regexp.MustCompile(`(?i)^\d+[kmg]?$`)
 var phpININumericValuePattern = regexp.MustCompile(`^\d+$`)
 
@@ -78,9 +78,7 @@ func (linuxPHPManager) ListInstallableVersions() ([]string, error) {
 		versionSet[version] = struct{}{}
 	}
 	for _, version := range phpInstallCandidateVersions {
-		if packageExists("php" + version + "-fpm") {
-			versionSet[version] = struct{}{}
-		}
+		versionSet[version] = struct{}{}
 	}
 	versions := make([]string, 0, len(versionSet))
 	for version := range versionSet {
@@ -93,10 +91,14 @@ func (linuxPHPManager) ListInstallableVersions() ([]string, error) {
 func (linuxPHPManager) InstallVersions(versions []string) (string, error) {
 	packages := make([]string, 0)
 	seenPackages := make(map[string]struct{})
+	legacyRequested := false
 	for _, version := range versions {
 		version = strings.TrimSpace(version)
 		if !phpVersionPattern.MatchString(version) {
 			return "", ErrInvalidPHPVersion
+		}
+		if phpVersionNeedsLegacyRepository(version) {
+			legacyRequested = true
 		}
 		for _, packageName := range []string{"php" + version + "-fpm", "php" + version + "-cli", "php" + version + "-common"} {
 			if _, ok := seenPackages[packageName]; ok {
@@ -109,7 +111,11 @@ func (linuxPHPManager) InstallVersions(versions []string) (string, error) {
 	if len(packages) == 0 {
 		return "", fmt.Errorf("at least one php version must be selected")
 	}
-	cmd := exec.Command("bash", "-lc", "DEBIAN_FRONTEND=noninteractive apt-get install -y "+shellJoin(packages))
+	commandBody := "DEBIAN_FRONTEND=noninteractive apt-get install -y " + shellJoin(packages)
+	if legacyRequested {
+		commandBody = "DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common ca-certificates lsb-release apt-transport-https && add-apt-repository -y ppa:ondrej/php && DEBIAN_FRONTEND=noninteractive apt-get update && " + commandBody
+	}
+	cmd := exec.Command("bash", "-lc", commandBody)
 	var output bytes.Buffer
 	cmd.Stdout = &output
 	cmd.Stderr = &output
@@ -117,6 +123,11 @@ func (linuxPHPManager) InstallVersions(versions []string) (string, error) {
 		return strings.TrimSpace(output.String()), fmt.Errorf("php install failed: %w", err)
 	}
 	return strings.TrimSpace(output.String()), nil
+}
+
+func phpVersionNeedsLegacyRepository(version string) bool {
+	version = strings.TrimSpace(version)
+	return version == "7.4" || version == "8.0"
 }
 
 func (linuxPHPManager) ListExtensionStatus(version string) (PHPExtensionStatus, error) {

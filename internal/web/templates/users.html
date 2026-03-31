@@ -77,62 +77,66 @@
         </div>
         {{if .LinuxUsers}}
         <div class="table-card table-responsive">
-            <table class="table table-hover align-middle table-theme mb-0">
+            <table class="table table-hover align-middle table-theme mb-0 table-nowrap">
                 <thead>
                     <tr>
-                        <th>Username</th>
-                        <th>UID</th>
+                        <th>User</th>
                         <th>Home</th>
-                        <th>Sudo</th>
-                        <th>NOPASSWD</th>
-                        <th>Password</th>
-                        <th>Sudo toggle</th>
-                        <th>NOPASSWD toggle</th>
-                        <th class="text-end">Delete</th>
+                        <th>Access</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {{range .LinuxUsers}}
                     <tr>
-                        <td class="fw-semibold">{{.Username}}</td>
-                        <td style="color:var(--muted);font-size:12px;">{{.UID}}</td>
-                        <td class="text-break" style="font-size:12px;color:var(--muted);">{{.HomeDirectory}}</td>
-                        <td>{{if .SudoEnabled}}<span class="status-pill running">Enabled</span>{{else}}<span class="status-pill stopped">Disabled</span>{{end}}</td>
-                        <td>{{if .PasswordlessSudo}}<span class="status-pill running">Enabled</span>{{else}}<span class="status-pill unknown">Off</span>{{end}}</td>
                         <td>
-                            <form method="post" class="inline-form table-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
-                                <input type="hidden" name="user_action" value="set_password">
-                                <input type="hidden" name="password_username" value="{{.Username}}">
-                                <input type="password" name="set_linux_password" placeholder="New password" required>
-                                <button type="submit">Set</button>
-                            </form>
+                            <div class="row-summary">
+                                <strong>{{.Username}}</strong>
+                                <span>UID {{.UID}}</span>
+                            </div>
                         </td>
                         <td>
-                            <form method="post" class="inline-form table-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
-                                <input type="hidden" name="user_action" value="set_sudo">
-                                <input type="hidden" name="sudo_username" value="{{.Username}}">
-                                <input type="hidden" name="sudo_enabled" value="{{if .SudoEnabled}}0{{else}}1{{end}}">
-                                <button type="submit">{{if .SudoEnabled}}Revoke{{else}}Grant{{end}}</button>
-                            </form>
+                            <div class="row-summary row-summary-muted text-break">
+                                <strong>{{.HomeDirectory}}</strong>
+                                <span>{{if .PasswordSet}}Login password set{{else}}No password saved{{end}}</span>
+                            </div>
                         </td>
                         <td>
-                            <form method="post" class="inline-form table-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
-                                <input type="hidden" name="user_action" value="set_passwordless_sudo">
-                                <input type="hidden" name="passwordless_sudo_username" value="{{.Username}}">
-                                <input type="hidden" name="passwordless_sudo_enabled" value="{{if .PasswordlessSudo}}0{{else}}1{{end}}">
-                                <button type="submit">{{if .PasswordlessSudo}}Disable{{else}}Enable{{end}}</button>
-                            </form>
+                            <div class="badge-stack">
+                                {{if .SudoEnabled}}<span class="status-pill running">Sudo enabled</span>{{else}}<span class="status-pill stopped">Sudo disabled</span>{{end}}
+                                {{if .PasswordlessSudo}}<span class="status-pill running">NOPASSWD enabled</span>{{else}}<span class="status-pill unknown">NOPASSWD off</span>{{end}}
+                            </div>
                         </td>
                         <td>
-                            <form method="post" class="inline-form table-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
-                                <input type="hidden" name="user_action" value="delete">
-                                <input type="hidden" name="delete_username" value="{{.Username}}">
-                                <label class="checkbox-row compact">
-                                    <input type="checkbox" name="remove_home" value="1">
-                                    <span>Delete home</span>
-                                </label>
-                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                            </form>
+                            <div class="inline-action-cluster">
+                                <form method="post" class="inline-form inline-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
+                                    <input type="hidden" name="user_action" value="set_password">
+                                    <input type="hidden" name="password_username" value="{{.Username}}">
+                                    <input type="password" name="set_linux_password" class="inline-input-xs" placeholder="New password" required>
+                                    <button type="submit">Set password</button>
+                                </form>
+                                <form method="post" class="inline-form inline-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
+                                    <input type="hidden" name="user_action" value="set_sudo">
+                                    <input type="hidden" name="sudo_username" value="{{.Username}}">
+                                    <input type="hidden" name="sudo_enabled" value="{{if .SudoEnabled}}0{{else}}1{{end}}">
+                                    <button type="submit">{{if .SudoEnabled}}Revoke sudo{{else}}Grant sudo{{end}}</button>
+                                </form>
+                                <form method="post" class="inline-form inline-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
+                                    <input type="hidden" name="user_action" value="set_passwordless_sudo">
+                                    <input type="hidden" name="passwordless_sudo_username" value="{{.Username}}">
+                                    <input type="hidden" name="passwordless_sudo_enabled" value="{{if .PasswordlessSudo}}0{{else}}1{{end}}">
+                                    <button type="submit">{{if .PasswordlessSudo}}Disable NOPASSWD{{else}}Enable NOPASSWD{{end}}</button>
+                                </form>
+                                <form method="post" class="inline-form inline-action-form inline-action-form-danger user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
+                                    <input type="hidden" name="user_action" value="delete">
+                                    <input type="hidden" name="delete_username" value="{{.Username}}">
+                                    <label class="checkbox-row compact inline-checkbox">
+                                        <input type="checkbox" name="remove_home" value="1">
+                                        <span>Delete home</span>
+                                    </label>
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete user</button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     {{end}}

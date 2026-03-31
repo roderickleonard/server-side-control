@@ -206,6 +206,12 @@ type TemplateData struct {
 	PreviousCommitSHA string
 	Metrics        system.Snapshot
 	AuditLogs      []domain.AuditLog
+	AuditSort      string
+	AuditDirection string
+	AuditOutcomeFilter string
+	ProcessNames   []string
+	ProcessSelectedUser string
+	ProcessSelectedAction string
 	DeploymentReleases []domain.DeploymentRelease
 	PackageScripts []string
 	ProjectHasComposer bool
@@ -322,6 +328,7 @@ func (a *App) Handler() http.Handler {
 // StartBackgroundTasks starts background maintenance goroutines that run until ctx is done.
 func (a *App) StartBackgroundTasks(ctx context.Context) {
 	a.loginRateLimiter.StartCleanup(ctx, 5*time.Minute)
+	a.startDatabaseBackupCleanup(ctx)
 }
 
 func (a *App) registerRoutes() {
@@ -336,7 +343,10 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/users/stream", a.handleUsersStream)
 	a.router.HandleFunc("/databases", a.handleDatabases)
 	a.router.HandleFunc("/databases/details", a.handleDatabaseDetails)
+	a.router.HandleFunc("/databases/details/preview", a.handleDatabaseDetailsPreview)
+	a.router.HandleFunc("/databases/details/query", a.handleDatabaseDetailsQuery)
 	a.router.HandleFunc("/databases/details/stream", a.handleDatabaseDetailsStream)
+	a.router.HandleFunc("/databases/details/download/", a.handleDatabaseBackupDownload)
 	a.router.HandleFunc("/sites", a.handleSites)
 	a.router.HandleFunc("/sites/stream", a.handleSitesStream)
 	a.router.HandleFunc("/sites/details", a.handleSiteDetails)
@@ -359,6 +369,7 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/deploys", a.handleDeploys)
 	a.router.HandleFunc("/deploys/stream", a.handleDeploysStream)
 	a.router.HandleFunc("/processes", a.handleProcesses)
+	a.router.HandleFunc("/processes/options", a.handleProcessOptions)
 	a.router.HandleFunc("/processes/stream", a.handleProcessesStream)
 	a.router.HandleFunc("/logs", a.handleLogs)
 }

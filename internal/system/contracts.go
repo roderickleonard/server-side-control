@@ -20,6 +20,7 @@ var ErrInvalidLinuxPassword = errors.New("invalid linux password")
 var ErrInvalidGitCommand = errors.New("invalid git command")
 var ErrInvalidTableName = errors.New("invalid mysql table name")
 var ErrInvalidRestorePath = errors.New("invalid mysql restore file path")
+var ErrInvalidDatabaseQuery = errors.New("invalid mysql query")
 var ErrInvalidCronSchedule = errors.New("invalid cron schedule")
 var ErrInvalidCronCommand = errors.New("invalid cron command")
 
@@ -70,12 +71,16 @@ type DatabaseTableSummary struct {
 	RowCount  int64
 	DataSize  int64
 	IndexSize int64
+	DataSizeDisplay string
+	IndexSizeDisplay string
+	TotalSizeDisplay string
 }
 
 type DatabaseTablePreview struct {
 	Name    string
 	Columns []string
 	Rows    [][]string
+	Truncated bool
 }
 
 type DatabaseDetails struct {
@@ -84,6 +89,15 @@ type DatabaseDetails struct {
 	Tables         []DatabaseTableSummary
 	Preview        DatabaseTablePreview
 	ApproximateSize int64
+	ApproximateSizeDisplay string
+}
+
+type DatabaseQueryResult struct {
+	Columns   []string `json:"columns"`
+	Rows      [][]string `json:"rows"`
+	Message   string `json:"message"`
+	RowCount  int `json:"row_count"`
+	Truncated bool `json:"truncated"`
 }
 
 type NginxManager interface {

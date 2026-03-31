@@ -29,27 +29,33 @@
             <div class="form-grid two-up">
                 <label>
                     <span>Linux user</span>
-                    <select name="run_as_user" required>
+                    <select name="run_as_user" data-process-user required>
                         <option value="">Select Linux user</option>
                         {{range .LinuxUsers}}
-                        <option value="{{.Username}}">{{.Username}}</option>
+                        <option value="{{.Username}}" {{if eq $.ProcessSelectedUser .Username}}selected{{end}}>{{.Username}}</option>
                         {{end}}
                     </select>
                 </label>
                 <label>
                     <span>Action</span>
-                    <select name="action">
-                        <option value="list">List processes</option>
-                        <option value="start">Start process</option>
-                        <option value="stop">Stop process</option>
-                        <option value="restart">Restart process</option>
-                        <option value="reload">Reload process</option>
-                        <option value="logs">Show logs</option>
+                    <select name="action" data-process-action>
+                        <option value="list" {{if eq .ProcessSelectedAction "list"}}selected{{end}}>List processes</option>
+                        <option value="start" {{if eq .ProcessSelectedAction "start"}}selected{{end}}>Start process</option>
+                        <option value="stop" {{if eq .ProcessSelectedAction "stop"}}selected{{end}}>Stop process</option>
+                        <option value="restart" {{if eq .ProcessSelectedAction "restart"}}selected{{end}}>Restart process</option>
+                        <option value="reload" {{if eq .ProcessSelectedAction "reload"}}selected{{end}}>Reload process</option>
+                        <option value="logs" {{if eq .ProcessSelectedAction "logs"}}selected{{end}}>Show logs</option>
                     </select>
                 </label>
                 <label>
                     <span>Process name</span>
-                    <input type="text" name="process_name" placeholder="api-app">
+                    <select name="process_name" data-process-name>
+                        <option value="">{{if .ProcessNames}}Select process{{else}}Choose a Linux user first{{end}}</option>
+                        {{range .ProcessNames}}
+                        <option value="{{.}}">{{.}}</option>
+                        {{end}}
+                    </select>
+                    <small class="muted" data-process-hint>Process names are loaded automatically from the selected user's PM2 list.</small>
                 </label>
                 <label>
                     <span>Log lines</span>
@@ -79,10 +85,86 @@
     }
     const forms = Array.from(document.querySelectorAll('.process-stream-form'));
     forms.forEach((form) => {
+        const userSelect = form.querySelector('[data-process-user]');
+        const actionSelect = form.querySelector('[data-process-action]');
+        const processSelect = form.querySelector('[data-process-name]');
+        const processHint = form.querySelector('[data-process-hint]');
+
+        const setProcessState = (message, disabled) => {
+            if (processHint) {
+                processHint.textContent = message;
+            }
+            if (processSelect) {
+                processSelect.disabled = disabled;
+            }
+        };
+
+        const syncProcessRequirement = () => {
+            if (!processSelect || !actionSelect) {
+                return;
+            }
+            const requiresProcess = actionSelect.value !== 'list';
+            processSelect.required = requiresProcess;
+            if (!requiresProcess) {
+                setProcessState('Listing does not require a process name. Select one only for start, stop, restart, reload, or logs.', processSelect.options.length <= 1);
+            }
+        };
+
+        const loadProcesses = async () => {
+            if (!userSelect || !processSelect) {
+                return;
+            }
+            const user = String(userSelect.value || '').trim();
+            processSelect.innerHTML = '<option value="">Choose a Linux user first</option>';
+            if (!user) {
+                setProcessState('Select a Linux user to load that user\'s PM2 process names.', true);
+                syncProcessRequirement();
+                return;
+            }
+
+            setProcessState('Loading PM2 processes for the selected user...', true);
+            try {
+                const response = await fetch('/processes/options?run_as_user=' + encodeURIComponent(user), {
+                    headers: { Accept: 'application/json' },
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || 'Processes could not be loaded.');
+                }
+                const names = Array.isArray(payload.process_names) ? payload.process_names : [];
+                processSelect.innerHTML = '';
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = names.length ? 'Select process' : 'No PM2 processes found';
+                processSelect.appendChild(placeholder);
+                names.forEach((name) => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name;
+                    processSelect.appendChild(option);
+                });
+                setProcessState(names.length ? 'Process list updated from the selected user.' : 'No PM2 processes were found for the selected user.', names.length === 0);
+            } catch (error) {
+                processSelect.innerHTML = '<option value="">Process list unavailable</option>';
+                setProcessState(String(error), true);
+            }
+            syncProcessRequirement();
+        };
+
+        userSelect?.addEventListener('change', () => {
+            void loadProcesses();
+        });
+        actionSelect?.addEventListener('change', syncProcessRequirement);
+        syncProcessRequirement();
+        if (userSelect && userSelect.value && processSelect && processSelect.options.length <= 1) {
+            void loadProcesses();
+        }
+
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
             await terminalDrawer.streamForm(form, form.dataset.streamEndpoint || '/processes/stream', {
                 title: 'PM2 action',
+                submitter: event.submitter,
             });
         });
     });

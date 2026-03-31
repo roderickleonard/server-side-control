@@ -32,14 +32,39 @@ func (s *Store) CreateAuditLog(ctx context.Context, entry domain.AuditLog) error
 }
 
 func (s *Store) ListAuditLogs(ctx context.Context, limit int) ([]domain.AuditLog, error) {
+	return s.ListAuditLogsFiltered(ctx, limit, "created_at", "desc", "")
+}
+
+func (s *Store) ListAuditLogsFiltered(ctx context.Context, limit int, sortField string, sortDirection string, outcome string) ([]domain.AuditLog, error) {
 	if s == nil {
 		return nil, errors.New("store is not configured")
 	}
 	if limit <= 0 {
 		limit = 50
 	}
-
-	rows, err := s.db.QueryContext(ctx, `SELECT id, actor, action, target, outcome, COALESCE(CAST(metadata AS CHAR), ''), created_at FROM audit_logs ORDER BY id DESC LIMIT ?`, limit)
+	allowedSortFields := map[string]string{
+		"created_at": "created_at",
+		"outcome": "outcome",
+		"actor": "actor",
+		"action": "action",
+	}
+	orderBy := allowedSortFields[sortField]
+	if orderBy == "" {
+		orderBy = "created_at"
+	}
+	direction := "DESC"
+	if strings.EqualFold(sortDirection, "asc") {
+		direction = "ASC"
+	}
+	query := `SELECT id, actor, action, target, outcome, COALESCE(CAST(metadata AS CHAR), ''), created_at FROM audit_logs`
+	args := []any{}
+	if strings.TrimSpace(outcome) != "" {
+		query += ` WHERE outcome = ?`
+		args = append(args, strings.TrimSpace(outcome))
+	}
+	query += fmt.Sprintf(` ORDER BY %s %s, id DESC LIMIT ?`, orderBy, direction)
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list audit logs: %w", err)
 	}
