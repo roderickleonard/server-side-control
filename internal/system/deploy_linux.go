@@ -503,7 +503,7 @@ func ensureCleanGitWorktree(ctx context.Context, username string, targetDirector
 	if output != nil {
 		output.Write(statusOutput.Bytes())
 	}
-	files := parseDirtyWorktreeFiles(statusOutput.String())
+	files := filterIgnoredDirtyWorktreeFiles(parseDirtyWorktreeFiles(statusOutput.String()))
 	if len(files) == 0 {
 		return nil
 	}
@@ -524,7 +524,7 @@ func ensureCleanGitWorktreeStream(ctx context.Context, username string, targetDi
 	if stdout != nil {
 		_, _ = stdout.Write(statusOutput.Bytes())
 	}
-	files := parseDirtyWorktreeFiles(statusOutput.String())
+	files := filterIgnoredDirtyWorktreeFiles(parseDirtyWorktreeFiles(statusOutput.String()))
 	if len(files) == 0 {
 		return nil
 	}
@@ -557,6 +557,31 @@ func parseDirtyWorktreeFiles(output string) []string {
 		files = append(files, path)
 	}
 	return files
+}
+
+func filterIgnoredDirtyWorktreeFiles(files []string) []string {
+	filtered := make([]string, 0, len(files))
+	for _, path := range files {
+		if shouldIgnoreDirtyWorktreePath(path) {
+			continue
+		}
+		filtered = append(filtered, path)
+	}
+	return filtered
+}
+
+func shouldIgnoreDirtyWorktreePath(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return false
+	}
+	base := filepath.Base(trimmed)
+	switch base {
+	case "build-info.json":
+		return true
+	default:
+		return false
+	}
 }
 
 func envValue(env map[string]string, key string) string {
