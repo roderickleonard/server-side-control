@@ -11,7 +11,7 @@
             </div>
         </div>
         <div class="login-card-body">
-            <p class="login-subtitle">Use your Ubuntu system account credentials to sign in via PAM. If Two-Step Verification is enabled on your account, the TOTP step is always required after either password or passkey verification.</p>
+            <p class="login-subtitle">Use your Ubuntu system account credentials to sign in via PAM. Passkeys sign you in directly. If you continue with your password and Two-Step Verification is enabled, the TOTP step is required after password verification.</p>
             <div class="login-steps" aria-label="Sign in steps">
                 <div class="login-step {{if or (eq .LoginStage "username") (eq .LoginStage "")}}is-active{{else}}is-complete{{end}}">
                     <span class="login-step-index">1</span>
@@ -23,7 +23,7 @@
                 </div>
                 <div class="login-step {{if .LoginRequiresTOTP}}is-active{{end}}">
                     <span class="login-step-index">3</span>
-                    <span class="login-step-label">Verification</span>
+                    <span class="login-step-label">Password verification</span>
                 </div>
             </div>
             {{if .RequestError}}
@@ -51,23 +51,23 @@
                     <i class="bi bi-shield-lock"></i> Verify and sign in
                 </button>
             </form>
-            <p class="login-subtitle" style="margin-top:16px;">Open Apple Passwords or your authenticator app and enter the current 6-digit code. Passkey sign-in also continues through this verification step when enabled.</p>
+            <p class="login-subtitle" style="margin-top:16px;">Open Apple Passwords or your authenticator app and enter the current 6-digit code. Recovery codes also work once each if you cannot reach your authenticator.</p>
             {{else if eq .LoginStage "passkey"}}
             <form method="post" class="login-form" style="margin-bottom:12px;">
                 <input type="hidden" name="login_action" value="choose_username">
                 <label>
                     <span>Username</span>
-                    <input type="text" id="login-username" name="username" value="{{.LoginUsername}}" autocomplete="username webauthn" readonly>
+                    <input type="text" id="login-username" name="username" value="{{.LoginUsername}}" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" readonly>
                 </label>
             </form>
             <div class="panel" style="padding:14px;border:1px solid var(--border);margin-bottom:12px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
                     <div>
                         <strong>Passkey sign-in</strong>
-                        <p class="muted details-note" style="margin:6px 0 0 0;">If this device supports the saved passkey, the prompt will open automatically. If Two-Step Verification is enabled, you will still confirm with your 6-digit code after the passkey step.</p>
+                        <p class="muted details-note" style="margin:6px 0 0 0;">Use your saved passkey to sign in directly on this device. If you prefer, you can continue with your password below.</p>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="passkey-login-button" data-passkey-autostart="{{if .LoginPasskeyAutostart}}1{{else}}0{{end}}" data-default-label="Try passkey again">
-                        <i class="bi bi-key"></i> Try passkey again
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="passkey-login-button" data-passkey-autostart="{{if .LoginPasskeyAutostart}}1{{else}}0{{end}}" data-default-label="Sign in with passkey">
+                        <i class="bi bi-key"></i> Sign in with passkey
                     </button>
                 </div>
                 <div id="passkey-login-status" class="login-passkey-status" style="display:none;">
@@ -80,14 +80,14 @@
                 <input type="hidden" name="login_action" value="password_login">
                 <label>
                     <span>Username</span>
-                    <input type="text" name="username" value="{{.LoginUsername}}" autocomplete="username" readonly>
+                    <input type="text" name="username" value="{{.LoginUsername}}" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" readonly>
                 </label>
                 <label>
                     <span>Password</span>
                     <input type="password" name="password" autocomplete="current-password" placeholder="••••••••" required>
                 </label>
                 <button type="submit">
-                    <i class="bi bi-box-arrow-in-right"></i> Sign in with password
+                    <i class="bi bi-box-arrow-in-right"></i> Continue with password
                 </button>
             </form>
             {{else if eq .LoginStage "password"}}
@@ -95,7 +95,7 @@
                 <input type="hidden" name="login_action" value="password_login">
                 <label>
                     <span>Username</span>
-                    <input type="text" id="login-username" name="username" value="{{.LoginUsername}}" autocomplete="username" readonly>
+                    <input type="text" id="login-username" name="username" value="{{.LoginUsername}}" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" readonly>
                 </label>
                 <label>
                     <span>Password</span>
@@ -110,7 +110,7 @@
                 <input type="hidden" name="login_action" value="choose_username">
                 <label>
                     <span>Username</span>
-                    <input type="text" id="login-username" name="username" value="{{.LoginUsername}}" autocomplete="username webauthn" placeholder="e.g. ubuntu" required>
+                    <input type="text" id="login-username" name="username" value="{{.LoginUsername}}" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="e.g. ubuntu" required>
                 </label>
                 <button type="submit">
                     <i class="bi bi-arrow-right"></i> Continue

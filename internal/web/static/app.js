@@ -158,7 +158,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const setPasskeyLoading = (isLoading) => {
         if (passkeyLoginButton) {
             passkeyLoginButton.disabled = isLoading;
-            const defaultLabel = passkeyLoginButton.getAttribute("data-default-label") || "Try passkey again";
+            const defaultLabel = passkeyLoginButton.getAttribute("data-default-label") || "Sign in with passkey";
             passkeyLoginButton.innerHTML = isLoading
                 ? '<i class="bi bi-hourglass-split"></i> Waiting for passkey...'
                 : '<i class="bi bi-key"></i> ' + defaultLabel;
@@ -212,7 +212,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         let credential;
         try {
-            credential = await navigator.credentials.get({ publicKey: preparePublicKeyOptions(beginPayload.publicKey) });
+            const publicKeyOptions = preparePublicKeyOptions(beginPayload.publicKey);
+            publicKeyOptions.userVerification = "required";
+            credential = await navigator.credentials.get({ publicKey: publicKeyOptions });
         } catch {
             showPasswordFallback("Passkey sign-in was cancelled or failed. Use your password instead.");
             return;
@@ -249,12 +251,6 @@ document.addEventListener("DOMContentLoaded", () => {
     passkeyLoginButton?.addEventListener("click", async () => {
         await tryPasskeyLogin();
     });
-
-    if (passkeyLoginButton?.getAttribute("data-passkey-autostart") === "1") {
-        setTimeout(() => {
-            void tryPasskeyLogin();
-        }, 120);
-    }
 
     const passkeyRegisterButton = document.getElementById("passkey-register-button");
     passkeyRegisterButton?.addEventListener("click", async () => {

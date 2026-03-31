@@ -192,11 +192,13 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 			Title:                "Login",
 			LoginStage:           "passkey",
 			LoginUsername:        username,
-			LoginPasswordVisible: len(passkeys) == 0,
+			LoginPasswordVisible: true,
 			LoginPasskeyAvailable: len(passkeys) > 0,
-			LoginPasskeyAutostart: len(passkeys) > 0,
+			LoginPasskeyAutostart: false,
 		}
-		data.SuccessMessage = "If this device can use a saved passkey for this account, the passkey prompt will open automatically. You can always continue with your password."
+		if len(passkeys) > 0 {
+			data.SuccessMessage = "Choose how you want to continue. Passkey sign-in opens directly, or you can continue with your password."
+		}
 			a.render(r.Context(), w, r.URL.Path, "login.html", data)
 		return
 	}
@@ -719,9 +721,6 @@ func (a *App) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	identity := auth.Identity{Username: challenge.Username, DisplayName: challenge.Username, AuthProvider: "passkey"}
 	a.webauthnChallenges.Delete(r.Context(), challenge.ID)
-	if a.beginSecondFactorLogin(w, r, identity, "Passkey accepted. Complete Two-Step Verification to sign in.") {
-		return
-	}
 	if !a.completeAuthenticatedLogin(w, r, identity, "passkey") {
 		return
 	}

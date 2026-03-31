@@ -110,9 +110,6 @@ func (a *App) currentPendingLogin(r *http.Request) (auth.PendingLogin, error) {
 	if err != nil {
 		return auth.PendingLogin{}, err
 	}
-	if login.RemoteAddr != "" && login.RemoteAddr != a.clientAddress(r) {
-		return auth.PendingLogin{}, errors.New("remote address mismatch")
-	}
 	return login, nil
 }
 
