@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -21,10 +20,6 @@ import (
 
 var mysqlProvisionNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,63}$`)
 var mysqlTableNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,63}$`)
-
-var ErrInvalidDatabaseName = errors.New("invalid mysql database name")
-var ErrInvalidUserName = errors.New("invalid mysql user name")
-var ErrInvalidPassword = errors.New("invalid mysql password")
 
 type mysqlAdminDefaults struct {
 	User     string

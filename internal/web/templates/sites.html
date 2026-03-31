@@ -138,11 +138,11 @@
                         </td>
                         <td class="text-break" style="font-size:12px;color:var(--muted);">{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}</td>
                         <td>
-                            <div style="display:flex;gap:6px;align-items:center;">
-                                <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.Name}}">Details</a>
+                            <div class="table-actions">
+                                <a class="btn btn-sm btn-outline-secondary table-list-action" href="/sites/details?name={{.Name}}">Details</a>
                                 <button
                                     type="button"
-                                    class="btn btn-sm btn-outline-danger modal-trigger delete-site-trigger"
+                                    class="btn btn-sm btn-outline-danger table-list-action modal-trigger delete-site-trigger"
                                     data-bs-toggle="modal"
                                     data-bs-target="#deleteSiteModal"
                                     data-site-name="{{.Name}}"

@@ -124,7 +124,7 @@
                         <td>
                             <div class="inline-action-cluster">
                                 <div class="table-actions">
-                                    <a class="btn btn-sm btn-outline-secondary" href="/databases/details?name={{.DatabaseName}}">Details</a>
+                                    <a class="btn btn-sm btn-outline-secondary table-list-action" href="/databases/details?name={{.DatabaseName}}">Details</a>
                                 </div>
                                 <form method="post" class="inline-form inline-action-form inline-action-form-danger">
                                     <input type="hidden" name="database_action" value="delete_access">
@@ -135,7 +135,7 @@
                                         <input type="checkbox" name="drop_database" value="1">
                                         <span>Delete contents too</span>
                                     </label>
-                                    <button type="submit">Delete</button>
+                                    <button type="submit" class="btn btn-sm btn-outline-danger table-list-action">Delete</button>
                                 </form>
                             </div>
                         </td>

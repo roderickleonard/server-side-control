@@ -5,7 +5,6 @@ package system
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,13 +18,6 @@ import (
 
 var supervisorProgramPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$`)
 var supervisorUserPattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
-
-var ErrInvalidSupervisorProgramName = errors.New("invalid supervisor program name")
-var ErrInvalidSupervisorCommand = errors.New("invalid supervisor command")
-var ErrInvalidSupervisorDirectory = errors.New("invalid supervisor directory")
-var ErrInvalidSupervisorUser = errors.New("invalid supervisor user")
-var ErrInvalidSupervisorLogPath = errors.New("invalid supervisor log path")
-var ErrSupervisorManagedProgramOnly = errors.New("only panel-managed supervisor programs can be deleted")
 
 const supervisorManagedPrefix = "server-side-control-"
 

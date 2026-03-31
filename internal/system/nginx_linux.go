@@ -4,7 +4,6 @@ package system
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -19,15 +18,6 @@ var siteNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,62}$`)
 var domainPattern = regexp.MustCompile(`^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$`)
 var upstreamPattern = regexp.MustCompile(`^(https?://)?[a-zA-Z0-9._:-]+$`)
 var phpVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)
-
-var ErrInvalidSiteName = errors.New("invalid site name")
-var ErrInvalidDomain = errors.New("invalid domain")
-var ErrInvalidMode = errors.New("invalid site mode")
-var ErrInvalidUpstream = errors.New("invalid reverse proxy upstream")
-var ErrInvalidRootDirectory = errors.New("invalid root directory")
-var ErrInvalidPHPVersion = errors.New("invalid php version")
-var ErrInvalidEmail = errors.New("invalid email")
-var ErrUnsafeDeletePath = errors.New("unsafe site delete path")
 
 type linuxNginxManager struct {
 	availableDir string

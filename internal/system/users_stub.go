@@ -2,7 +2,10 @@
 
 package system
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 type stubUserManager struct{}
 
@@ -31,5 +34,25 @@ func (stubUserManager) SetLinuxUserSudo(username string, enabled bool) error {
 }
 
 func (stubUserManager) SetLinuxUserPasswordlessSudo(username string, enabled bool) error {
+	return fmt.Errorf("linux user management is only supported on Ubuntu target hosts")
+}
+
+func StreamLinuxUserCreate(username string, createHome bool, password string, grantSudo bool, stdout io.Writer) error {
+	return fmt.Errorf("linux user management is only supported on Ubuntu target hosts")
+}
+
+func StreamLinuxUserDelete(username string, removeHome bool, stdout io.Writer) error {
+	return fmt.Errorf("linux user management is only supported on Ubuntu target hosts")
+}
+
+func StreamLinuxUserPassword(username string, password string, stdout io.Writer) error {
+	return fmt.Errorf("linux user management is only supported on Ubuntu target hosts")
+}
+
+func StreamLinuxUserSudo(username string, enabled bool, stdout io.Writer) error {
+	return fmt.Errorf("linux user management is only supported on Ubuntu target hosts")
+}
+
+func StreamLinuxUserPasswordlessSudo(username string, enabled bool, stdout io.Writer) error {
 	return fmt.Errorf("linux user management is only supported on Ubuntu target hosts")
 }

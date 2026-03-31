@@ -661,6 +661,7 @@ li + li {
     padding: 20px 22px;
     position: relative;
     overflow: hidden;
+    min-width: 0;
 }
 
 .panel::before {
@@ -893,6 +894,80 @@ li + li {
     border: 1px solid var(--border-light);
     background: var(--surface);
     box-shadow: none;
+    width: 100%;
+}
+
+.table-card.table-responsive {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.table-card.table-responsive > .table-theme {
+    width: max-content;
+    min-width: 100%;
+}
+
+.table-card.table-responsive .table-theme {
+    margin-bottom: 0;
+}
+
+.table-card .btn.btn-sm.btn-outline-secondary,
+.table-card .btn.btn-sm.btn-outline-danger,
+.table-card .inline-form button.btn.btn-sm.btn-outline-secondary,
+.table-card .inline-form button.btn.btn-sm.btn-outline-danger,
+.table-card .audit-log-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 0 14px;
+    border-width: 1px;
+    border-style: solid;
+    border-radius: var(--r);
+    font-size: 12.5px;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    background-image: none;
+    transition: box-shadow 140ms, transform 80ms, border-color 140ms, background 140ms, color 140ms;
+}
+
+.table-card .btn.btn-sm.btn-outline-secondary,
+.table-card .inline-form button.btn.btn-sm.btn-outline-secondary,
+.table-card .audit-log-toggle {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+}
+
+.table-card .btn.btn-sm.btn-outline-secondary:hover,
+.table-card .inline-form button.btn.btn-sm.btn-outline-secondary:hover,
+.table-card .audit-log-toggle:hover {
+    border-color: rgba(29, 111, 232, 0.32);
+    background: rgba(29, 111, 232, 0.14);
+    color: var(--accent-strong);
+    box-shadow: 0 3px 8px rgba(17, 72, 162, 0.14);
+    transform: translateY(-1px);
+}
+
+.table-card .btn.btn-sm.btn-outline-danger,
+.table-card .inline-form button.btn.btn-sm.btn-outline-danger {
+    border-color: var(--danger-border);
+    background: rgba(220, 38, 38, 0.07);
+    color: var(--danger);
+}
+
+.table-card .btn.btn-sm.btn-outline-danger:hover,
+.table-card .inline-form button.btn.btn-sm.btn-outline-danger:hover {
+    border-color: rgba(220, 38, 38, 0.32);
+    background: rgba(220, 38, 38, 0.12);
+    color: var(--danger);
+    box-shadow: 0 3px 8px rgba(127, 29, 29, 0.14);
+    transform: translateY(-1px);
 }
 
 .table-theme {
@@ -1506,6 +1581,50 @@ li + li {
     box-shadow: 0 3px 8px rgba(127, 29, 29, 0.45);
 }
 
+.table-list-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 0 14px;
+    border-radius: var(--r);
+    font-size: 12.5px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: box-shadow 140ms, transform 80ms, border-color 140ms, background 140ms, color 140ms;
+}
+
+.table-list-action:hover {
+    transform: translateY(-1px);
+}
+
+.table-list-action.btn-outline-secondary {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+}
+
+.table-list-action.btn-outline-secondary:hover {
+    border-color: rgba(29, 111, 232, 0.32);
+    background: rgba(29, 111, 232, 0.14);
+    color: var(--accent-strong);
+    box-shadow: 0 3px 8px rgba(17, 72, 162, 0.14);
+}
+
+.table-list-action.btn-outline-danger {
+    border-color: var(--danger-border);
+    background: rgba(220, 38, 38, 0.07);
+    color: var(--danger);
+}
+
+.table-list-action.btn-outline-danger:hover {
+    border-color: rgba(220, 38, 38, 0.32);
+    background: rgba(220, 38, 38, 0.12);
+    color: var(--danger);
+    box-shadow: 0 3px 8px rgba(127, 29, 29, 0.14);
+}
+
 .table-link-button {
     border: 0;
     background: transparent;
@@ -1528,6 +1647,11 @@ li + li {
     .table-nowrap td,
     .table-nowrap th {
         white-space: normal;
+    }
+
+    .table-card.table-responsive > .table-theme {
+        width: 100%;
+        min-width: 860px;
     }
 
     .inline-action-cluster {

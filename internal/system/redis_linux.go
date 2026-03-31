@@ -4,7 +4,6 @@ package system
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,12 +16,6 @@ import (
 )
 
 var redisUsernamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]{0,63}$`)
-
-var ErrInvalidRedisUsername = errors.New("invalid redis username")
-var ErrInvalidRedisPassword = errors.New("invalid redis password")
-var ErrInvalidRedisPort = errors.New("invalid redis port")
-var ErrInvalidRedisMaxMemory = errors.New("invalid redis maxmemory")
-var ErrInvalidRedisEvictionPolicy = errors.New("invalid redis eviction policy")
 
 var redisEvictionPolicies = map[string]struct{}{
 	"noeviction":      {},
