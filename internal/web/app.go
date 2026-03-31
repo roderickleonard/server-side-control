@@ -40,6 +40,7 @@ type App struct {
 	sessions  *auth.SessionManager
 	pendingLogins *auth.PendingLoginManager
 	webauthnChallenges *auth.WebAuthnChallengeManager
+	loginRateLimiter *auth.LoginRateLimiter
 	router    *http.ServeMux
 	staticFS  http.Handler
 }
@@ -305,6 +306,7 @@ func New(cfg config.Config, logger *slog.Logger, dataStore *store.Store, metrics
 		sessions: sessions,
 		pendingLogins: auth.NewPendingLoginManager(5 * time.Minute),
 		webauthnChallenges: auth.NewWebAuthnChallengeManager(5 * time.Minute),
+		loginRateLimiter: auth.NewLoginRateLimiter(10, 10*time.Minute, 15*time.Minute),
 		router:   http.NewServeMux(),
 		staticFS: http.StripPrefix("/static/", http.FileServer(http.FS(staticRoot))),
 	}
@@ -314,7 +316,12 @@ func New(cfg config.Config, logger *slog.Logger, dataStore *store.Store, metrics
 }
 
 func (a *App) Handler() http.Handler {
-	return a.loggingMiddleware(a.sessionMiddleware(a.router))
+	return a.loggingMiddleware(a.securityHeadersMiddleware(a.sessionMiddleware(a.router)))
+}
+
+// StartBackgroundTasks starts background maintenance goroutines that run until ctx is done.
+func (a *App) StartBackgroundTasks(ctx context.Context) {
+	a.loginRateLimiter.StartCleanup(ctx, 5*time.Minute)
 }
 
 func (a *App) registerRoutes() {

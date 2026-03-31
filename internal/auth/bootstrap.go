@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 )
 
@@ -18,7 +19,9 @@ func NewBootstrapAuthenticator(username string, password string) *BootstrapAuthe
 }
 
 func (a *BootstrapAuthenticator) Authenticate(_ context.Context, username string, password string) (*Identity, error) {
-	if username != a.username || password != a.password {
+	usernameMatch := subtle.ConstantTimeCompare([]byte(username), []byte(a.username))
+	passwordMatch := subtle.ConstantTimeCompare([]byte(password), []byte(a.password))
+	if usernameMatch != 1 || passwordMatch != 1 {
 		return nil, ErrInvalidCredentials
 	}
 
