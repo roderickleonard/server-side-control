@@ -1,17 +1,30 @@
 {{define "content"}}
 <link rel="stylesheet" href="/static/vendor/xterm/xterm.min.css">
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Site details</span>
+
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-blue" style="margin-bottom:16px;">
+    <div class="pb-icon"><i class="bi bi-globe2"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow"><a href="/sites" style="color:rgba(255,255,255,.7);text-decoration:none;">Sites</a> / Details</span>
         <h2>{{.SelectedSite.Name}}</h2>
-        <p class="lead">Repository sync, runtime management, git authentication and release history for this site.</p>
+        <p class="pb-lead">{{.SelectedSite.DomainName}} &nbsp;·&nbsp; {{.SelectedSite.Runtime}}{{if .SelectedSite.PHPVersion}} {{.SelectedSite.PHPVersion}}{{end}}</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{if .SelectedSite.OwnerLinuxUser}}{{.SelectedSite.OwnerLinuxUser}}{{else}}-{{end}}</strong>
+            <span>Owner</span>
+        </div>
+        <div class="pb-stat">
+            <strong>{{if .RepositoryStatus.IsGitRepo}}Git{{else}}No git{{end}}</strong>
+            <span>Repo</span>
+        </div>
+    </div>
+</div>
 
 {{if .RequestError}}
 <section class="alerts">
     <div class="alert">{{.RequestError}}</div>
-</section>
+</div>
 {{end}}
 
 {{if .SuccessMessage}}
@@ -26,10 +39,10 @@
     {{if .PreviousCommitSHA}}
     <div class="alert success">Previous commit: <strong>{{.PreviousCommitSHA}}</strong></div>
     {{end}}
-</section>
+</div>
 {{end}}
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
         <div class="site-tab-nav" id="site-tab-nav" data-active-tab="{{.SiteDetailTab}}">
             <button type="button" class="site-tab-btn" data-tab="overview">Overview</button>
@@ -41,12 +54,12 @@
             <button type="button" class="site-tab-btn" data-tab="settings">Settings</button>
         </div>
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="ssh">
+<div class="grid single" data-site-tab="ssh">
     <article class="panel">
         <h3><i class="bi bi-shield-lock" style="color:var(--accent);margin-right:6px;"></i>Interactive terminal</h3>
-        <div class="site-delete-summary details-summary">
+        <div class="info-grid">
             <div><strong>User</strong><span>{{.SelectedSite.OwnerLinuxUser}}</span></div>
             <div><strong>Default cwd</strong><span>{{.SelectedSite.RootDirectory}}</span></div>
             <div><strong>Mode</strong><span>PTY over WebSocket</span></div>
@@ -58,9 +71,9 @@
         </div>
         <div class="muted details-note" style="margin-top:10px;">Live output opens in the shared terminal drawer on the right. You can copy the full transcript and close the drawer whenever you want.</div>
     </article>
-</section>
+</div>
 
-<section class="grid" data-site-tab="overview">
+<div class="grid" data-site-tab="overview">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -69,7 +82,7 @@
             </div>
             <a class="btn btn-sm btn-outline-secondary" href="/sites">Back to sites</a>
         </div>
-        <div class="site-delete-summary details-summary">
+        <div class="info-grid">
             <div><strong>Domain</strong><span>{{.SelectedSite.DomainName}}</span></div>
             <div><strong>Owner</strong><span>{{if .SelectedSite.OwnerLinuxUser}}{{.SelectedSite.OwnerLinuxUser}}{{else}}-{{end}}</span></div>
             <div><strong>Mode</strong><span>{{.SelectedSite.Runtime}}</span></div>
@@ -129,7 +142,7 @@
             </div>
             <span class="badge subtle-badge">{{if .RepositoryStatus.DirectoryExists}}Directory ready{{else}}Directory missing{{end}}</span>
         </div>
-        <div class="site-delete-summary details-summary">
+        <div class="info-grid">
             <div><strong>Remote</strong><span>{{if .RepositoryStatus.RemoteURL}}{{.RepositoryStatus.RemoteURL}}{{else}}-{{end}}</span></div>
             <div><strong>Branch</strong><span>{{if .RepositoryStatus.Branch}}{{.RepositoryStatus.Branch}}{{else}}-{{end}}</span></div>
             <div><strong>Commit</strong><span>{{if .RepositoryStatus.CurrentCommit}}{{.RepositoryStatus.CurrentCommit}}{{else}}-{{end}}</span></div>
@@ -137,9 +150,9 @@
         </div>
         <p class="muted details-note">{{if .RepositoryStatus.IsGitRepo}}Use the sync form to pull the latest branch state into this site root.{{else}}Connect a repository and the panel will clone it directly into this site's root directory.{{end}}</p>
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="deploy">
+<div class="grid single" data-site-tab="deploy">
     <article class="panel">
         <h3><i class="bi bi-git" style="color:var(--accent);margin-right:6px;"></i>{{if .RepositoryStatus.IsGitRepo}}Pull latest code{{else}}Clone repository{{end}}</h3>
         <form method="post" class="stack-form site-action-stream-form" id="site-deploy-sync-form" data-stream-endpoint="/sites/details/action-stream" data-reload-on-success="1">
@@ -190,9 +203,9 @@
             </div>
         </form>
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="deploy">
+<div class="grid single" data-site-tab="deploy">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -255,7 +268,7 @@
             <input type="hidden" name="auto_deploy_notify_email" value="{{.AutoDeployNotifyEmail}}">
             <button type="submit" class="btn btn-sm btn-outline-secondary">Rotate webhook secret</button>
         </form>
-        <div class="site-delete-summary details-summary" style="margin-top:14px;">
+        <div class="info-grid" style="margin-top:14px;">
             <div><strong>Webhook auth</strong><span>{{.AutoDeployWebhookAuthHint}}</span></div>
             <div><strong>Node version</strong><span>{{if .AutoDeployNodeVersion}}{{.AutoDeployNodeVersion}}{{else if .PreferredNodeVersion}}{{.PreferredNodeVersion}}{{else}}Shell default / none{{end}}</span></div>
             <div><strong>Notify email</strong><span>{{if .AutoDeployNotifyEmail}}{{.AutoDeployNotifyEmail}}{{else}}Global SMTP recipient{{end}}</span></div>
@@ -272,11 +285,11 @@
         <p class="muted details-note">Save a secret first to generate the webhook URL.</p>
         {{end}}
     </article>
-</section>
+</div>
 
 <div style="margin-top:24px;"></div>
 
-<section class="grid" data-site-tab="settings">
+<div class="grid" data-site-tab="settings">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -327,11 +340,11 @@
             </div>
         </form>
     </article>
-</section>
+</div>
 
 <div style="margin-top:24px;"></div>
 
-<section class="grid single" data-site-tab="settings">
+<div class="grid single" data-site-tab="settings">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -479,11 +492,11 @@
             {{end}}
         </div>
     </article>
-</section>
+</div>
 
 <div style="margin-top:24px;"></div>
 
-<section class="grid single" data-site-tab="settings">
+<div class="grid single" data-site-tab="settings">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -506,7 +519,7 @@
                     </div>
                     <span class="badge subtle-badge">{{.Domain}}</span>
                 </div>
-                <div class="site-delete-summary details-summary">
+                <div class="info-grid">
                     <div><strong>Config path</strong><span>{{.ConfigPath}}</span></div>
                     <div><strong>Target</strong><span>{{if eq .TargetType "site"}}Site{{else}}Subdomain{{end}}</span></div>
                 </div>
@@ -554,11 +567,11 @@
         <p class="muted details-note">This site does not currently have any stored managed Nginx config paths, so there is nothing to edit here yet.</p>
         {{end}}
     </article>
-</section>
+</div>
 
 <div style="margin-top:24px;"></div>
 
-<section class="grid" data-site-tab="runtime">
+<div class="grid" data-site-tab="runtime">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -567,7 +580,7 @@
             </div>
             <span class="badge subtle-badge">{{if .RuntimeStatus.PM2Installed}}PM2 installed{{else}}PM2 missing{{end}}</span>
         </div>
-        <div class="site-delete-summary details-summary">
+        <div class="info-grid">
             <div><strong>Linux user</strong><span>{{.RuntimeStatus.User}}</span></div>
             <div><strong>Home</strong><span>{{.RuntimeStatus.HomeDirectory}}</span></div>
             <div><strong>NVM</strong><span>{{if .RuntimeStatus.NVMInstalled}}Installed{{else}}Not installed{{end}}</span></div>
@@ -738,11 +751,11 @@
         </div>
         <p class="muted details-note" style="margin-top:12px;">Composer is installed once for the server and then used inside each site or subdomain root with its own vendor directory.</p>
     </article>
-</section>
+</div>
 
 <div style="margin-top:24px;"></div>
 
-<section class="grid" data-site-tab="runtime">
+<div class="grid" data-site-tab="runtime">
     <article class="panel">
         <h3><i class="bi bi-play-circle" style="color:var(--accent);margin-right:6px;"></i>Start site with PM2</h3>
         <form method="post" class="stack-form">
@@ -812,11 +825,11 @@
             </form>
         </div>
     </article>
-</section>
+</div>
 
 <div style="margin-top:24px;"></div>
 
-<section class="grid" data-site-tab="deploy">
+<div class="grid" data-site-tab="deploy">
     <article class="panel">
         <div class="section-head" style="cursor:pointer;" onclick="this.closest('article').querySelectorAll('.ssh-body').forEach(el=>el.classList.toggle('hidden'))">
             <div>
@@ -825,7 +838,7 @@
             </div>
             <span class="badge subtle-badge">{{if .GitAuthStatus.KnownHostTrusted}}Host trusted{{else}}Host not trusted{{end}}</span>
         </div>
-        <div class="ssh-body site-delete-summary details-summary">
+        <div class="ssh-body info-grid">
             <div><strong>Repository host</strong><span>{{if .GitAuthStatus.RepositoryHost}}{{.GitAuthStatus.RepositoryHost}}{{else}}-{{end}}</span></div>
             <div><strong>Protocol</strong><span>{{if .GitAuthStatus.RepositoryProtocol}}{{.GitAuthStatus.RepositoryProtocol}}{{else}}-{{end}}</span></div>
             <div><strong>Key path</strong><span>{{if .GitAuthStatus.SSHKeyPath}}{{.GitAuthStatus.SSHKeyPath}}{{else}}-{{end}}</span></div>
@@ -859,11 +872,11 @@
         </div>
         </div>
     </article>
-</section>
+</div>
 
 <div style="margin-top:24px;"></div>
 
-<section class="grid single" data-site-tab="settings">
+<div class="grid single" data-site-tab="settings">
     <article class="panel">
         <h3><i class="bi bi-file-earmark-lock" style="color:var(--accent);margin-right:6px;"></i>.env file</h3>
         <form method="post" class="stack-form">
@@ -881,9 +894,9 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
         </form>
         <p class="muted details-note">File is saved as the site owner user (mode 0600). Never commit secrets to version control.</p>
     </article>
-</section>
+</div>
 
-<section class="grid" data-site-tab="files">
+<div class="grid" data-site-tab="files">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -891,7 +904,7 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
                 <h3>Browse {{.SelectedSite.RootDirectory}}</h3>
             </div>
         </div>
-        <div class="site-delete-summary details-summary">
+        <div class="info-grid">
             <div><strong>Site root</strong><span>{{.SelectedSite.RootDirectory}}</span></div>
             <div><strong>Current path</strong><span>{{if .SiteBrowserCurrentPath}}{{.SiteBrowserCurrentPath}}{{else}}/{{end}}</span></div>
         </div>
@@ -958,9 +971,9 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
         <p class="muted details-note">Choose a file from the left side to read its contents.</p>
         {{end}}
     </article>
-</section>
+</div>
 
-<section class="grid" data-site-tab="domains">
+<div class="grid" data-site-tab="domains">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -999,9 +1012,9 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
             <li>Certificate auto-renews via the system certbot timer.</li>
         </ul>
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="domains">
+<div class="grid single" data-site-tab="domains">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -1093,7 +1106,7 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
         <p class="muted details-note">No custom subdomains configured yet.</p>
         {{end}}
     </article>
-</section>
+</div>
 
 <div style="margin-top:24px;"></div>
 

@@ -1,8 +1,14 @@
 {{define "deploy_history"}}
 {{if .DeploymentReleases}}
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-clock-history" style="color:var(--accent);margin-right:6px;"></i>Recent releases</h3>
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Git releases</span>
+                <h3 style="margin-bottom:0;"><i class="bi bi-clock-history" style="color:var(--accent);"></i>Recent releases</h3>
+            </div>
+            <span class="count-chip">{{len .DeploymentReleases}}</span>
+        </div>
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">
                 <thead>
@@ -18,17 +24,22 @@
                 <tbody>
                     {{range $i, $r := .DeploymentReleases}}
                     <tr style="cursor:pointer;" onclick="var d=document.getElementById('rel-out-{{$i}}');if(d){d.classList.toggle('hidden')}">
-                        <td>{{$r.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                        <td style="font-size:12px;color:var(--muted);white-space:nowrap;">{{$r.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
                         <td>{{$r.Action}}</td>
-                        <td><span class="badge subtle-badge">{{$r.Status}}</span></td>
-                        <td class="text-break">{{$r.TargetDirectory}}</td>
-                        <td class="text-break">{{$r.CommitSHA}}</td>
-                        <td>{{$r.RunAsUser}}</td>
+                        <td>
+                            {{if eq $r.Status "success"}}<span class="status-pill success">success</span>
+                            {{else if eq $r.Status "failure"}}<span class="status-pill failure">failure</span>
+                            {{else if eq $r.Status "pending"}}<span class="status-pill pending">pending</span>
+                            {{else}}<span class="status-pill unknown">{{$r.Status}}</span>{{end}}
+                        </td>
+                        <td class="text-break" style="font-size:12px;">{{$r.TargetDirectory}}</td>
+                        <td><code style="font-size:11px;">{{if gt (len $r.CommitSHA) 8}}{{slice $r.CommitSHA 0 8}}{{else}}{{$r.CommitSHA}}{{end}}</code></td>
+                        <td style="font-size:12px;color:var(--muted);">{{$r.RunAsUser}}</td>
                     </tr>
                     {{if or $r.PreviousCommitSHA $r.Output}}
                     <tr id="rel-out-{{$i}}" class="table-note-row hidden">
                         <td colspan="6">
-                            {{if $r.PreviousCommitSHA}}<p class="small text-secondary" style="margin:4px 0;">Previous: {{$r.PreviousCommitSHA}}</p>{{end}}
+                            {{if $r.PreviousCommitSHA}}<p class="small text-secondary" style="margin:4px 0;">Previous: <code>{{if gt (len $r.PreviousCommitSHA) 8}}{{slice $r.PreviousCommitSHA 0 8}}{{else}}{{$r.PreviousCommitSHA}}{{end}}</code></p>{{end}}
                             {{if $r.Output}}<pre class="command-output mt-0">{{$r.Output}}</pre>{{end}}
                         </td>
                     </tr>
@@ -37,8 +48,8 @@
                 </tbody>
             </table>
         </div>
-        <p class="muted details-note" style="margin-top:8px;">Click a row to expand its output.</p>
+        <p class="muted details-note" style="margin-top:8px;">Click a row to expand its output. Commit SHAs are truncated to 8 characters.</p>
     </article>
-</section>
+</div>
 {{end}}
 {{end}}

@@ -1,39 +1,46 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Supervisor</span>
-        <h2>Supervisor Service Management</h2>
-        <p class="lead">Manage the system-wide Supervisor service, create panel-managed programs, and run each program as its own Linux user where needed.</p>
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-teal">
+    <div class="pb-icon"><i class="bi bi-diagram-3"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Process Supervisor</span>
+        <h2>Supervisor</h2>
+        <p class="pb-lead">Manage the system-wide Supervisor service and create panel-managed programs per Linux user.</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            {{if .SupervisorStatus.Active}}<strong style="color:#4ade80;">Running</strong>{{else}}<strong style="color:#f87171;">Stopped</strong>{{end}}
+            <span>Service</span>
+        </div>
+        <div class="pb-stat">
+            <strong>{{len .SupervisorPrograms}}</strong>
+            <span>Programs</span>
+        </div>
+    </div>
+</div>
 
 {{if .RequestError}}
-<section class="alerts">
-    <div class="alert">{{.RequestError}}</div>
-</section>
+<div class="alert mb-3">{{.RequestError}}</div>
 {{end}}
-
 {{if .SuccessMessage}}
-<section class="alerts">
-    <div class="alert success">{{.SuccessMessage}}</div>
-</section>
+<div class="alert success mb-3">{{.SuccessMessage}}</div>
 {{end}}
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-activity" style="color:var(--accent);margin-right:6px;"></i>Service status</h3>
-        <div class="site-delete-summary details-summary">
-            <div><strong>Installed</strong><span>{{if .SupervisorStatus.Installed}}Yes{{else}}No{{end}}</span></div>
-            <div><strong>Active</strong><span>{{if .SupervisorStatus.Active}}Running{{else}}Stopped{{end}}</span></div>
-            <div><strong>Enabled</strong><span>{{if .SupervisorStatus.Enabled}}On boot{{else}}Manual{{end}}</span></div>
-            <div><strong>Service</strong><span>{{if .SupervisorStatus.ServiceName}}{{.SupervisorStatus.ServiceName}}{{else}}supervisor{{end}}</span></div>
-            <div><strong>Config dir</strong><span>{{if .SupervisorStatus.ConfigDirectory}}{{.SupervisorStatus.ConfigDirectory}}{{else}}-{{end}}</span></div>
-            <div><strong>Version</strong><span>{{if .SupervisorStatus.Version}}{{.SupervisorStatus.Version}}{{else}}-{{end}}</span></div>
+        <h3><i class="bi bi-activity" style="color:var(--accent);"></i>Service status</h3>
+        <div class="info-grid">
+            <div class="info-grid-item"><span class="info-label">Installed</span><span>{{if .SupervisorStatus.Installed}}Yes{{else}}No{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Active</span><span>{{if .SupervisorStatus.Active}}<span class="status-pill running">Running</span>{{else}}<span class="status-pill stopped">Stopped</span>{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Enabled</span><span>{{if .SupervisorStatus.Enabled}}On boot{{else}}Manual{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Service</span><span>{{if .SupervisorStatus.ServiceName}}{{.SupervisorStatus.ServiceName}}{{else}}supervisor{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Config dir</span><span class="text-break">{{if .SupervisorStatus.ConfigDirectory}}{{.SupervisorStatus.ConfigDirectory}}{{else}}-{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Version</span><span>{{if .SupervisorStatus.Version}}{{.SupervisorStatus.Version}}{{else}}-{{end}}</span></div>
         </div>
         <p class="muted details-note" style="margin-top:12px;">Supervisor should stay system-wide. Isolation belongs at the program level through the selected Linux user for each program.</p>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-download" style="color:var(--muted);margin-right:6px;"></i>Service control</h3>
+        <h3><i class="bi bi-sliders" style="color:var(--muted);"></i>Service control</h3>
         <form method="post" class="stack-form supervisor-stream-form" data-stream-endpoint="/supervisor/stream">
             <div class="form-actions">
                 <button type="submit" name="supervisor_action" value="install">Install Supervisor</button>
@@ -46,13 +53,13 @@
                 <button type="submit" name="supervisor_action" value="update" class="btn btn-outline-secondary">Update programs</button>
             </div>
         </form>
-        <p class="muted">`reread` detects changed config files, `update` applies add/remove changes to managed programs.</p>
+        <p class="muted"><code>reread</code> detects changed config files, <code>update</code> applies add/remove changes to managed programs.</p>
     </article>
-</section>
+</div>
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-diagram-3" style="color:var(--accent);margin-right:6px;"></i>Create or update program</h3>
+        <h3><i class="bi bi-diagram-3" style="color:var(--accent);"></i>Create or update program</h3>
         <div>
             <span class="eyebrow">Quick presets</span>
             <div class="badge-row" style="margin-top:8px;">
@@ -111,7 +118,7 @@
         <p class="muted">This page writes panel-managed configs under the Supervisor config directory. Existing unmanaged configs remain visible but are not deleted here.</p>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-journal-code" style="color:var(--muted);margin-right:6px;"></i>Program logs</h3>
+        <h3><i class="bi bi-journal-code" style="color:var(--muted);"></i>Program logs</h3>
         <form method="post" class="stack-form supervisor-stream-form" data-stream-endpoint="/supervisor/stream">
             <input type="hidden" name="supervisor_action" value="tail_logs">
             <div class="form-grid two-up">
@@ -139,11 +146,17 @@
         <p class="muted">Log output will appear here when you request it without leaving the page.</p>
         {{end}}
     </article>
-</section>
+</div>
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-list-ul" style="color:var(--accent);margin-right:6px;"></i>Programs</h3>
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Panel-managed and detected programs</span>
+                <h3 style="margin-bottom:0;"><i class="bi bi-list-ul" style="color:var(--accent);"></i>Programs</h3>
+            </div>
+            <span class="count-chip">{{len .SupervisorPrograms}}</span>
+        </div>
         {{if .SupervisorPrograms}}
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">
@@ -162,7 +175,7 @@
                     {{range .SupervisorPrograms}}
                     <tr>
                         <td class="fw-semibold">{{.Name}}{{if .Managed}}<div><small class="muted">panel-managed</small></div>{{end}}</td>
-                        <td>{{if .Status}}{{.Status}}{{else}}unknown{{end}}</td>
+                        <td>{{if eq .Status "RUNNING"}}<span class="status-pill running">{{.Status}}</span>{{else if eq .Status "STOPPED"}}<span class="status-pill stopped">{{.Status}}</span>{{else if .Status}}<span class="status-pill unknown">{{.Status}}</span>{{else}}<span class="status-pill unknown">unknown</span>{{end}}</td>
                         <td>{{if .User}}{{.User}}{{else}}-{{end}}</td>
                         <td class="text-break">{{if .Directory}}{{.Directory}}{{else}}-{{end}}</td>
                         <td class="text-break">{{.Command}}</td>
@@ -207,18 +220,21 @@
             </table>
         </div>
         {{else}}
-        <p class="muted">No Supervisor programs were found yet.</p>
+        <div class="empty-state">
+            <i class="bi bi-diagram-3"></i>
+            <p>No Supervisor programs were found yet.</p>
+        </div>
         {{end}}
     </article>
-</section>
+</div>
 
 {{if .CommandOutput}}
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-terminal" style="color:var(--accent);margin-right:6px;"></i>Last command output</h3>
+        <h3><i class="bi bi-terminal" style="color:var(--accent);"></i>Last command output</h3>
         <pre class="command-output">{{.CommandOutput}}</pre>
     </article>
-</section>
+</div>
 {{end}}
 
 <script>

@@ -1,27 +1,30 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Processes</span>
-        <h2>PM2 Process Management</h2>
-        <p class="lead">List, start, stop, restart, reload and tail logs for PM2 processes running under any Linux user on the host.</p>
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-teal">
+    <div class="pb-icon"><i class="bi bi-cpu"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Node.js Process Manager</span>
+        <h2>PM2 Processes</h2>
+        <p class="pb-lead">List, start, stop, restart, reload and tail logs for PM2 processes running under any Linux user.</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{len .LinuxUsers}}</strong>
+            <span>Users</span>
+        </div>
+    </div>
+</div>
 
 {{if .RequestError}}
-<section class="alerts">
-    <div class="alert">{{.RequestError}}</div>
-</section>
+<div class="alert mb-3">{{.RequestError}}</div>
 {{end}}
-
 {{if .SuccessMessage}}
-<section class="alerts">
-    <div class="alert success">{{.SuccessMessage}}</div>
-</section>
+<div class="alert success mb-3">{{.SuccessMessage}}</div>
 {{end}}
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-cpu" style="color:var(--accent);margin-right:6px;"></i>Process action</h3>
+        <h3><i class="bi bi-cpu" style="color:var(--accent);"></i>Run PM2 Action</h3>
         <form method="post" class="stack-form process-stream-form" data-stream-endpoint="/processes/stream">
             <div class="form-grid two-up">
                 <label>
@@ -59,15 +62,15 @@
         </form>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current behavior</h3>
-        <ul>
-            <li>The manager runs PM2 commands as the selected Linux user with `sudo -u`.</li>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);"></i>Behavior</h3>
+        <ul class="rule-list">
+            <li>The manager runs PM2 commands as the selected Linux user with <code>sudo -u</code>.</li>
             <li>Listing shows the owning user's PM2 table only.</li>
-            <li>`start`, `stop`, `restart`, and `reload` require an explicit process name.</li>
-            <li>`logs` returns a bounded non-streaming tail to keep the panel responsive.</li>
+            <li><code>start</code>, <code>stop</code>, <code>restart</code>, and <code>reload</code> require an explicit process name.</li>
+            <li><code>logs</code> returns a bounded non-streaming tail to keep the panel responsive.</li>
         </ul>
     </article>
-</section>
+</div>
 <script>
 (() => {
     const terminalDrawer = window.PanelTerminalDrawer;

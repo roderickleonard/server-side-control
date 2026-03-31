@@ -28,58 +28,87 @@
                 </div>
             </a>
 
-            <div class="sidebar-server-block">
-                <span class="server-label">Database</span>
-                <span class="server-status">{{.DatabaseStatus}}</span>
+            <div class="sidebar-db-status">
+                <span class="sds-dot {{if eq .DatabaseStatus "Connected"}}green{{else}}red{{end}}"></span>
+                <span class="sds-label">MySQL</span>
+                <span class="sds-value">{{.DatabaseStatus}}</span>
             </div>
 
             <div class="sidebar-nav-section">
-                <span class="sidebar-nav-label">Navigation</span>
-                <nav class="nav">
-                    {{range .Nav}}
-                    <a class="nav-link {{if eq $.CurrentPath .Path}}is-active{{end}}" href="{{.Path}}">
-                        {{if eq .Path "/"}}
-                        <i class="bi bi-speedometer2"></i>
-                        {{else if eq .Path "/users"}}
-                        <i class="bi bi-people"></i>
-                        {{else if eq .Path "/databases"}}
-                        <i class="bi bi-database"></i>
-                        {{else if eq .Path "/sites"}}
-                        <i class="bi bi-globe2"></i>
-                        {{else if eq .Path "/php"}}
-                        <i class="bi bi-code-slash"></i>
-                        {{else if eq .Path "/redis"}}
-                        <i class="bi bi-memory"></i>
-                        {{else if eq .Path "/supervisor"}}
-                        <i class="bi bi-diagram-3"></i>
-                        {{else if eq .Path "/deploys"}}
-                        <i class="bi bi-rocket"></i>
-                        {{else if eq .Path "/processes"}}
-                        <i class="bi bi-cpu"></i>
-                        {{else if eq .Path "/logs"}}
-                        <i class="bi bi-journal-code"></i>
-                        {{else}}
-                        <i class="bi bi-circle"></i>
-                        {{end}}
-                        {{.Label}}
+                <div class="sidebar-nav-group">
+                    <span class="nav-group-label">Main</span>
+                    <nav class="nav">
+                        <a class="nav-link {{if eq .CurrentPath "/"}}is-active{{end}}" href="/">
+                            <i class="bi bi-speedometer2"></i><span>Dashboard</span>
+                        </a>
+                        <a class="nav-link {{if or (eq .CurrentPath "/sites") (eq .CurrentPath "/sites/details") (eq .CurrentPath "/sites/subdomain")}}is-active{{end}}" href="/sites">
+                            <i class="bi bi-globe2"></i><span>Sites</span>
+                        </a>
+                        <a class="nav-link {{if eq .CurrentPath "/users"}}is-active{{end}}" href="/users">
+                            <i class="bi bi-people"></i><span>Users</span>
+                        </a>
+                        <a class="nav-link {{if or (eq .CurrentPath "/databases") (eq .CurrentPath "/databases/details")}}is-active{{end}}" href="/databases">
+                            <i class="bi bi-database"></i><span>Databases</span>
+                        </a>
+                    </nav>
+                </div>
+
+                <div class="sidebar-nav-group">
+                    <span class="nav-group-label">Deployments</span>
+                    <nav class="nav">
+                        <a class="nav-link {{if eq .CurrentPath "/deploys"}}is-active{{end}}" href="/deploys">
+                            <i class="bi bi-rocket-takeoff"></i><span>Deploys</span>
+                        </a>
+                        <a class="nav-link {{if eq .CurrentPath "/processes"}}is-active{{end}}" href="/processes">
+                            <i class="bi bi-cpu"></i><span>Processes</span>
+                        </a>
+                        <a class="nav-link {{if eq .CurrentPath "/logs"}}is-active{{end}}" href="/logs">
+                            <i class="bi bi-journal-code"></i><span>Audit Logs</span>
+                        </a>
+                    </nav>
+                </div>
+
+                <div class="sidebar-nav-group">
+                    <span class="nav-group-label">Services</span>
+                    <nav class="nav">
+                        <a class="nav-link {{if eq .CurrentPath "/php"}}is-active{{end}}" href="/php">
+                            <i class="bi bi-code-slash"></i><span>PHP</span>
+                        </a>
+                        <a class="nav-link {{if or (eq .CurrentPath "/redis") (eq .CurrentPath "/redis/logs")}}is-active{{end}}" href="/redis">
+                            <i class="bi bi-memory"></i><span>Redis</span>
+                        </a>
+                        <a class="nav-link {{if eq .CurrentPath "/supervisor"}}is-active{{end}}" href="/supervisor">
+                            <i class="bi bi-diagram-3"></i><span>Supervisor</span>
+                        </a>
+                    </nav>
+                </div>
+
+                <div class="sidebar-settings-link">
+                    <a class="nav-link {{if eq .CurrentPath "/settings"}}is-active{{end}}" href="/settings">
+                        <i class="bi bi-gear"></i><span>Settings</span>
                     </a>
-                    {{end}}
-                </nav>
+                </div>
             </div>
 
             <div class="sidebar-footer">
                 {{if .CurrentUser}}
                 <div class="sidebar-user-block">
-                    <div class="user-name">{{.CurrentUser}}</div>
-                    <div class="user-meta">via {{.AuthProvider}}</div>
+                    <div class="sidebar-user-avatar">{{slice .CurrentUser 0 1}}</div>
+                    <div>
+                        <div class="user-name">{{.CurrentUser}}</div>
+                        <div class="user-meta">via {{.AuthProvider}}</div>
+                    </div>
                 </div>
                 <a class="logout-link" href="/logout">
                     <i class="bi bi-box-arrow-left"></i> Sign out
                 </a>
                 {{else}}
                 <div class="sidebar-user-block">
-                    <div class="user-name">{{.BootstrapUser}}</div>
-                    <div class="user-meta">Bootstrap account</div>
+                    <div class="sidebar-user-avatar">B</div>
+                    <div>
+                        <div class="user-name">{{.BootstrapUser}}</div>
+                        <div class="user-meta">Bootstrap account</div>
+                    </div>
                 </div>
                 {{end}}
             </div>
@@ -115,17 +144,22 @@
                     <i class="bi bi-list"></i>
                 </button>
                 <div class="psk-topbar-breadcrumb">
-                    <i class="bi bi-house"></i>
+                    <i class="bi bi-house-fill" style="color:var(--accent);opacity:.7;font-size:12px;"></i>
                     <span class="bc-sep">›</span>
                     <strong>{{.Title}}</strong>
                 </div>
                 <div class="psk-topbar-actions">
+                    <a class="topbar-icon-btn" href="/logs" title="Audit logs">
+                        <i class="bi bi-journal-code"></i>
+                    </a>
                     <a class="topbar-icon-btn" href="/settings" title="Settings">
                         <i class="bi bi-gear"></i>
                     </a>
                 </div>
                 <div class="psk-topbar-user">
-                    <i class="bi bi-person-circle" style="font-size:20px;color:var(--accent);"></i>
+                    <div class="topbar-avatar">
+                        {{if .CurrentUser}}{{slice .CurrentUser 0 1}}{{else}}B{{end}}
+                    </div>
                     {{if .CurrentUser}}
                     <strong>{{.CurrentUser}}</strong>
                     {{else}}

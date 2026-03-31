@@ -1,30 +1,34 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Sites</span>
-        <h2>Nginx Site Management</h2>
-        <p class="lead">Create and manage Nginx vhosts with reverse proxy, static, and PHP-FPM modes. Configs are validated before reload.</p>
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-blue">
+    <div class="pb-icon"><i class="bi bi-globe2"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Nginx Management</span>
+        <h2>Sites</h2>
+        <p class="pb-lead">Create and manage Nginx vhosts with reverse proxy, static, and PHP-FPM modes.</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{len .ManagedSites}}</strong>
+            <span>Sites</span>
+        </div>
+        <div class="pb-stat">
+            <strong>{{len .PHPVersions}}</strong>
+            <span>PHP versions</span>
+        </div>
+    </div>
+</div>
 
 {{if .RequestError}}
-<section class="alerts">
-    <div class="alert">{{.RequestError}}</div>
-</section>
+<div class="alert mb-3">{{.RequestError}}</div>
 {{end}}
-
 {{if .SuccessMessage}}
-<section class="alerts">
-    <div class="alert success">{{.SuccessMessage}}</div>
-    {{if .ResultPath}}
-    <div class="alert success">Config path: <strong>{{.ResultPath}}</strong></div>
-    {{end}}
-</section>
+<div class="alert success mb-3">{{.SuccessMessage}}{{if .ResultPath}} — <strong>{{.ResultPath}}</strong>{{end}}</div>
 {{end}}
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-plus-circle" style="color:var(--accent);margin-right:6px;"></i>Create site</h3>
+        <h3><i class="bi bi-plus-circle" style="color:var(--accent);"></i>Create Site</h3>
         <form method="post" class="stack-form site-stream-form" data-stream-endpoint="/sites/stream" data-reload-on-success="1">
             <input type="hidden" name="site_action" value="create">
             <div class="form-grid two-up">
@@ -73,13 +77,14 @@
                 </div>
             </div>
             <div class="form-actions">
-                <button type="submit">Apply Nginx site</button>
+                <button type="submit">Create site</button>
             </div>
         </form>
     </article>
+
     <article class="panel">
-        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Mode rules</h3>
-        <ul>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);"></i>Mode Rules</h3>
+        <ul class="rule-list">
             <li>Reverse proxy requires a domain and upstream target.</li>
             <li>The panel always creates a root directory inside the selected Linux user's web directory.</li>
             <li>Static site uses that generated root directly for file serving.</li>
@@ -87,16 +92,16 @@
             <li>On failure, the manager rolls back the written file and leaves Nginx unchanged.</li>
         </ul>
     </article>
-</section>
+</div>
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
         <div class="section-head">
             <div>
-                <span class="eyebrow">Managed sites</span>
-                <h3>Existing site records</h3>
+                <span class="eyebrow">Managed Sites</span>
+                <h3 style="margin-bottom:0;">Existing site records</h3>
             </div>
-            <span class="badge">{{len .ManagedSites}} site</span>
+            <span class="count-chip">{{len .ManagedSites}}</span>
         </div>
         {{if .ManagedSites}}
         <div class="table-card table-responsive">
@@ -107,43 +112,47 @@
                         <th>Domain</th>
                         <th>Owner</th>
                         <th>Mode</th>
-                        <th>Node</th>
-                        <th>Upstream</th>
-                        <th>PHP</th>
+                        <th>Upstream / PHP</th>
                         <th>Root</th>
-                        <th>Config path</th>
-                        <th>Details</th>
-                        <th>Delete</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     {{range .ManagedSites}}
                     <tr>
-                        <td class="fw-semibold"><a class="table-link" href="/sites/details?name={{.Name}}">{{.Name}}</a></td>
-                        <td>{{.DomainName}}</td>
-                        <td>{{if .OwnerLinuxUser}}{{.OwnerLinuxUser}}{{else}}-{{end}}</td>
-                        <td><span class="badge subtle-badge">{{.Runtime}}</span></td>
-                        <td>{{if .NodeVersion}}<span class="badge subtle-badge">{{.NodeVersion}}</span>{{else}}-{{end}}</td>
-                        <td class="text-break">{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}-{{end}}</td>
-                        <td>{{if eq .Runtime "php"}}{{if .PHPVersion}}{{.PHPVersion}}{{else}}-{{end}}{{else}}-{{end}}</td>
-                        <td class="text-break">{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}</td>
-                        <td class="text-break">{{if .NginxConfigPath}}{{.NginxConfigPath}}{{else}}-{{end}}</td>
-                        <td>
-                            <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.Name}}">Details</a>
+                        <td class="fw-semibold">
+                            <a class="table-link" href="/sites/details?name={{.Name}}">{{.Name}}</a>
                         </td>
+                        <td>{{.DomainName}}</td>
+                        <td>{{if .OwnerLinuxUser}}<span class="badge subtle-badge">{{.OwnerLinuxUser}}</span>{{else}}-{{end}}</td>
                         <td>
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-danger modal-trigger delete-site-trigger"
-                                data-bs-toggle="modal"
-                                data-bs-target="#deleteSiteModal"
-                                data-site-name="{{.Name}}"
-                                data-site-domain="{{.DomainName}}"
-                                data-site-mode="{{.Runtime}}"
-                                data-site-upstream="{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}-{{end}}"
-                                data-site-root="{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}"
-                                data-site-config="{{if .NginxConfigPath}}{{.NginxConfigPath}}{{else}}-{{end}}"
-                            >Delete site</button>
+                            {{if eq .Runtime "reverse_proxy"}}<span class="mode-badge proxy"><i class="bi bi-arrow-left-right"></i>Proxy</span>
+                            {{else if eq .Runtime "static"}}<span class="mode-badge static"><i class="bi bi-file-earmark"></i>Static</span>
+                            {{else if eq .Runtime "php"}}<span class="mode-badge php"><i class="bi bi-code-slash"></i>PHP</span>
+                            {{else}}<span class="mode-badge proxy">{{.Runtime}}</span>{{end}}
+                        </td>
+                        <td class="text-break">
+                            {{if .UpstreamURL}}{{.UpstreamURL}}
+                            {{else if .PHPVersion}}PHP {{.PHPVersion}}
+                            {{else}}-{{end}}
+                        </td>
+                        <td class="text-break" style="font-size:12px;color:var(--muted);">{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}</td>
+                        <td>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.Name}}">Details</a>
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-outline-danger modal-trigger delete-site-trigger"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#deleteSiteModal"
+                                    data-site-name="{{.Name}}"
+                                    data-site-domain="{{.DomainName}}"
+                                    data-site-mode="{{.Runtime}}"
+                                    data-site-upstream="{{if .UpstreamURL}}{{.UpstreamURL}}{{else}}-{{end}}"
+                                    data-site-root="{{if .RootDirectory}}{{.RootDirectory}}{{else}}-{{end}}"
+                                    data-site-config="{{if .NginxConfigPath}}{{.NginxConfigPath}}{{else}}-{{end}}"
+                                >Delete</button>
+                            </div>
                         </td>
                     </tr>
                     {{end}}
@@ -151,10 +160,13 @@
             </table>
         </div>
         {{else}}
-        <p class="muted">No managed sites recorded yet.</p>
+        <div class="empty-state">
+            <i class="bi bi-globe2"></i>
+            <p>No managed sites yet. Create your first site above.</p>
+        </div>
         {{end}}
     </article>
-</section>
+</div>
 
 <div class="modal fade" id="deleteSiteModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -168,7 +180,7 @@
             </div>
             <div class="modal-body pt-2">
                 <p class="mb-3">This will remove the Nginx site, stored panel record, TLS certificate, and related directory contents if present.</p>
-                <div class="site-delete-summary">
+                <div class="info-grid">
                     <div><strong>Domain</strong><span id="delete-site-domain">-</span></div>
                     <div><strong>Mode</strong><span id="delete-site-mode">-</span></div>
                     <div><strong>Upstream</strong><span id="delete-site-upstream">-</span></div>

@@ -1,50 +1,52 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Redis</span>
-        <h2>Redis Service Management</h2>
-        <p class="lead">Install Redis on the server, manage ACL credentials, change the listening port, inspect service state, and restart the service from the panel.</p>
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-red">
+    <div class="pb-icon"><i class="bi bi-memory"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">In-Memory Cache</span>
+        <h2>Redis</h2>
+        <p class="pb-lead">Install Redis, manage ACL credentials, configure limits, and control the service.</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            {{if .RedisStatus.Active}}<strong style="color:#4ade80;">Running</strong>{{else}}<strong style="color:#f87171;">Stopped</strong>{{end}}
+            <span>Status</span>
+        </div>
+        <div class="pb-stat">
+            <strong>{{if .RedisStatus.Port}}{{.RedisStatus.Port}}{{else}}6379{{end}}</strong>
+            <span>Port</span>
+        </div>
+    </div>
+</div>
 
 {{if .RequestError}}
-<section class="alerts">
-    <div class="alert">{{.RequestError}}</div>
-</section>
+<div class="alert mb-3">{{.RequestError}}</div>
 {{end}}
-
 {{if .SuccessMessage}}
-<section class="alerts">
-    <div class="alert success">{{.SuccessMessage}}</div>
-    {{if .GeneratedSecret}}
-    <div class="alert success">Generated password: <strong>{{.GeneratedSecret}}</strong></div>
-    {{end}}
-</section>
+<div class="alert success mb-3">{{.SuccessMessage}}{{if .GeneratedSecret}} — Generated password: <strong>{{.GeneratedSecret}}</strong>{{end}}</div>
 {{end}}
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-activity" style="color:var(--accent);margin-right:6px;"></i>Service status</h3>
-        <div class="site-delete-summary details-summary">
-            <div><strong>Installed</strong><span>{{if .RedisStatus.Installed}}Yes{{else}}No{{end}}</span></div>
-            <div><strong>Active</strong><span>{{if .RedisStatus.Active}}Running{{else}}Stopped{{end}}</span></div>
-            <div><strong>Enabled</strong><span>{{if .RedisStatus.Enabled}}On boot{{else}}Manual{{end}}</span></div>
-            <div><strong>Service</strong><span>{{if .RedisStatus.ServiceName}}{{.RedisStatus.ServiceName}}{{else}}redis-server{{end}}</span></div>
-            <div><strong>Port</strong><span>{{if .RedisStatus.Port}}{{.RedisStatus.Port}}{{else}}6379{{end}}</span></div>
-            <div><strong>Max memory</strong><span>{{if .RedisStatus.MaxMemoryBytes}}{{.RedisMaxMemoryMB}} MB{{else}}Unlimited{{end}}</span></div>
-            <div><strong>Eviction</strong><span>{{if .RedisStatus.EvictionPolicy}}{{.RedisStatus.EvictionPolicy}}{{else}}noeviction{{end}}</span></div>
-            <div><strong>ACL user</strong><span>{{if .RedisStatus.Username}}{{.RedisStatus.Username}}{{else}}-{{end}}</span></div>
-            <div><strong>Config</strong><span>{{if .RedisStatus.ConfigPath}}{{.RedisStatus.ConfigPath}}{{else}}-{{end}}</span></div>
-            <div><strong>ACL file</strong><span>{{if .RedisStatus.ACLFilePath}}{{.RedisStatus.ACLFilePath}}{{else}}-{{end}}</span></div>
+        <h3><i class="bi bi-activity" style="color:var(--accent);"></i>Service status</h3>
+        <div class="info-grid">
+            <div class="info-grid-item"><span class="info-label">Installed</span><span>{{if .RedisStatus.Installed}}Yes{{else}}No{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Active</span><span>{{if .RedisStatus.Active}}<span class="status-pill running">Running</span>{{else}}<span class="status-pill stopped">Stopped</span>{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Enabled</span><span>{{if .RedisStatus.Enabled}}On boot{{else}}Manual{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Service</span><span>{{if .RedisStatus.ServiceName}}{{.RedisStatus.ServiceName}}{{else}}redis-server{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Port</span><span>{{if .RedisStatus.Port}}{{.RedisStatus.Port}}{{else}}6379{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Max memory</span><span>{{if .RedisStatus.MaxMemoryBytes}}{{.RedisMaxMemoryMB}} MB{{else}}Unlimited{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Eviction</span><span>{{if .RedisStatus.EvictionPolicy}}{{.RedisStatus.EvictionPolicy}}{{else}}noeviction{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">ACL user</span><span>{{if .RedisStatus.Username}}{{.RedisStatus.Username}}{{else}}-{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Config</span><span class="text-break">{{if .RedisStatus.ConfigPath}}{{.RedisStatus.ConfigPath}}{{else}}-{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">ACL file</span><span class="text-break">{{if .RedisStatus.ACLFilePath}}{{.RedisStatus.ACLFilePath}}{{else}}-{{end}}</span></div>
         </div>
         {{if .RedisStatus.Version}}
         <p class="muted details-note" style="margin-top:12px;">{{.RedisStatus.Version}}</p>
-        {{else}}
-        <p class="muted details-note" style="margin-top:12px;">Redis version information is not available yet.</p>
         {{end}}
     </article>
     <article class="panel">
-        <h3><i class="bi bi-download" style="color:var(--muted);margin-right:6px;"></i>Install Redis</h3>
+        <h3><i class="bi bi-download" style="color:var(--muted);"></i>Install Redis</h3>
         <form method="post" class="stack-form redis-stream-form" data-stream-endpoint="/redis/stream">
             <input type="hidden" name="redis_action" value="install">
             <p class="muted">This installs the Ubuntu `redis-server` package, enables the service at boot, and starts it immediately.</p>
@@ -53,11 +55,11 @@
             </div>
         </form>
     </article>
-</section>
+</div>
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-key" style="color:var(--accent);margin-right:6px;"></i>Credentials and port</h3>
+        <h3><i class="bi bi-key" style="color:var(--accent);"></i>Credentials and port</h3>
         <form method="post" class="stack-form redis-stream-form" data-stream-endpoint="/redis/stream">
             <input type="hidden" name="redis_action" value="save_config">
             <div class="form-grid two-up">
@@ -99,7 +101,7 @@
         <p class="muted">Set `0` for unlimited memory, or choose an eviction policy if Redis should evict keys when it reaches the limit.</p>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-arrow-repeat" style="color:var(--muted);margin-right:6px;"></i>Service control</h3>
+        <h3><i class="bi bi-arrow-repeat" style="color:var(--muted);"></i>Service control</h3>
         <form method="post" class="stack-form redis-stream-form" data-stream-endpoint="/redis/stream">
             <p class="muted">Start, stop, or restart the Redis service without leaving the panel.</p>
             <div class="form-actions">
@@ -110,7 +112,7 @@
         </form>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-broadcast" style="color:var(--muted);margin-right:6px;"></i>Connection test</h3>
+        <h3><i class="bi bi-broadcast" style="color:var(--muted);"></i>Connection test</h3>
         <form method="post" class="stack-form redis-stream-form" data-stream-endpoint="/redis/stream">
             <input type="hidden" name="redis_action" value="test_connection">
             <div class="form-grid two-up">
@@ -134,23 +136,23 @@
         <p class="muted">This runs `redis-cli PING` against `127.0.0.1` with the supplied ACL username, password, and port.</p>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-journal-code" style="color:var(--muted);margin-right:6px;"></i>Redis logs</h3>
+        <h3><i class="bi bi-journal-code" style="color:var(--muted);"></i>Redis logs</h3>
         <p class="muted">Open a separate page to inspect recent Redis service logs without crowding the control screen.</p>
         <div class="form-actions">
             <a class="btn btn-outline-secondary" href="/redis/logs">Open Redis logs</a>
         </div>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current rules</h3>
-        <ul>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);"></i>Rules</h3>
+        <ul class="rule-list">
             <li>Usernames must start with a letter and can contain letters, numbers, dashes, or underscores.</li>
             <li>Passwords cannot be empty and cannot contain spaces.</li>
             <li>Leaving the password field blank generates a new secret and shows it once after save.</li>
             <li>Configuration changes are saved and Redis is restarted automatically.</li>
-            <li>Memory limit is written to `maxmemory` in bytes and eviction selection is written to `maxmemory-policy`.</li>
+            <li>Memory limit is written to <code>maxmemory</code> in bytes and eviction selection is written to <code>maxmemory-policy</code>.</li>
         </ul>
     </article>
-</section>
+</div>
 <script>
 (() => {
     const terminalDrawer = window.PanelTerminalDrawer;

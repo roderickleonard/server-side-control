@@ -1,38 +1,42 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Database details</span>
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-green" style="margin-bottom:16px;">
+    <div class="pb-icon"><i class="bi bi-database-check"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow"><a href="/databases" style="color:rgba(255,255,255,.7);text-decoration:none;">Databases</a> / Details</span>
         <h2>{{.DatabaseDetails.DatabaseName}}</h2>
-        <p class="lead">Inspect table structure, preview sample rows, and restore SQL content into this database.</p>
+        <p class="pb-lead">Inspect table structure, preview rows, and restore SQL content.</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{len .DatabaseDetails.Tables}}</strong>
+            <span>Tables</span>
+        </div>
+    </div>
+</div>
 
 {{if .RequestError}}
-<section class="alerts">
-    <div class="alert">{{.RequestError}}</div>
-</section>
+<div class="alert mb-3">{{.RequestError}}</div>
 {{end}}
 
 {{if .SuccessMessage}}
-<section class="alerts">
-    <div class="alert success">{{.SuccessMessage}}</div>
-</section>
+<div class="alert success mb-3">{{.SuccessMessage}}</div>
 {{end}}
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
         <div class="section-head">
             <div>
                 <span class="eyebrow">Summary</span>
-                <h3>Database overview</h3>
+                <h3 style="margin-bottom:0;">Database overview</h3>
             </div>
             <a class="btn btn-sm btn-outline-secondary" href="/databases">Back to databases</a>
         </div>
-        <div class="site-delete-summary details-summary">
-            <div><strong>Database</strong><span>{{.DatabaseDetails.DatabaseName}}</span></div>
-            <div><strong>Tables</strong><span>{{len .DatabaseDetails.Tables}}</span></div>
-            <div><strong>Approx size</strong><span>{{.DatabaseDetails.ApproximateSize}} bytes</span></div>
-            <div><strong>Selected table</strong><span>{{if .DatabaseDetails.SelectedTable}}{{.DatabaseDetails.SelectedTable}}{{else}}-{{end}}</span></div>
+        <div class="info-grid" style="margin-top:12px;">
+            <div class="info-grid-item"><span class="info-label">Database</span><span>{{.DatabaseDetails.DatabaseName}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Tables</span><span>{{len .DatabaseDetails.Tables}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Approx size</span><span>{{.DatabaseDetails.ApproximateSize}} bytes</span></div>
+            <div class="info-grid-item"><span class="info-label">Selected table</span><span>{{if .DatabaseDetails.SelectedTable}}{{.DatabaseDetails.SelectedTable}}{{else}}-{{end}}</span></div>
         </div>
         {{if .SelectedDatabaseEntries}}
         <div class="table-card table-responsive top-gap">
@@ -56,7 +60,7 @@
         {{end}}
     </article>
     <article class="panel">
-        <h3><i class="bi bi-cloud-upload" style="color:var(--accent);margin-right:6px;"></i>Restore database</h3>
+        <h3><i class="bi bi-cloud-upload" style="color:var(--accent);"></i>Restore database</h3>
         <form method="post" enctype="multipart/form-data" class="stack-form database-stream-form" data-stream-endpoint="/databases/details/stream" data-reload-on-success="1">
             <input type="hidden" name="database_details_action" value="restore">
             <input type="hidden" name="database_name" value="{{.DatabaseDetails.DatabaseName}}">
@@ -77,11 +81,17 @@
         </form>
         <p class="muted details-note">The restore runs through the saved MySQL admin defaults file against this database only.</p>
     </article>
-</section>
+</div>
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-table" style="color:var(--accent);margin-right:6px;"></i>Tables</h3>
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Schema</span>
+                <h3 style="margin-bottom:0;"><i class="bi bi-table" style="color:var(--accent);"></i>Tables</h3>
+            </div>
+            <span class="count-chip">{{len .DatabaseDetails.Tables}}</span>
+        </div>
         {{if .DatabaseDetails.Tables}}
         <form method="get" class="inline-form details-inline-form bottom-gap">
             <input type="hidden" name="name" value="{{.DatabaseDetails.DatabaseName}}">
@@ -120,11 +130,14 @@
             </table>
         </div>
         {{else}}
-        <p class="muted">No tables found in this database yet.</p>
+        <div class="empty-state">
+            <i class="bi bi-table"></i>
+            <p>No tables found in this database yet.</p>
+        </div>
         {{end}}
     </article>
     <article class="panel">
-        <h3><i class="bi bi-eye" style="color:var(--muted);margin-right:6px;"></i>Table preview</h3>
+        <h3><i class="bi bi-eye" style="color:var(--muted);"></i>Table preview</h3>
         {{if .DatabaseDetails.Preview.Columns}}
         <p class="muted">Showing up to 25 rows from {{.DatabaseDetails.Preview.Name}}.</p>
         <div class="table-card table-responsive">
@@ -157,7 +170,7 @@
         <p class="muted">Select a table to load a preview.</p>
         {{end}}
     </article>
-</section>
+</div>
 <script>
 (() => {
     const terminalDrawer = window.PanelTerminalDrawer;

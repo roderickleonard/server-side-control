@@ -1,36 +1,30 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Deploys</span>
-        <h2>Git Deploy &amp; Rollback</h2>
-        <p class="lead">Clone or pull a repository into a site root, run post-deploy commands, and rollback to any previously recorded commit SHA.</p>
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-green">
+    <div class="pb-icon"><i class="bi bi-rocket-takeoff"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Git Deployments</span>
+        <h2>Deploys &amp; Rollback</h2>
+        <p class="pb-lead">Clone or pull repositories, run post-deploy commands, and rollback to any recorded commit SHA.</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{len .DeploymentReleases}}</strong>
+            <span>Releases</span>
+        </div>
+    </div>
+</div>
 
 {{if .RequestError}}
-<section class="alerts">
-    <div class="alert">{{.RequestError}}</div>
-</section>
+<div class="alert mb-3">{{.RequestError}}</div>
 {{end}}
-
 {{if .SuccessMessage}}
-<section class="alerts">
-    <div class="alert success">{{.SuccessMessage}}</div>
-    {{if .ResultPath}}
-    <div class="alert success">Deploy target: <strong>{{.ResultPath}}</strong></div>
-    {{end}}
-    {{if .CommitSHA}}
-    <div class="alert success">Current commit: <strong>{{.CommitSHA}}</strong></div>
-    {{end}}
-    {{if .PreviousCommitSHA}}
-    <div class="alert success">Previous commit: <strong>{{.PreviousCommitSHA}}</strong></div>
-    {{end}}
-</section>
+<div class="alert success mb-3">{{.SuccessMessage}}{{if .ResultPath}} — <strong>{{.ResultPath}}</strong>{{end}}{{if .CommitSHA}} · Commit: <strong>{{.CommitSHA}}</strong>{{end}}</div>
 {{end}}
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-rocket" style="color:var(--accent);margin-right:6px;"></i>Run deploy</h3>
+        <h3><i class="bi bi-rocket" style="color:var(--accent);"></i>Run deploy</h3>
         <form method="post" class="stack-form deploy-stream-form" data-stream-endpoint="/deploys/stream">
             <input type="hidden" name="deploy_mode" value="deploy">
             <div class="form-grid two-up">
@@ -75,7 +69,7 @@
         </form>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-arrow-counterclockwise" style="color:var(--muted);margin-right:6px;"></i>Rollback release</h3>
+        <h3><i class="bi bi-arrow-counterclockwise" style="color:var(--muted);"></i>Rollback release</h3>
         <form method="post" class="stack-form deploy-stream-form" data-stream-endpoint="/deploys/stream">
             <input type="hidden" name="deploy_mode" value="rollback">
             <div class="form-grid two-up">
@@ -115,19 +109,19 @@
             </div>
         </form>
     </article>
-</section>
+</div>
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current behavior</h3>
-        <ul>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);"></i>Behavior</h3>
+        <ul class="rule-list">
             <li>If the target directory already contains a git repository, the panel fetches and fast-forward pulls the selected branch.</li>
             <li>If the target directory is empty, the panel clones the repository directly into it.</li>
-            <li>The optional post-deploy command runs through `sh -lc` as the selected user, and can use the selected Node version via NVM.</li>
+            <li>The optional post-deploy command runs through <code>sh -lc</code> as the selected user, and can use the selected Node version via NVM.</li>
             <li>Every successful deploy or rollback records the resulting commit SHA and previous commit in release history.</li>
         </ul>
     </article>
-</section>
+</div>
 
 {{template "deploy_history" .}}
 <script>

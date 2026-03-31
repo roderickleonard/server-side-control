@@ -1,7 +1,7 @@
 {{define "site_tls"}}
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-shield-check" style="color:var(--accent);margin-right:6px;"></i>Enable TLS</h3>
+        <h3><i class="bi bi-shield-check" style="color:var(--accent);"></i>Enable TLS</h3>
         <form method="post" class="stack-form site-stream-form" data-stream-endpoint="/sites/stream">
             <input type="hidden" name="site_action" value="tls">
             <div class="form-grid two-up">
@@ -31,5 +31,5 @@
             <li>The host needs `certbot` and `python3-certbot-nginx` installed.</li>
         </ul>
     </article>
-</section>
+</div>
 {{end}}

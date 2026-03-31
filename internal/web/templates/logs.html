@@ -1,15 +1,26 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Logs</span>
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-neutral">
+    <div class="pb-icon"><i class="bi bi-journal-code"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Security &amp; Compliance</span>
         <h2>Audit Trail</h2>
-        <p class="lead">Authenticated panel operations are recorded here with actor, target, outcome and metadata for full auditability.</p>
+        <p class="pb-lead">Authenticated panel operations are recorded with actor, target, outcome and metadata.</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{len .AuditLogs}}</strong>
+            <span>Entries</span>
+        </div>
+    </div>
+</div>
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-journal-code" style="color:var(--accent);margin-right:6px;"></i>Recent audit logs</h3>
+        <div class="section-head">
+            <h3 style="margin-bottom:0;"><i class="bi bi-journal-code" style="color:var(--accent);"></i>Recent audit logs</h3>
+            <span class="count-chip">{{len .AuditLogs}}</span>
+        </div>
         {{if .AuditLogs}}
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">
@@ -25,11 +36,15 @@
                 <tbody>
                     {{range .AuditLogs}}
                     <tr>
-                        <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
-                        <td>{{.Actor}}</td>
+                        <td style="font-size:12px;color:var(--muted);white-space:nowrap;">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                        <td><span class="badge subtle-badge">{{.Actor}}</span></td>
                         <td>{{.Action}}</td>
-                        <td class="text-break">{{.Target}}</td>
-                        <td><span class="badge subtle-badge">{{.Outcome}}</span></td>
+                        <td class="text-break" style="font-size:12px;">{{.Target}}</td>
+                        <td>
+                            {{if eq .Outcome "success"}}<span class="status-pill success">success</span>
+                            {{else if eq .Outcome "failure"}}<span class="status-pill failure">failure</span>
+                            {{else}}<span class="status-pill unknown">{{.Outcome}}</span>{{end}}
+                        </td>
                     </tr>
                     {{if .Metadata}}
                     <tr class="table-note-row">
@@ -41,8 +56,11 @@
             </table>
         </div>
         {{else}}
-        <p class="muted">No audit events have been recorded yet.</p>
+        <div class="empty-state">
+            <i class="bi bi-journal-code"></i>
+            <p>No audit events have been recorded yet.</p>
+        </div>
         {{end}}
     </article>
-</section>
+</div>
 {{end}}

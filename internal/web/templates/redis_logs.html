@@ -1,27 +1,30 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Redis logs</span>
-        <h2>Redis Service Logs</h2>
-        <p class="lead">Inspect recent Redis service output from the panel. Logs are read from systemd journal and fall back to the Redis log file when needed.</p>
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-red">
+    <div class="pb-icon"><i class="bi bi-journal-code"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow"><a href="/redis" style="color:rgba(255,255,255,.7);text-decoration:none;">Redis</a> / Logs</span>
+        <h2>Redis Logs</h2>
+        <p class="pb-lead">Inspect recent Redis service output from systemd journal or log file.</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            {{if .RedisStatus.Active}}<strong style="color:#4ade80;">Running</strong>{{else}}<strong style="color:#f87171;">Stopped</strong>{{end}}
+            <span>Service</span>
+        </div>
+    </div>
+</div>
 
 {{if .RequestError}}
-<section class="alerts">
-    <div class="alert">{{.RequestError}}</div>
-</section>
+<div class="alert mb-3">{{.RequestError}}</div>
 {{end}}
-
 {{if .SuccessMessage}}
-<section class="alerts">
-    <div class="alert success">{{.SuccessMessage}}</div>
-</section>
+<div class="alert success mb-3">{{.SuccessMessage}}</div>
 {{end}}
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-journal-code" style="color:var(--accent);margin-right:6px;"></i>Load logs</h3>
+        <h3><i class="bi bi-journal-code" style="color:var(--accent);"></i>Load logs</h3>
         <form method="post" class="stack-form">
             <div class="form-grid two-up">
                 <label>
@@ -41,21 +44,21 @@
         </form>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current behavior</h3>
-        <ul>
-            <li>The panel tries `journalctl -u redis-server` first.</li>
-            <li>If journal access is unavailable, it falls back to `/var/log/redis/redis-server.log`.</li>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);"></i>Behavior</h3>
+        <ul class="rule-list">
+            <li>The panel tries <code>journalctl -u redis-server</code> first.</li>
+            <li>If journal access is unavailable, it falls back to <code>/var/log/redis/redis-server.log</code>.</li>
             <li>The line count is capped server-side to keep the panel responsive.</li>
         </ul>
     </article>
-</section>
+</div>
 
 {{if .CommandOutput}}
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-terminal" style="color:var(--muted);margin-right:6px;"></i>Redis log output</h3>
+        <h3><i class="bi bi-terminal" style="color:var(--muted);"></i>Redis log output</h3>
         <pre class="command-output">{{.CommandOutput}}</pre>
     </article>
-</section>
+</div>
 {{end}}
 {{end}}

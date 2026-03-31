@@ -1,29 +1,28 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Module</span>
+<div class="page-banner pb-neutral">
+    <div class="pb-icon"><i class="bi bi-tools"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Module</span>
         <h2>{{.Title}}</h2>
-        <p class="lead">This area is reserved for the next implementation milestone. Navigation, auth, metrics and storage layers are already in place.</p>
+        <p class="pb-lead">This area is reserved for the next implementation milestone. Navigation, auth, metrics and storage layers are already in place.</p>
     </div>
-</section>
+</div>
 
 {{if .Alerts}}
-<section class="alerts">
-    {{range .Alerts}}
-    <div class="alert">{{.}}</div>
-    {{end}}
-</section>
+{{range .Alerts}}
+<div class="alert mb-3">{{.}}</div>
+{{end}}
 {{end}}
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-tools" style="color:var(--accent);margin-right:6px;"></i>Planned actions</h3>
-        <ul>
-            <li>Wire real privileged operations behind audited service methods</li>
-            <li>Render form-driven workflows instead of placeholders</li>
-            <li>Persist execution history into audit logs</li>
-            <li>Attach validation and dry-run support before making system changes</li>
+        <h3><i class="bi bi-checklist" style="color:var(--accent);"></i>Planned actions</h3>
+        <ul class="rule-list">
+            <li>Wire real privileged operations behind audited service methods.</li>
+            <li>Render form-driven workflows instead of placeholders.</li>
+            <li>Persist execution history into audit logs.</li>
+            <li>Attach validation and dry-run support before making system changes.</li>
         </ul>
     </article>
-</section>
+</div>
 {{end}}

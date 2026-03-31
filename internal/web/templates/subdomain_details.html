@@ -1,20 +1,30 @@
 {{define "content"}}
 <link rel="stylesheet" href="/static/vendor/xterm/xterm.min.css">
-<section class="hero compact">
-    <div>
-        <div class="details-note" style="margin-bottom:8px;">
-            <a href="/sites">Sites</a> / <a href="/sites/details?name={{.SelectedSite.Name}}&tab=domains">{{.SelectedSite.Name}}</a> / <span>{{.SelectedSubdomain.FullDomain}}</span>
-        </div>
-        <span class="eyebrow">Subdomain details</span>
+
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-blue" style="margin-bottom:16px;">
+    <div class="pb-icon"><i class="bi bi-diagram-2"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow"><a href="/sites" style="color:rgba(255,255,255,.7);text-decoration:none;">Sites</a> / <a href="/sites/details?name={{.SelectedSite.Name}}&tab=domains" style="color:rgba(255,255,255,.7);text-decoration:none;">{{.SelectedSite.Name}}</a> / Subdomain</span>
         <h2>{{.SelectedSubdomain.FullDomain}}</h2>
-        <p class="lead">Parent site: {{.SelectedSite.Name}}. Deploy, runtime, SSH, files, TLS and Nginx controls for this subdomain.</p>
+        <p class="pb-lead">{{.SelectedSubdomain.Runtime}} &nbsp;·&nbsp; Owner: {{.SelectedSite.OwnerLinuxUser}}</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{if .RepositoryStatus.IsGitRepo}}Ready{{else}}No git{{end}}</strong>
+            <span>Repo</span>
+        </div>
+        <div class="pb-stat">
+            <strong>{{if .SubdomainAutoDeployEnabled}}On{{else}}Off{{end}}</strong>
+            <span>Auto deploy</span>
+        </div>
+    </div>
+</div>
 
 {{if .RequestError}}
 <section class="alerts">
     <div class="alert">{{.RequestError}}</div>
-</section>
+</div>
 {{end}}
 
 {{if .SuccessMessage}}
@@ -29,11 +39,11 @@
     {{if .PreviousCommitSHA}}
     <div class="alert success">Previous commit: <strong>{{.PreviousCommitSHA}}</strong></div>
     {{end}}
-</section>
+</div>
 {{end}}
 
 {{if .CommandOutput}}
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -43,10 +53,10 @@
         </div>
         <pre class="command-output">{{.CommandOutput}}</pre>
     </article>
-</section>
+</div>
 {{end}}
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
         <div class="site-tab-nav" id="site-tab-nav" data-active-tab="{{.SiteDetailTab}}">
             <button type="button" class="site-tab-btn" data-tab="overview">Overview</button>
@@ -57,11 +67,11 @@
             <button type="button" class="site-tab-btn" data-tab="settings">Settings</button>
         </div>
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="overview">
+<div class="grid single" data-site-tab="overview">
     <article class="panel">
-        <div class="site-delete-summary details-summary">
+        <div class="info-grid">
             <div><strong>Domain</strong><span>{{.SelectedSubdomain.FullDomain}}</span></div>
             <div><strong>Mode</strong><span>{{.SelectedSubdomain.Runtime}}</span></div>
             <div><strong>Root</strong><span>{{.SelectedSubdomain.RootDirectory}}</span></div>
@@ -81,16 +91,16 @@
     {{if .LatestWebhookAudit.Action}}
     <article class="panel">
         <h3>Latest webhook</h3>
-        <div class="site-delete-summary details-summary">
+        <div class="info-grid">
             <div><strong>Outcome</strong><span>{{.LatestWebhookAudit.Outcome}}</span></div>
             <div><strong>When</strong><span>{{.LatestWebhookAudit.CreatedAt.Format "2006-01-02 15:04:05"}}</span></div>
             <div><strong>Details</strong><span>{{if .LatestWebhookAudit.Metadata}}{{.LatestWebhookAudit.Metadata}}{{else}}-{{end}}</span></div>
         </div>
     </article>
     {{end}}
-</section>
+</div>
 
-<section class="grid single" data-site-tab="deploy">
+<div class="grid single" data-site-tab="deploy">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -99,7 +109,7 @@
             </div>
             <span class="badge subtle-badge">{{if .RepositoryStatus.IsGitRepo}}Git repo ready{{else}}No git repo yet{{end}}</span>
         </div>
-        <div class="site-delete-summary details-summary">
+        <div class="info-grid">
             <div><strong>Remote</strong><span>{{if .RepositoryStatus.RemoteURL}}{{.RepositoryStatus.RemoteURL}}{{else if .SubdomainRepositoryURL}}{{.SubdomainRepositoryURL}}{{else}}-{{end}}</span></div>
             <div><strong>Branch</strong><span>{{if .RepositoryStatus.Branch}}{{.RepositoryStatus.Branch}}{{else if .SubdomainBranch}}{{.SubdomainBranch}}{{else}}main{{end}}</span></div>
             <div><strong>Commit</strong><span>{{if .RepositoryStatus.CurrentCommit}}{{.RepositoryStatus.CurrentCommit}}{{else}}-{{end}}</span></div>
@@ -150,7 +160,7 @@
                 <button type="submit" class="btn btn-sm btn-outline-secondary">Save repository settings</button>
             </div>
         </form>
-        <div class="site-delete-summary details-summary" style="margin-top:12px;">
+        <div class="info-grid" style="margin-top:12px;">
             <div><strong>Deploy key</strong><span>{{if .GitAuthStatus.DeployKeyReady}}Ready{{else}}Missing{{end}}</span></div>
             <div><strong>Known host</strong><span>{{if .GitAuthStatus.KnownHostTrusted}}Trusted{{else}}Not trusted{{end}}</span></div>
             <div><strong>SSH host</strong><span>{{if .GitAuthStatus.RepositoryHost}}{{.GitAuthStatus.RepositoryHost}}{{else}}-{{end}}</span></div>
@@ -194,9 +204,9 @@
             </div>
         </form>
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="deploy">
+<div class="grid single" data-site-tab="deploy">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -286,13 +296,13 @@
             <strong>Webhook URL:</strong> {{.AutoDeployWebhookURL}}
         </div>
         {{end}}
-        <div class="site-delete-summary details-summary" style="margin-top:12px;">
+        <div class="info-grid" style="margin-top:12px;">
             <div><strong>Node version</strong><span>{{if .SubdomainAutoDeployNodeVersion}}{{.SubdomainAutoDeployNodeVersion}}{{else if .PreferredNodeVersion}}{{.PreferredNodeVersion}}{{else}}Shell default / none{{end}}</span></div>
         </div>
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="deploy">
+<div class="grid single" data-site-tab="deploy">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -343,9 +353,9 @@
         <p class="muted details-note">No deploy history recorded for this subdomain yet.</p>
         {{end}}
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="runtime">
+<div class="grid single" data-site-tab="runtime">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -354,7 +364,7 @@
             </div>
             <span class="badge subtle-badge">{{if .RuntimeStatus.PM2Installed}}PM2 installed{{else}}PM2 missing{{end}}</span>
         </div>
-        <div class="site-delete-summary details-summary">
+        <div class="info-grid">
             <div><strong>Linux user</strong><span>{{.RuntimeStatus.User}}</span></div>
             <div><strong>Home</strong><span>{{.RuntimeStatus.HomeDirectory}}</span></div>
             <div><strong>NVM</strong><span>{{if .RuntimeStatus.NVMInstalled}}Installed{{else}}Not installed{{end}}</span></div>
@@ -432,7 +442,7 @@
                 {{end}}
             </div>
             {{if .PackageScripts}}
-            <div class="site-delete-summary details-summary" style="margin-top:12px;">
+            <div class="info-grid" style="margin-top:12px;">
                 {{range .PackageScripts}}
                 <div><strong>{{.}}</strong><span><button type="button" class="btn btn-sm btn-outline-secondary" data-runtime-action="run_npm_script" data-runtime-script="{{.}}">Run</button></span></div>
                 {{end}}
@@ -540,9 +550,9 @@
         </div>
         <p class="muted details-note" style="margin-top:12px;">Composer is installed once on the server. Each Laravel app still runs Composer inside its own root and keeps a separate vendor directory.</p>
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="runtime">
+<div class="grid single" data-site-tab="runtime">
     <article class="panel">
         <h3>Start subdomain with PM2</h3>
         <form method="post" class="stack-form">
@@ -650,12 +660,12 @@
         </div>
         {{end}}
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="ssh">
+<div class="grid single" data-site-tab="ssh">
     <article class="panel">
         <h3>Interactive terminal</h3>
-        <div class="site-delete-summary details-summary">
+        <div class="info-grid">
             <div><strong>User</strong><span>{{.SelectedSite.OwnerLinuxUser}}</span></div>
             <div><strong>Default cwd</strong><span>{{.SelectedSubdomain.RootDirectory}}</span></div>
             <div><strong>Mode</strong><span>PTY over WebSocket</span></div>
@@ -666,12 +676,12 @@
         </div>
         <div class="muted details-note" style="margin-top:10px;">Live output opens in the shared terminal drawer on the right. You can copy the full transcript and close the drawer whenever you want.</div>
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="files">
+<div class="grid single" data-site-tab="files">
     <article class="panel">
         <h3>Files</h3>
-        <div class="site-delete-summary details-summary">
+        <div class="info-grid">
             <div><strong>Root</strong><span>{{.SelectedSubdomain.RootDirectory}}</span></div>
             <div><strong>Current path</strong><span>{{if .SiteBrowserCurrentPath}}{{.SiteBrowserCurrentPath}}{{else}}/{{end}}</span></div>
         </div>
@@ -771,9 +781,9 @@
         <p class="muted details-note">No artisan file was detected in this subdomain root, so Laravel permission repair is not shown here.</p>
         {{end}}
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="settings">
+<div class="grid single" data-site-tab="settings">
     <article class="panel">
         <h3>Settings</h3>
         <form method="post" class="stack-form compact-form" style="margin-top:0;gap:8px;">
@@ -810,7 +820,7 @@
         <div class="details-note" style="margin-top:8px;word-break:break-all;">
             <strong>Preview:</strong> {{.SelectedSubdomain.MovePreviewFrom}} -> {{.SelectedSubdomain.MovePreviewTo}}
         </div>
-        <div class="site-delete-summary details-summary" style="margin-top:8px;">
+        <div class="info-grid" style="margin-top:8px;">
             <div><strong>Target exists</strong><span>{{if .SelectedSubdomain.MovePreviewTargetExists}}Yes{{else}}No{{end}}</span></div>
             <div><strong>Target empty</strong><span>{{if .SelectedSubdomain.MovePreviewTargetExists}}{{if .SelectedSubdomain.MovePreviewTargetEmpty}}Yes{{else}}No{{end}}{{else}}-{{end}}</span></div>
             <div><strong>Git repo</strong><span>{{if .SelectedSubdomain.MovePreviewTargetGitRepo}}Yes{{else}}No{{end}}</span></div>
@@ -869,9 +879,9 @@
             <button type="submit" class="btn btn-sm btn-outline-secondary">Delete subdomain</button>
         </form>
     </article>
-</section>
+</div>
 
-<section class="grid single" data-site-tab="settings">
+<div class="grid single" data-site-tab="settings">
     <article class="panel">
         <div class="section-head">
             <div>
@@ -1023,7 +1033,7 @@
             {{end}}
         </div>
     </article>
-</section>
+</div>
 
 <dialog id="subdomain-rollback-dialog" class="panel" style="max-width:520px;width:calc(100% - 32px);border:1px solid rgba(148,163,184,0.25);background:#0f172a;color:#e5e7eb;">
     <form method="dialog" class="stack-form" style="margin-top:0;">

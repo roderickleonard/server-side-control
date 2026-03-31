@@ -1,27 +1,30 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">Users</span>
-        <h2>Linux User Management</h2>
-        <p class="lead">Provision and manage Linux system accounts on the target host. Home directories, UIDs and shell access are managed here.</p>
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-purple">
+    <div class="pb-icon"><i class="bi bi-people"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">System Accounts</span>
+        <h2>Linux Users</h2>
+        <p class="pb-lead">Provision and manage Linux system accounts, home directories, sudo access, and passwords.</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{len .LinuxUsers}}</strong>
+            <span>Users</span>
+        </div>
+    </div>
+</div>
 
 {{if .RequestError}}
-<section class="alerts">
-    <div class="alert">{{.RequestError}}</div>
-</section>
+<div class="alert mb-3">{{.RequestError}}</div>
 {{end}}
-
 {{if .SuccessMessage}}
-<section class="alerts">
-    <div class="alert success">{{.SuccessMessage}}</div>
-</section>
+<div class="alert success mb-3">{{.SuccessMessage}}</div>
 {{end}}
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-person-plus" style="color:var(--accent);margin-right:6px;"></i>Create user</h3>
+        <h3><i class="bi bi-person-plus" style="color:var(--accent);"></i>Create User</h3>
         <form method="post" class="stack-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
             <input type="hidden" name="user_action" value="create">
             <div class="form-grid two-up">
@@ -51,20 +54,27 @@
             </div>
         </form>
     </article>
+
     <article class="panel">
-        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Validation rules</h3>
-        <ul>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);"></i>Validation Rules</h3>
+        <ul class="rule-list">
             <li>Usernames must begin with a lowercase letter or underscore.</li>
             <li>Only lowercase letters, numbers, underscores, and hyphens are accepted.</li>
-            <li>New users are created as regular login users with `/bin/bash`.</li>
-            <li>If you want to use `sudo` inside the terminal, give the user a password and enable sudo access.</li>
+            <li>New users are created as regular login users with <code>/bin/bash</code>.</li>
+            <li>If you want to use <code>sudo</code> inside the terminal, give the user a password and enable sudo access.</li>
         </ul>
     </article>
-</section>
+</div>
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-people" style="color:var(--accent);margin-right:6px;"></i>Existing users</h3>
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">System accounts</span>
+                <h3 style="margin-bottom:0;">Existing users</h3>
+            </div>
+            <span class="count-chip">{{len .LinuxUsers}}</span>
+        </div>
         {{if .LinuxUsers}}
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">
@@ -73,13 +83,11 @@
                         <th>Username</th>
                         <th>UID</th>
                         <th>Home</th>
-                        <th>Shell</th>
-                        <th>Password</th>
                         <th>Sudo</th>
                         <th>NOPASSWD</th>
-                        <th>Password action</th>
-                        <th>Sudo action</th>
-                        <th>NOPASSWD action</th>
+                        <th>Password</th>
+                        <th>Sudo toggle</th>
+                        <th>NOPASSWD toggle</th>
                         <th class="text-end">Delete</th>
                     </tr>
                 </thead>
@@ -87,18 +95,16 @@
                     {{range .LinuxUsers}}
                     <tr>
                         <td class="fw-semibold">{{.Username}}</td>
-                        <td>{{.UID}}</td>
-                        <td class="text-break">{{.HomeDirectory}}</td>
-                        <td>{{.Shell}}</td>
-                        <td>{{if .PasswordSet}}Set{{else}}Not set{{end}}</td>
-                        <td>{{if .SudoEnabled}}Enabled{{else}}Disabled{{end}}</td>
-                        <td>{{if .PasswordlessSudo}}Enabled{{else}}Disabled{{end}}</td>
+                        <td style="color:var(--muted);font-size:12px;">{{.UID}}</td>
+                        <td class="text-break" style="font-size:12px;color:var(--muted);">{{.HomeDirectory}}</td>
+                        <td>{{if .SudoEnabled}}<span class="status-pill running">Enabled</span>{{else}}<span class="status-pill stopped">Disabled</span>{{end}}</td>
+                        <td>{{if .PasswordlessSudo}}<span class="status-pill running">Enabled</span>{{else}}<span class="status-pill unknown">Off</span>{{end}}</td>
                         <td>
                             <form method="post" class="inline-form table-action-form user-stream-form" data-stream-endpoint="/users/stream" data-reload-on-success="1">
                                 <input type="hidden" name="user_action" value="set_password">
                                 <input type="hidden" name="password_username" value="{{.Username}}">
                                 <input type="password" name="set_linux_password" placeholder="New password" required>
-                                <button type="submit">Save password</button>
+                                <button type="submit">Set</button>
                             </form>
                         </td>
                         <td>
@@ -106,7 +112,7 @@
                                 <input type="hidden" name="user_action" value="set_sudo">
                                 <input type="hidden" name="sudo_username" value="{{.Username}}">
                                 <input type="hidden" name="sudo_enabled" value="{{if .SudoEnabled}}0{{else}}1{{end}}">
-                                <button type="submit">{{if .SudoEnabled}}Revoke sudo{{else}}Grant sudo{{end}}</button>
+                                <button type="submit">{{if .SudoEnabled}}Revoke{{else}}Grant{{end}}</button>
                             </form>
                         </td>
                         <td>
@@ -114,7 +120,7 @@
                                 <input type="hidden" name="user_action" value="set_passwordless_sudo">
                                 <input type="hidden" name="passwordless_sudo_username" value="{{.Username}}">
                                 <input type="hidden" name="passwordless_sudo_enabled" value="{{if .PasswordlessSudo}}0{{else}}1{{end}}">
-                                <button type="submit">{{if .PasswordlessSudo}}Disable NOPASSWD{{else}}Enable NOPASSWD{{end}}</button>
+                                <button type="submit">{{if .PasswordlessSudo}}Disable{{else}}Enable{{end}}</button>
                             </form>
                         </td>
                         <td>
@@ -123,9 +129,9 @@
                                 <input type="hidden" name="delete_username" value="{{.Username}}">
                                 <label class="checkbox-row compact">
                                     <input type="checkbox" name="remove_home" value="1">
-                                    <span>Delete home files too</span>
+                                    <span>Delete home</span>
                                 </label>
-                                <button type="submit">Delete</button>
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
                             </form>
                         </td>
                     </tr>
@@ -134,10 +140,13 @@
             </table>
         </div>
         {{else}}
-        <p class="muted">No managed Linux users found yet.</p>
+        <div class="empty-state">
+            <i class="bi bi-people"></i>
+            <p>No managed Linux users found yet.</p>
+        </div>
         {{end}}
     </article>
-</section>
+</div>
 <script>
 (() => {
     const terminalDrawer = window.PanelTerminalDrawer;

@@ -1,34 +1,38 @@
 {{define "content"}}
-<section class="hero compact">
-    <div>
-        <span class="eyebrow">PHP</span>
-        <h2>PHP Runtime Management</h2>
-        <p class="lead">Install PHP versions, switch site PHP-FPM sockets, and manage extensions from one place.</p>
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-orange">
+    <div class="pb-icon"><i class="bi bi-code-slash"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Runtime Management</span>
+        <h2>PHP</h2>
+        <p class="pb-lead">Install PHP versions, switch site PHP-FPM sockets, and manage extensions from one place.</p>
     </div>
-</section>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{len .PHPVersions}}</strong>
+            <span>Installed</span>
+        </div>
+        <div class="pb-stat">
+            <strong>{{len .PHPInstallableVersions}}</strong>
+            <span>Available</span>
+        </div>
+    </div>
+</div>
 
 {{if .RequestError}}
-<section class="alerts">
-    <div class="alert">{{.RequestError}}</div>
-</section>
+<div class="alert mb-3">{{.RequestError}}</div>
 {{end}}
-
 {{if .SuccessMessage}}
-<section class="alerts">
-    <div class="alert success">{{.SuccessMessage}}</div>
-    {{if .ResultPath}}
-    <div class="alert success">Updated config: <strong>{{.ResultPath}}</strong></div>
-    {{end}}
-</section>
+<div class="alert success mb-3">{{.SuccessMessage}}{{if .ResultPath}} — <strong>{{.ResultPath}}</strong>{{end}}</div>
 {{end}}
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-download" style="color:var(--accent);margin-right:6px;"></i>Install PHP Versions</h3>
+        <h3><i class="bi bi-download" style="color:var(--accent);"></i>Install PHP versions</h3>
         <form method="post" class="stack-form compact-form php-stream-form" data-stream-endpoint="/php/stream" data-reload-on-success="1">
             <input type="hidden" name="php_action" value="install_versions">
             {{if .PHPInstallableVersions}}
-            <div class="site-delete-summary details-summary">
+            <div class="info-grid">
                 {{range .PHPInstallableVersions}}
                 <label class="checkbox-row compact"><input type="checkbox" name="install_versions" value="{{.}}"><span>PHP {{.}}</span></label>
                 {{end}}
@@ -43,7 +47,7 @@
         </form>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-arrow-left-right" style="color:var(--accent);margin-right:6px;"></i>Switch Site Version</h3>
+        <h3><i class="bi bi-arrow-left-right" style="color:var(--accent);"></i>Switch site version</h3>
         <form method="post" class="stack-form php-stream-form" data-stream-endpoint="/php/stream" data-reload-on-success="1">
             <input type="hidden" name="php_action" value="switch_version">
             <div class="form-grid two-up">
@@ -71,11 +75,11 @@
             </div>
         </form>
     </article>
-</section>
+</div>
 
-<section class="grid">
+<div class="grid">
     <article class="panel">
-        <h3><i class="bi bi-puzzle" style="color:var(--accent);margin-right:6px;"></i>Manage Extensions</h3>
+        <h3><i class="bi bi-puzzle" style="color:var(--accent);"></i>Manage extensions</h3>
         <form method="post" class="stack-form compact-form php-stream-form" id="php-extension-form" data-stream-endpoint="/php/stream" data-reload-on-success="1">
             <input type="hidden" name="php_action" value="install_extensions" id="php-extension-action">
             <div class="form-grid two-up">
@@ -110,7 +114,7 @@
             {{if .PHPCommonExtensions}}
             <div>
                 <span class="eyebrow">Common extensions</span>
-                <div class="site-delete-summary details-summary" style="margin-top:8px;" id="php-extension-common-list">
+                <div class="info-grid" style="margin-top:8px;" id="php-extension-common-list">
                     {{range .PHPCommonExtensions}}
                     <label class="checkbox-row compact" data-extension-item>
                         <input type="checkbox" name="php_extensions" value="{{.}}" data-extension="{{.}}">
@@ -130,27 +134,30 @@
         </form>
     </article>
     <article class="panel">
-        <h3><i class="bi bi-code-slash" style="color:var(--muted);margin-right:6px;"></i>Installed PHP Versions</h3>
+        <h3><i class="bi bi-code-slash" style="color:var(--muted);"></i>Installed PHP versions</h3>
         {{if .PHPVersions}}
-        <div class="badge-row">
+        <div class="badge-row" style="margin-bottom:12px;">
             {{range .PHPVersions}}
             <span class="badge">PHP {{.}}</span>
             {{end}}
         </div>
         {{else}}
-        <p class="muted">No PHP-FPM versions were detected yet.</p>
+        <div class="empty-state">
+            <i class="bi bi-code-slash"></i>
+            <p>No PHP-FPM versions detected yet.</p>
+        </div>
         {{end}}
-        <ul>
-            <li>The panel switches the `fastcgi_pass` socket inside the selected site's Nginx config.</li>
+        <ul class="rule-list">
+            <li>The panel switches the <code>fastcgi_pass</code> socket inside the selected site's Nginx config.</li>
             <li>Nginx validation runs before reload and reverts on failure.</li>
             <li>Only versions detected from the host are shown in switch and extension actions.</li>
         </ul>
     </article>
-</section>
+</div>
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-sliders" style="color:var(--accent);margin-right:6px;"></i>PHP ini Tuning</h3>
+        <h3><i class="bi bi-sliders" style="color:var(--accent);"></i>PHP ini tuning</h3>
         <form method="post" class="stack-form compact-form php-stream-form" id="php-ini-form" data-stream-endpoint="/php/stream" data-reload-on-success="1">
             <input type="hidden" name="php_action" value="update_ini">
             <div class="form-grid two-up">
@@ -188,11 +195,17 @@
             </div>
         </form>
     </article>
-</section>
+</div>
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-list-ul" style="color:var(--accent);margin-right:6px;"></i>Managed PHP Sites</h3>
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">PHP-FPM managed sites</span>
+                <h3 style="margin-bottom:0;"><i class="bi bi-list-ul" style="color:var(--accent);"></i>Managed PHP sites</h3>
+            </div>
+            <span class="count-chip">{{len .ManagedSites}}</span>
+        </div>
         {{if .ManagedSites}}
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">
@@ -219,14 +232,22 @@
             </table>
         </div>
         {{else}}
-        <p class="muted">No managed sites are available for PHP switching yet.</p>
+        <div class="empty-state">
+            <i class="bi bi-list-ul"></i>
+            <p>No managed PHP sites available yet.</p>
+        </div>
         {{end}}
     </article>
-</section>
+</div>
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-list-check" style="color:var(--accent);margin-right:6px;"></i>Extensions by PHP Version</h3>
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Module inspection</span>
+                <h3 style="margin-bottom:0;"><i class="bi bi-list-check" style="color:var(--accent);"></i>Extensions by version</h3>
+            </div>
+        </div>
         {{if .PHPExtensionStatuses}}
         <div class="table-card table-responsive">
             <table class="table table-hover align-middle table-theme mb-0">
@@ -251,14 +272,17 @@
             </table>
         </div>
         {{else}}
-        <p class="muted">Install at least one PHP version to inspect extensions.</p>
+        <div class="empty-state">
+            <i class="bi bi-puzzle"></i>
+            <p>Install at least one PHP version to inspect extensions.</p>
+        </div>
         {{end}}
     </article>
-</section>
+</div>
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-activity" style="color:var(--accent);margin-right:6px;"></i>PHP Diagnostics</h3>
+        <h3><i class="bi bi-activity" style="color:var(--accent);"></i>PHP diagnostics</h3>
         {{if .PHPDiagnostics}}
         <div class="stack-form compact-form" style="gap:16px;">
             {{range .PHPDiagnostics}}
@@ -287,23 +311,26 @@
             {{end}}
         </div>
         {{else}}
-        <p class="muted">Install at least one PHP version to show diagnostics.</p>
+        <div class="empty-state">
+            <i class="bi bi-activity"></i>
+            <p>Install at least one PHP version to show diagnostics.</p>
+        </div>
         {{end}}
     </article>
-</section>
+</div>
 
-<section class="grid single">
+<div class="grid single">
     <article class="panel">
-        <h3><i class="bi bi-info-circle" style="color:var(--muted);margin-right:6px;"></i>Current Behavior</h3>
-        <ul>
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);"></i>Behavior</h3>
+        <ul class="rule-list">
             <li>The panel uses the stored Nginx config path for the managed site.</li>
             <li>The config is edited only when a PHP-FPM socket entry exists.</li>
             <li>Version installs use the current apt sources available on the server.</li>
-            <li>Extension installs try the matching `phpX.Y-extension` package first, then enable the module for CLI and FPM.</li>
-            <li>Disable uses `phpdismod` for both CLI and FPM.</li>
+            <li>Extension installs try the matching <code>phpX.Y-extension</code> package first, then enable the module for CLI and FPM.</li>
+            <li>Disable uses <code>phpdismod</code> for both CLI and FPM.</li>
         </ul>
     </article>
-</section>
+</div>
 
 <script type="application/json" id="php-extension-statuses-json">{{.PHPExtensionStatusesJSON}}</script>
 <script type="application/json" id="php-ini-settings-json">{{.PHPINISettingsJSON}}</script>
