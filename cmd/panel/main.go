@@ -66,6 +66,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	app.StartBackgroundTasks(ctx)
+
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           app.Handler(),
@@ -87,10 +91,12 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	cancel() // stop background tasks
 
-	if err := httpServer.Shutdown(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("shutdown server", "error", err)
 		os.Exit(1)
 	}

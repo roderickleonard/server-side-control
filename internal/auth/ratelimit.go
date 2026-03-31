@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -35,12 +36,53 @@ func NewLoginRateLimiter(maxAttempts int, window, blockFor time.Duration) *Login
 	if blockFor <= 0 {
 		blockFor = 15 * time.Minute
 	}
-	return &LoginRateLimiter{
+	rl := &LoginRateLimiter{
 		byIP:        make(map[string]*loginAttempt),
 		byUsername:  make(map[string]*loginAttempt),
 		maxAttempts: maxAttempts,
 		window:      window,
 		blockFor:    blockFor,
+	}
+	return rl
+}
+
+// StartCleanup starts a background goroutine that periodically removes expired
+// rate-limit entries to prevent unbounded memory growth. It stops when ctx is done.
+func (r *LoginRateLimiter) StartCleanup(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				r.cleanup()
+			}
+		}
+	}()
+}
+
+func (r *LoginRateLimiter) cleanup() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now()
+	r.cleanupMap(r.byIP, now)
+	r.cleanupMap(r.byUsername, now)
+}
+
+func (r *LoginRateLimiter) cleanupMap(m map[string]*loginAttempt, now time.Time) {
+	for key, a := range m {
+		if !a.blockedAt.IsZero() {
+			if now.After(a.blockedAt.Add(r.blockFor)) {
+				delete(m, key)
+			}
+		} else if now.After(a.firstSeen.Add(r.window)) {
+			delete(m, key)
+		}
 	}
 }
 

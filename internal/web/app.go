@@ -319,6 +319,11 @@ func (a *App) Handler() http.Handler {
 	return a.loggingMiddleware(a.securityHeadersMiddleware(a.sessionMiddleware(a.router)))
 }
 
+// StartBackgroundTasks starts background maintenance goroutines that run until ctx is done.
+func (a *App) StartBackgroundTasks(ctx context.Context) {
+	a.loginRateLimiter.StartCleanup(ctx, 5*time.Minute)
+}
+
 func (a *App) registerRoutes() {
 	a.router.Handle("/static/", a.staticFS)
 	a.router.HandleFunc("/healthz", a.handleHealthz)
