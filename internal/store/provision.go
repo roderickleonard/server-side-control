@@ -96,7 +96,7 @@ func (s *Store) CreateManagedSite(ctx context.Context, site domain.ManagedSite) 
 		auto_deploy_node_version,
 		auto_deploy_notify_email,
 		nginx_config_path
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err = s.db.ExecContext(ctx, query,
 		site.Name,
