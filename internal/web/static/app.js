@@ -1,4 +1,78 @@
 document.addEventListener("DOMContentLoaded", () => {
+    const applyDashboardVisuals = (root = document) => {
+        root.querySelectorAll('[data-pct]').forEach((el) => {
+            const pct = parseInt(el.getAttribute('data-pct') || '0', 10) || 0;
+            el.style.width = Math.min(pct, 100) + '%';
+        });
+        root.querySelectorAll('[data-load]').forEach((el) => {
+            const load = parseFloat(el.getAttribute('data-load') || '0') || 0;
+            const cores = parseInt(el.getAttribute('data-cores') || '1', 10) || 1;
+            const pct = Math.min(Math.round(load / cores * 100), 100);
+            el.style.width = pct + '%';
+        });
+        const memBars = Array.from(root.querySelectorAll('[data-mem]'));
+        let maxMem = 0;
+        memBars.forEach((el) => {
+            const mem = parseInt(el.getAttribute('data-mem') || '0', 10) || 0;
+            if (mem > maxMem) {
+                maxMem = mem;
+            }
+        });
+        if (maxMem > 0) {
+            memBars.forEach((el) => {
+                const mem = parseInt(el.getAttribute('data-mem') || '0', 10) || 0;
+                el.style.width = Math.round(mem * 100 / maxMem) + '%';
+            });
+        }
+    };
+
+    applyDashboardVisuals(document);
+
+    document.addEventListener('click', async (event) => {
+        const button = event.target.closest('.dashboard-refresh-btn');
+        if (!button) {
+            return;
+        }
+        const sectionName = button.getAttribute('data-dashboard-refresh') || '';
+        const targetSelector = button.getAttribute('data-dashboard-target') || '';
+        const target = targetSelector ? document.querySelector(targetSelector) : null;
+        if (!sectionName || !target) {
+            return;
+        }
+        event.preventDefault();
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.classList.add('is-loading');
+        button.textContent = 'Refreshing...';
+        try {
+            const response = await fetch(`/dashboard/section?name=${encodeURIComponent(sectionName)}`, {
+                headers: { 'X-Requested-With': 'fetch' },
+                cache: 'no-store',
+            });
+            if (!response.ok) {
+                throw new Error(`refresh failed: ${response.status}`);
+            }
+            const html = await response.text();
+            const template = document.createElement('template');
+            template.innerHTML = html.trim();
+            const replacement = template.content.firstElementChild;
+            if (!replacement) {
+                throw new Error('empty refresh response');
+            }
+            target.replaceWith(replacement);
+            applyDashboardVisuals(document);
+        } catch (error) {
+            console.error(error);
+            button.textContent = 'Refresh failed';
+            window.setTimeout(() => {
+                button.textContent = originalText;
+                button.disabled = false;
+                button.classList.remove('is-loading');
+            }, 1200);
+            return;
+        }
+    });
+
     // Mobile sidebar toggle
     const sbToggle = document.getElementById("sb-toggle");
     const sbOverlay = document.getElementById("sb-overlay");

@@ -164,7 +164,132 @@
     line-height: 1.55;
     margin: 0;
 }
+.dash-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.dash-panel-head h3 {
+    margin: 0;
+}
+.dashboard-refresh-btn.is-loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
 </style>
+
+{{define "dashboard-recent-deploys"}}
+<div class="panel" id="dashboard-recent-deploys" style="margin-bottom:16px;">
+    <div class="dash-panel-head">
+        <h3><i class="bi bi-rocket-takeoff" style="color:var(--accent);"></i>Recent Deploys</h3>
+        <button type="button" class="btn btn-sm btn-outline-secondary dashboard-refresh-btn" data-dashboard-refresh="recent-deploys" data-dashboard-target="#dashboard-recent-deploys">Refresh</button>
+    </div>
+    {{if .DeploymentReleases}}
+    <div style="overflow-x:auto;">
+    <table class="table-theme" style="width:100%;font-size:12.5px;">
+        <thead>
+            <tr>
+                <th>Target</th>
+                <th>Branch</th>
+                <th>Action</th>
+                <th>Status</th>
+                <th>Commit</th>
+                <th>Time</th>
+            </tr>
+        </thead>
+        <tbody>
+        {{range .DeploymentReleases}}
+        <tr>
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{.TargetDirectory}}">
+                <span style="color:var(--ink);font-weight:600;">{{.RunAsUser}}</span>
+                <small style="display:block;color:var(--muted);font-size:10.5px;">{{.BranchName}}</small>
+            </td>
+            <td style="font-family:monospace;font-size:11.5px;color:var(--muted);">{{.BranchName}}</td>
+            <td style="color:var(--muted);font-size:11.5px;">{{if .Action}}{{.Action}}{{else}}deploy{{end}}</td>
+            <td>
+                <span class="rel-tag {{.Status}}">{{.Status}}</span>
+            </td>
+            <td style="font-family:monospace;font-size:11px;color:var(--muted);">
+                {{if .CommitSHA}}{{slice .CommitSHA 0 7}}{{else}}&ndash;{{end}}
+            </td>
+            <td style="font-size:11px;color:var(--muted);white-space:nowrap;">{{.CreatedAt.Format "02 Jan 15:04"}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+    </div>
+    {{else}}
+    <p style="color:var(--muted);font-size:13px;text-align:center;padding:24px 0;">No deploy history yet.</p>
+    {{end}}
+    <div style="margin-top:12px;">
+        <a href="/deploys" class="btn btn-sm btn-outline-secondary" style="font-size:12px;">View all deploys &rarr;</a>
+    </div>
+</div>
+{{end}}
+
+{{define "dashboard-top-processes"}}
+<div class="panel" id="dashboard-top-processes" style="margin-bottom:16px;">
+    <div class="dash-panel-head">
+        <h3><i class="bi bi-bar-chart-line" style="color:var(--danger);"></i>Top Processes &mdash; by Memory</h3>
+        <button type="button" class="btn btn-sm btn-outline-secondary dashboard-refresh-btn" data-dashboard-refresh="top-processes" data-dashboard-target="#dashboard-top-processes">Refresh</button>
+    </div>
+    {{if .Metrics.TopProcesses}}
+    <div style="overflow-x:auto;">
+    <table class="table-theme" style="width:100%;font-size:12.5px;">
+        <thead>
+            <tr>
+                <th>PID</th>
+                <th>Name</th>
+                <th>User</th>
+                <th style="text-align:right;">Memory (MB)</th>
+                <th style="text-align:right;">CPU % (avg)</th>
+                <th>Memory bar</th>
+            </tr>
+        </thead>
+        <tbody>
+        {{range .Metrics.TopProcesses}}
+        <tr>
+            <td style="font-family:monospace;font-size:11.5px;color:var(--muted);">{{.PID}}</td>
+            <td style="font-weight:600;">{{.Name}}</td>
+            <td style="color:var(--muted);font-size:12px;">{{.User}}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600;">{{.MemMB}}</td>
+            <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);">{{printf "%.1f" .CPUPct}}%</td>
+            <td style="min-width:100px;">
+                <div class="stat-bar-wrap"><div class="stat-bar" data-mem="{{.MemMB}}"></div></div>
+            </td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+    </div>
+    {{else}}
+    <p style="color:var(--muted);font-size:13px;text-align:center;padding:24px 0;">Top process data is not available right now.</p>
+    {{end}}
+</div>
+{{end}}
+
+{{define "dashboard-pm2-processes"}}
+<div class="panel" id="dashboard-pm2-processes" style="margin-bottom:16px;">
+    <div class="dash-panel-head">
+        <h3><i class="bi bi-diagram-3" style="color:var(--success);"></i>PM2 Processes</h3>
+        <button type="button" class="btn btn-sm btn-outline-secondary dashboard-refresh-btn" data-dashboard-refresh="pm2-processes" data-dashboard-target="#dashboard-pm2-processes">Refresh</button>
+    </div>
+    {{if .DashboardPM2Entries}}
+    {{range .DashboardPM2Entries}}
+    <div style="margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">
+            <i class="bi bi-person-circle" style="margin-right:4px;"></i>{{.User}}
+        </div>
+        <pre class="pm2-pre">{{.ListText}}</pre>
+    </div>
+    {{end}}
+    {{else}}
+    <p style="color:var(--muted);font-size:13px;text-align:center;padding:24px 0;">No PM2 processes found for managed site users.</p>
+    {{end}}
+</div>
+{{end}}
 
 {{/* ── Alerts ── */}}
 {{if .Alerts}}
@@ -242,49 +367,7 @@
 <div class="dash-two-col">
 
     {{/* Recent auto deploys */}}
-    <div class="panel">
-        <h3><i class="bi bi-rocket-takeoff" style="color:var(--accent);"></i>Recent Deploys</h3>
-        {{if .DeploymentReleases}}
-        <div style="overflow-x:auto;">
-        <table class="table-theme" style="width:100%;font-size:12.5px;">
-            <thead>
-                <tr>
-                    <th>Target</th>
-                    <th>Branch</th>
-                    <th>Action</th>
-                    <th>Status</th>
-                    <th>Commit</th>
-                    <th>Time</th>
-                </tr>
-            </thead>
-            <tbody>
-            {{range .DeploymentReleases}}
-            <tr>
-                <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{.TargetDirectory}}">
-                    <span style="color:var(--ink);font-weight:600;">{{.RunAsUser}}</span>
-                    <small style="display:block;color:var(--muted);font-size:10.5px;">{{.BranchName}}</small>
-                </td>
-                <td style="font-family:monospace;font-size:11.5px;color:var(--muted);">{{.BranchName}}</td>
-                <td style="color:var(--muted);font-size:11.5px;">{{if .Action}}{{.Action}}{{else}}deploy{{end}}</td>
-                <td>
-                    <span class="rel-tag {{.Status}}">{{.Status}}</span>
-                </td>
-                <td style="font-family:monospace;font-size:11px;color:var(--muted);">
-                    {{if .CommitSHA}}{{slice .CommitSHA 0 7}}{{else}}&ndash;{{end}}
-                </td>
-                <td style="font-size:11px;color:var(--muted);white-space:nowrap;">{{.CreatedAt.Format "02 Jan 15:04"}}</td>
-            </tr>
-            {{end}}
-            </tbody>
-        </table>
-        </div>
-        {{else}}
-        <p style="color:var(--muted);font-size:13px;text-align:center;padding:24px 0;">No deploy history yet.</p>
-        {{end}}
-        <div style="margin-top:12px;">
-            <a href="/deploys" class="btn btn-sm btn-outline-secondary" style="font-size:12px;">View all deploys &rarr;</a>
-        </div>
-    </div>
+    {{template "dashboard-recent-deploys" .}}
 
     {{/* Server info sidebar */}}
     <div>
@@ -328,83 +411,9 @@
 </div>
 
 {{/* ── Top Processes by RAM ── */}}
-{{if .Metrics.TopProcesses}}
-<div class="panel" style="margin-bottom:16px;">
-    <h3><i class="bi bi-bar-chart-line" style="color:var(--danger);"></i>Top Processes &mdash; by Memory</h3>
-    <div style="overflow-x:auto;">
-    <table class="table-theme" style="width:100%;font-size:12.5px;">
-        <thead>
-            <tr>
-                <th>PID</th>
-                <th>Name</th>
-                <th>User</th>
-                <th style="text-align:right;">Memory (MB)</th>
-                <th style="text-align:right;">CPU % (avg)</th>
-                <th>Memory bar</th>
-            </tr>
-        </thead>
-        <tbody>
-        {{range .Metrics.TopProcesses}}
-        <tr>
-            <td style="font-family:monospace;font-size:11.5px;color:var(--muted);">{{.PID}}</td>
-            <td style="font-weight:600;">{{.Name}}</td>
-            <td style="color:var(--muted);font-size:12px;">{{.User}}</td>
-            <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600;">{{.MemMB}}</td>
-            <td style="text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);">{{printf "%.1f" .CPUPct}}%</td>
-            <td style="min-width:100px;">
-                <div class="stat-bar-wrap"><div class="stat-bar" data-mem="{{.MemMB}}"></div></div>
-            </td>
-        </tr>
-        {{end}}
-        </tbody>
-    </table>
-    </div>
-</div>
-{{end}}
+{{template "dashboard-top-processes" .}}
 
 {{/* ── PM2 Processes ── */}}
-{{if .DashboardPM2Entries}}
-<div class="panel" style="margin-bottom:16px;">
-    <h3><i class="bi bi-diagram-3" style="color:var(--success);"></i>PM2 Processes</h3>
-    {{range .DashboardPM2Entries}}
-    <div style="margin-bottom:14px;">
-        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">
-            <i class="bi bi-person-circle" style="margin-right:4px;"></i>{{.User}}
-        </div>
-        <pre class="pm2-pre">{{.ListText}}</pre>
-    </div>
-    {{end}}
-</div>
-{{end}}
-
-<script>
-(function() {
-    // Apply data-pct bar widths (memory & disk stat cards)
-    document.querySelectorAll('[data-pct]').forEach(function(el) {
-        var pct = parseInt(el.getAttribute('data-pct'), 10) || 0;
-        el.style.width = Math.min(pct, 100) + '%';
-    });
-    // CPU load bar
-    document.querySelectorAll('[data-load]').forEach(function(el) {
-        var load = parseFloat(el.getAttribute('data-load')) || 0;
-        var cores = parseInt(el.getAttribute('data-cores'), 10) || 1;
-        var pct = Math.min(Math.round(load / cores * 100), 100);
-        el.style.width = pct + '%';
-    });
-    // Top process relative memory bars
-    var memBars = document.querySelectorAll('[data-mem]');
-    var maxMem = 0;
-    memBars.forEach(function(el) {
-        var m = parseInt(el.getAttribute('data-mem'), 10) || 0;
-        if (m > maxMem) maxMem = m;
-    });
-    if (maxMem > 0) {
-        memBars.forEach(function(el) {
-            var m = parseInt(el.getAttribute('data-mem'), 10) || 0;
-            el.style.width = Math.round(m * 100 / maxMem) + '%';
-        });
-    }
-})();
-</script>
+{{template "dashboard-pm2-processes" .}}
 
 {{end}}

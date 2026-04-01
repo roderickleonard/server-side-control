@@ -340,6 +340,7 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/login/passkey/finish", a.handlePasskeyLoginFinish)
 	a.router.HandleFunc("/logout", a.handleLogout)
 	a.router.HandleFunc("/", a.handleDashboard)
+	a.router.HandleFunc("/dashboard/section", a.handleDashboardSection)
 	a.router.HandleFunc("/users", a.handleUsers)
 	a.router.HandleFunc("/users/stream", a.handleUsersStream)
 	a.router.HandleFunc("/databases", a.handleDatabases)
@@ -425,6 +426,33 @@ func (a *App) render(ctx context.Context, w http.ResponseWriter, currentPath str
 
 	if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
 		a.logger.Error("render template", "page", page, "error", err)
+		http.Error(w, "render error", http.StatusInternalServerError)
+	}
+}
+
+func (a *App) renderNamedTemplate(ctx context.Context, w http.ResponseWriter, page string, name string, data TemplateData) {
+	if _, ok := auth.IdentityFromContext(ctx); !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	tmpl, err := template.ParseFS(assets, "templates/"+page)
+	if err != nil {
+		a.logger.Error("parse named template", "page", page, "name", name, "error", err)
+		http.Error(w, "template error", http.StatusInternalServerError)
+		return
+	}
+
+	data.AppName = a.cfg.AppName
+	data.BootstrapUser = a.cfg.BootstrapUser
+	data.Now = time.Now()
+	if identity, ok := auth.IdentityFromContext(ctx); ok {
+		data.CurrentUser = identity.DisplayName
+		data.AuthProvider = identity.AuthProvider
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
+		a.logger.Error("render named template", "page", page, "name", name, "error", err)
 		http.Error(w, "render error", http.StatusInternalServerError)
 	}
 }

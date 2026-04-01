@@ -60,10 +60,11 @@ func (s *Store) CreateManagedSite(ctx context.Context, site domain.ManagedSite) 
 		return errors.New("store is not configured")
 	}
 
-	result, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET owner_linux_user = ?, domain_name = ?, root_directory = ?, runtime = ?, upstream_url = ?, php_version = ?, node_version = ?, nginx_config_path = ? WHERE name = ?`,
+	result, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET owner_linux_user = ?, domain_name = ?, root_directory = ?, laravel_extra_writable_paths = ?, runtime = ?, upstream_url = ?, php_version = ?, node_version = ?, nginx_config_path = ? WHERE name = ?`,
 		site.OwnerLinuxUser,
 		site.DomainName,
 		site.RootDirectory,
+		site.LaravelExtraWritablePaths,
 		site.Runtime,
 		site.UpstreamURL,
 		site.PHPVersion,
@@ -83,6 +84,7 @@ func (s *Store) CreateManagedSite(ctx context.Context, site domain.ManagedSite) 
 		owner_linux_user,
 		domain_name,
 		root_directory,
+		laravel_extra_writable_paths,
 		runtime,
 		upstream_url,
 		php_version,
@@ -94,13 +96,14 @@ func (s *Store) CreateManagedSite(ctx context.Context, site domain.ManagedSite) 
 		auto_deploy_node_version,
 		auto_deploy_notify_email,
 		nginx_config_path
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err = s.db.ExecContext(ctx, query,
 		site.Name,
 		site.OwnerLinuxUser,
 		site.DomainName,
 		site.RootDirectory,
+		site.LaravelExtraWritablePaths,
 		site.Runtime,
 		site.UpstreamURL,
 		site.PHPVersion,

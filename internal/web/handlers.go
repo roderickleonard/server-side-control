@@ -271,38 +271,73 @@ func (a *App) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Recent deploy releases
-	var recentDeploys []domain.DeploymentRelease
-	if a.store != nil {
-		if releases, err := a.store.ListDeploymentReleases(r.Context(), 10); err == nil {
-			recentDeploys = releases
-		}
-	}
+	recentDeploys := a.dashboardRecentDeploys(r.Context())
 
 	// PM2 processes from all managed site linux users
-	var pm2Entries []DashboardPM2Entry
+	pm2Entries := a.dashboardPM2Entries(r)
 	sites := a.listManagedSites(r)
-	seen := make(map[string]bool)
-	for _, site := range sites {
-		user := strings.TrimSpace(site.OwnerLinuxUser)
-		if user == "" || seen[user] {
-			continue
-		}
-		seen[user] = true
-		if listText, listErr := a.pm2.List(user); listErr == nil && strings.TrimSpace(listText) != "" {
-			pm2Entries = append(pm2Entries, DashboardPM2Entry{User: user, ListText: strings.TrimSpace(listText)})
-		}
-	}
 
 	a.render(r.Context(), w, r.URL.Path, "dashboard.html", TemplateData{
 		Title:               "Dashboard",
 		DatabaseStatus:      a.databaseStatus(r.Context()),
 		Metrics:             snapshot,
 		Alerts:              alerts,
+		ManagedSites:        sites,
 		DeploymentReleases:  recentDeploys,
 		DashboardPM2Entries: pm2Entries,
 		DashboardMemPct:     memPct,
 		DashboardDiskPct:    diskPct,
 	})
+}
+
+func (a *App) handleDashboardSection(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	section := strings.TrimSpace(r.URL.Query().Get("name"))
+	data := TemplateData{}
+	switch section {
+	case "recent-deploys":
+		data.DeploymentReleases = a.dashboardRecentDeploys(r.Context())
+		a.renderNamedTemplate(r.Context(), w, "dashboard.html", "dashboard-recent-deploys", data)
+	case "top-processes":
+		data.Metrics = a.metrics.Snapshot()
+		a.renderNamedTemplate(r.Context(), w, "dashboard.html", "dashboard-top-processes", data)
+	case "pm2-processes":
+		data.DashboardPM2Entries = a.dashboardPM2Entries(r)
+		a.renderNamedTemplate(r.Context(), w, "dashboard.html", "dashboard-pm2-processes", data)
+	default:
+		http.Error(w, "unknown dashboard section", http.StatusBadRequest)
+	}
+}
+
+func (a *App) dashboardRecentDeploys(ctx context.Context) []domain.DeploymentRelease {
+	if a.store == nil {
+		return nil
+	}
+	if releases, err := a.store.ListDeploymentReleases(ctx, 10); err == nil {
+		return releases
+	}
+	return nil
+}
+
+func (a *App) dashboardPM2Entries(r *http.Request) []DashboardPM2Entry {
+	sites := a.listManagedSites(r)
+	seen := make(map[string]bool)
+	entries := make([]DashboardPM2Entry, 0)
+	for _, site := range sites {
+		user := strings.TrimSpace(site.OwnerLinuxUser)
+		if user == "" || seen[user] {
+			continue
+		}
+		seen[user] = true
+		if listText, err := a.pm2.List(user); err == nil && strings.TrimSpace(listText) != "" {
+			entries = append(entries, DashboardPM2Entry{User: user, ListText: strings.TrimSpace(listText)})
+		}
+	}
+	return entries
 }
 
 func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {

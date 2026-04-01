@@ -24,7 +24,7 @@
 {{if .RequestError}}
 <section class="alerts">
     <div class="alert">{{.RequestError}}</div>
-</div>
+</section>
 {{end}}
 
 {{if .SuccessMessage}}
@@ -39,7 +39,7 @@
     {{if .PreviousCommitSHA}}
     <div class="alert success">Previous commit: <strong>{{.PreviousCommitSHA}}</strong></div>
     {{end}}
-</div>
+</section>
 {{end}}
 
 {{if .CommandOutput}}
