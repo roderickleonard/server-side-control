@@ -2,9 +2,9 @@ package main
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -138,14 +138,15 @@ func handleStreamMode() {
 		}
 	case "site.fix_laravel_permissions":
 		var input struct {
-			RootDir   string `json:"root_dir"`
-			OwnerUser string `json:"owner_user"`
+			RootDir            string   `json:"root_dir"`
+			OwnerUser          string   `json:"owner_user"`
+			ExtraWritablePaths []string `json:"extra_writable_paths"`
 		}
 		if err := json.Unmarshal(request.Input, &input); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "decode laravel permissions spec: %v\n", err)
 			os.Exit(1)
 		}
-		if err := system.StreamFixLaravelPermissions(input.RootDir, input.OwnerUser, os.Stdout, os.Stderr); err != nil {
+		if err := system.StreamFixLaravelPermissions(input.RootDir, input.OwnerUser, input.ExtraWritablePaths, os.Stdout, os.Stderr); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "\ncommand failed: %v\n", err)
 			os.Exit(1)
 		}
@@ -278,7 +279,7 @@ func handleStreamMode() {
 		}
 		var (
 			output string
-			err error
+			err    error
 		)
 		switch request.Action {
 		case "pm2.list":
@@ -325,7 +326,7 @@ func handleStreamMode() {
 		}
 		var (
 			output string
-			err error
+			err    error
 		)
 		switch request.Action {
 		case "php.install_extensions":
@@ -373,7 +374,7 @@ func handleStreamMode() {
 	case "redis.install", "redis.start", "redis.stop", "redis.restart":
 		var (
 			output string
-			err error
+			err    error
 		)
 		switch request.Action {
 		case "redis.install":
@@ -850,7 +851,9 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		err := system.NewNginxManager(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, cfg.CertbotBinary).DeleteSite(site)
 		writeSuccess(nil, "", err)
 	case "nginx.validate":
-		var input struct{ Path string `json:"path"` }
+		var input struct {
+			Path string `json:"path"`
+		}
 		if err := json.Unmarshal(request.Input, &input); err != nil {
 			writeFailure(err, "")
 			return
@@ -1374,11 +1377,11 @@ func clearDirectoryContents(path string, stdout io.Writer) error {
 
 func isHelperSafeDeletePath(path string) bool {
 	protected := map[string]struct{}{
-		"/": {},
-		"/home": {},
-		"/opt": {},
-		"/srv": {},
-		"/var": {},
+		"/":        {},
+		"/home":    {},
+		"/opt":     {},
+		"/srv":     {},
+		"/var":     {},
 		"/var/www": {},
 	}
 	if _, ok := protected[path]; ok {
@@ -1460,7 +1463,9 @@ func handleRuntime(request system.HelperRequest) {
 		result, err := manager.Inspect(spec)
 		writeSuccess(result, "", err)
 	case "runtime.install_nvm":
-		var input struct{ User string `json:"user"` }
+		var input struct {
+			User string `json:"user"`
+		}
 		if err := json.Unmarshal(request.Input, &input); err != nil {
 			writeFailure(err, "")
 			return

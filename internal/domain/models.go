@@ -17,48 +17,49 @@ type PanelUser struct {
 }
 
 type ManagedSite struct {
+	ID                        int64
+	Name                      string
+	OwnerLinuxUser            string
+	DomainName                string
+	RootDirectory             string
+	LaravelExtraWritablePaths string
+	Runtime                   string
+	UpstreamURL               string
+	PHPVersion                string
+	NodeVersion               string
+	NginxConfigPath           string
+	DatabaseName              string
+	AutoDeployEnabled         bool
+	AutoDeployBranch          string
+	AutoDeploySecret          string
+	AutoDeployCommand         string
+	AutoDeployNodeVersion     string
+	AutoDeployNotifyEmail     string
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+}
+
+type Deployment struct {
 	ID              int64
-	Name            string
-	OwnerLinuxUser  string
-	DomainName      string
-	RootDirectory   string
-	Runtime         string
-	UpstreamURL     string
-	PHPVersion      string
-	NodeVersion     string
-	NginxConfigPath string
-	DatabaseName    string
-	AutoDeployEnabled bool
-	AutoDeployBranch string
-	AutoDeploySecret string
-	AutoDeployCommand string
-	AutoDeployNodeVersion string
-	AutoDeployNotifyEmail string
+	SiteID          int64
+	RepositoryURL   string
+	BranchName      string
+	TargetDirectory string
+	RunAsUser       string
+	LastStatus      string
+	LastOutput      string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
 
-type Deployment struct {
-	ID             int64
-	SiteID         int64
-	RepositoryURL  string
-	BranchName     string
-	TargetDirectory string
-	RunAsUser      string
-	LastStatus     string
-	LastOutput     string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-}
-
 type AuditLog struct {
-	ID          int64
-	Actor       string
-	Action      string
-	Target      string
-	Outcome     string
-	Metadata    string
-	CreatedAt   time.Time
+	ID        int64
+	Actor     string
+	Action    string
+	Target    string
+	Outcome   string
+	Metadata  string
+	CreatedAt time.Time
 }
 
 type DatabaseBackupToken struct {
@@ -84,39 +85,40 @@ type SiteRuntimeCommand struct {
 }
 
 type SiteSubdomain struct {
-	ID              int64
-	SiteID          int64
-	Subdomain       string
-	FullDomain      string
-	Runtime         string
-	UpstreamURL     string
-	PHPVersion      string
-	NodeVersion     string
-	RepositoryURL   string
-	BranchName      string
-	GitCredentialProtocol string
-	GitCredentialUsername string
-	PostDeployCommand string
-	AutoDeployEnabled bool
-	AutoDeployBranch string
-	AutoDeploySecret string
-	AutoDeployCommand string
-	AutoDeployNodeVersion string
-	AutoDeployNotifyEmail string
-	RootDirectory   string
-	NginxConfigPath string
-	AutoDeployWebhookURL string
-	DeploymentReleases []DeploymentRelease
-	GitAuthStatus system.GitAuthStatus
-	LatestWebhookAudit AuditLog
-	MovePreviewFrom string
-	MovePreviewTo string
-	MovePreviewTargetExists bool
-	MovePreviewTargetEmpty bool
-	MovePreviewTargetGitRepo bool
-	MovePreviewTargetState string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                        int64
+	SiteID                    int64
+	Subdomain                 string
+	FullDomain                string
+	LaravelExtraWritablePaths string
+	Runtime                   string
+	UpstreamURL               string
+	PHPVersion                string
+	NodeVersion               string
+	RepositoryURL             string
+	BranchName                string
+	GitCredentialProtocol     string
+	GitCredentialUsername     string
+	PostDeployCommand         string
+	AutoDeployEnabled         bool
+	AutoDeployBranch          string
+	AutoDeploySecret          string
+	AutoDeployCommand         string
+	AutoDeployNodeVersion     string
+	AutoDeployNotifyEmail     string
+	RootDirectory             string
+	NginxConfigPath           string
+	AutoDeployWebhookURL      string
+	DeploymentReleases        []DeploymentRelease
+	GitAuthStatus             system.GitAuthStatus
+	LatestWebhookAudit        AuditLog
+	MovePreviewFrom           string
+	MovePreviewTo             string
+	MovePreviewTargetExists   bool
+	MovePreviewTargetEmpty    bool
+	MovePreviewTargetGitRepo  bool
+	MovePreviewTargetState    string
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
 }
 
 type NginxConfigRevision struct {

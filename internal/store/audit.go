@@ -45,9 +45,9 @@ func (s *Store) ListAuditLogsFiltered(ctx context.Context, limit int, sortField 
 	}
 	allowedSortFields := map[string]string{
 		"created_at": "created_at",
-		"outcome": "outcome",
-		"actor": "actor",
-		"action": "action",
+		"outcome":    "outcome",
+		"actor":      "actor",
+		"action":     "action",
 	}
 	orderBy := allowedSortFields[sortField]
 	if orderBy == "" {
@@ -108,13 +108,14 @@ func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.M
 	}
 
 	var site domain.ManagedSite
-	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
+	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, laravel_extra_writable_paths, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
 	if err := s.db.QueryRowContext(ctx, query, name).Scan(
 		&site.ID,
 		&site.Name,
 		&site.OwnerLinuxUser,
 		&site.DomainName,
 		&site.RootDirectory,
+		&site.LaravelExtraWritablePaths,
 		&site.Runtime,
 		&site.UpstreamURL,
 		&site.PHPVersion,
@@ -140,7 +141,7 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 		return nil, errors.New("store is not configured")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, laravel_extra_writable_paths, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list managed sites: %w", err)
 	}
@@ -155,6 +156,7 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 			&site.OwnerLinuxUser,
 			&site.DomainName,
 			&site.RootDirectory,
+			&site.LaravelExtraWritablePaths,
 			&site.Runtime,
 			&site.UpstreamURL,
 			&site.PHPVersion,
@@ -240,6 +242,17 @@ func (s *Store) UpdateManagedSiteAutoDeploy(ctx context.Context, name string, en
 	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET auto_deploy_enabled = ?, auto_deploy_branch = ?, auto_deploy_secret = ?, auto_deploy_command = ?, auto_deploy_node_version = ?, auto_deploy_notify_email = ? WHERE name = ?`, enabled, branch, secret, command, nodeVersion, notifyEmail, name)
 	if err != nil {
 		return fmt.Errorf("update managed site auto deploy: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) UpdateManagedSiteLaravelExtraWritablePaths(ctx context.Context, name string, paths string) error {
+	if s == nil {
+		return errors.New("store is not configured")
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET laravel_extra_writable_paths = ? WHERE name = ?`, paths, name)
+	if err != nil {
+		return fmt.Errorf("update managed site laravel extra writable paths: %w", err)
 	}
 	return nil
 }

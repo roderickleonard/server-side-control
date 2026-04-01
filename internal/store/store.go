@@ -94,6 +94,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("ensure managed_sites node version column: %w", err)
 	}
 
+	if err := s.ensureManagedSitesLaravelPathsColumn(ctx); err != nil {
+		return fmt.Errorf("ensure managed_sites laravel extra writable paths column: %w", err)
+	}
+
 	if err := s.ensureSiteRuntimeCommandsTable(ctx); err != nil {
 		return fmt.Errorf("ensure site_runtime_commands table: %w", err)
 	}
@@ -112,6 +116,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 
 	if err := s.ensureSiteSubdomainsNodeVersionColumn(ctx); err != nil {
 		return fmt.Errorf("ensure site_subdomains node version column: %w", err)
+	}
+
+	if err := s.ensureSiteSubdomainsLaravelPathsColumn(ctx); err != nil {
+		return fmt.Errorf("ensure site_subdomains laravel extra writable paths column: %w", err)
 	}
 
 	if err := s.ensureNginxConfigRevisionsTable(ctx); err != nil {
@@ -323,7 +331,7 @@ func (s *Store) ensureSubdomainRuntimeCommandsTable(ctx context.Context) error {
 			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			INDEX idx_subdomain_runtime_commands_subdomain_id (subdomain_id),
 			CONSTRAINT fk_subdomain_runtime_commands_subdomain FOREIGN KEY (subdomain_id) REFERENCES site_subdomains(id) ON DELETE CASCADE
-		)`) 
+		)`)
 	return err
 }
 
@@ -332,7 +340,7 @@ func (s *Store) ensureManagedSitesAutoDeployColumns(ctx context.Context) error {
 		return nil
 	}
 	columns := []struct {
-		name string
+		name      string
 		statement string
 	}{
 		{name: "auto_deploy_enabled", statement: `ALTER TABLE managed_sites ADD COLUMN auto_deploy_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER database_name`},
@@ -395,6 +403,34 @@ func (s *Store) ensureManagedSitesNodeVersionColumn(ctx context.Context) error {
 	return nil
 }
 
+func (s *Store) ensureManagedSitesLaravelPathsColumn(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = DATABASE()
+		  AND table_name = 'managed_sites'
+		  AND column_name = 'laravel_extra_writable_paths'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE managed_sites ADD COLUMN laravel_extra_writable_paths VARCHAR(2048) NOT NULL DEFAULT '' AFTER root_directory`)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {
 	if s == nil {
 		return nil
@@ -405,6 +441,7 @@ func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {
 			site_id BIGINT NOT NULL,
 			subdomain VARCHAR(191) NOT NULL,
 			full_domain VARCHAR(255) NOT NULL,
+			laravel_extra_writable_paths VARCHAR(2048) NOT NULL DEFAULT '',
 			runtime VARCHAR(32) NOT NULL,
 			upstream_url VARCHAR(255) NOT NULL DEFAULT '',
 			php_version VARCHAR(32) NOT NULL DEFAULT '',
@@ -429,6 +466,34 @@ func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {
 			CONSTRAINT fk_site_subdomains_site FOREIGN KEY (site_id) REFERENCES managed_sites(id) ON DELETE CASCADE
 		)`)
 	return err
+}
+
+func (s *Store) ensureSiteSubdomainsLaravelPathsColumn(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = DATABASE()
+		  AND table_name = 'site_subdomains'
+		  AND column_name = 'laravel_extra_writable_paths'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE site_subdomains ADD COLUMN laravel_extra_writable_paths VARCHAR(2048) NOT NULL DEFAULT '' AFTER full_domain`)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Store) ensureSiteSubdomainsNodeVersionColumn(ctx context.Context) error {

@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -249,12 +249,12 @@ func (a *App) handleUsersStream(w http.ResponseWriter, r *http.Request) {
 	}
 	action := strings.TrimSpace(r.FormValue("user_action"))
 	var (
-		helperAction string
-		payload      any
-		auditAction  string
-		target       string
-		label        string
-		auditMeta    map[string]any
+		helperAction           string
+		payload                any
+		auditAction            string
+		target                 string
+		label                  string
+		auditMeta              map[string]any
 		postCreatePasswordless bool
 	)
 	switch action {
@@ -754,18 +754,18 @@ func (a *App) handleDeploysStream(w http.ResponseWriter, r *http.Request) {
 	mode := strings.TrimSpace(r.FormValue("deploy_mode"))
 	var (
 		helperAction string
-		payload any
-		auditAction string
-		target string
-		label string
-		auditMeta map[string]any
+		payload      any
+		auditAction  string
+		target       string
+		label        string
+		auditMeta    map[string]any
 	)
 	if mode == "rollback" {
 		spec := system.RollbackSpec{
-			TargetDirectory: strings.TrimSpace(r.FormValue("rollback_target_directory")),
-			RunAsUser: strings.TrimSpace(r.FormValue("rollback_run_as_user")),
-			ReleaseCommitSHA: strings.TrimSpace(r.FormValue("release_commit_sha")),
-			PostDeployCommand: r.FormValue("rollback_post_deploy_command"),
+			TargetDirectory:       strings.TrimSpace(r.FormValue("rollback_target_directory")),
+			RunAsUser:             strings.TrimSpace(r.FormValue("rollback_run_as_user")),
+			ReleaseCommitSHA:      strings.TrimSpace(r.FormValue("release_commit_sha")),
+			PostDeployCommand:     r.FormValue("rollback_post_deploy_command"),
 			PostDeployNodeVersion: strings.TrimSpace(r.FormValue("rollback_post_deploy_node_version")),
 		}
 		helperAction = "deploy.rollback"
@@ -776,12 +776,12 @@ func (a *App) handleDeploysStream(w http.ResponseWriter, r *http.Request) {
 		auditMeta = map[string]any{"run_as_user": spec.RunAsUser, "commit_sha": spec.ReleaseCommitSHA}
 	} else {
 		spec := system.DeploySpec{
-			RepositoryURL: strings.TrimSpace(r.FormValue("repository_url")),
-			Branch: strings.TrimSpace(r.FormValue("branch")),
-			TargetDirectory: strings.TrimSpace(r.FormValue("target_directory")),
-			RunAsUser: strings.TrimSpace(r.FormValue("run_as_user")),
-			GitSiteName: strings.TrimSpace(r.FormValue("git_site_name")),
-			PostDeployCommand: r.FormValue("post_deploy_command"),
+			RepositoryURL:         strings.TrimSpace(r.FormValue("repository_url")),
+			Branch:                strings.TrimSpace(r.FormValue("branch")),
+			TargetDirectory:       strings.TrimSpace(r.FormValue("target_directory")),
+			RunAsUser:             strings.TrimSpace(r.FormValue("run_as_user")),
+			GitSiteName:           strings.TrimSpace(r.FormValue("git_site_name")),
+			PostDeployCommand:     r.FormValue("post_deploy_command"),
 			PostDeployNodeVersion: strings.TrimSpace(r.FormValue("post_deploy_node_version")),
 		}
 		helperAction = "deploy.run"
@@ -1109,22 +1109,24 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 	}
 	action := strings.TrimSpace(r.FormValue("details_action"))
 	var (
-		helperAction string
-		payload      any
-		auditAction  string
-		label        string
-		auditMeta    map[string]any
-		previousCommit string
+		helperAction    string
+		payload         any
+		auditAction     string
+		label           string
+		auditMeta       map[string]any
+		previousCommit  string
 		appendRepoState bool
 	)
 	targetDirectory := site.RootDirectory
 	targetUser := site.OwnerLinuxUser
 	targetLabel := site.Name
+	targetExtraWritablePaths := parseStoredLaravelExtraWritablePaths(site.LaravelExtraWritablePaths)
 	if subdomainID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subdomain_id")), 10, 64); err == nil && subdomainID > 0 {
 		if subdomains, listErr := a.store.ListSiteSubdomains(r.Context(), site.ID); listErr == nil {
 			if subdomain, ok := findSiteSubdomain(subdomains, subdomainID); ok {
 				targetDirectory = subdomain.RootDirectory
 				targetLabel = subdomain.FullDomain
+				targetExtraWritablePaths = parseStoredLaravelExtraWritablePaths(subdomain.LaravelExtraWritablePaths)
 			}
 		}
 	}
@@ -1139,12 +1141,12 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		postDeployCommand := r.FormValue("post_deploy_command")
 		helperAction = "deploy.run"
 		payload = system.DeploySpec{
-			RepositoryURL:     repositoryURL,
-			Branch:            branch,
-			TargetDirectory:   site.RootDirectory,
-			RunAsUser:         site.OwnerLinuxUser,
-			GitSiteName:       site.Name,
-			PostDeployCommand: postDeployCommand,
+			RepositoryURL:         repositoryURL,
+			Branch:                branch,
+			TargetDirectory:       site.RootDirectory,
+			RunAsUser:             site.OwnerLinuxUser,
+			GitSiteName:           site.Name,
+			PostDeployCommand:     postDeployCommand,
 			PostDeployNodeVersion: strings.TrimSpace(site.NodeVersion),
 		}
 		auditAction = "deploy.site_sync"
@@ -1178,12 +1180,12 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 		targetLabel = subdomain.FullDomain
 		helperAction = "deploy.run"
 		payload = system.DeploySpec{
-			RepositoryURL:     subdomain.RepositoryURL,
-			Branch:            strings.TrimSpace(subdomain.BranchName),
-			TargetDirectory:   subdomain.RootDirectory,
-			RunAsUser:         targetUser,
-			GitSiteName:       subdomain.FullDomain,
-			PostDeployCommand: subdomain.PostDeployCommand,
+			RepositoryURL:         subdomain.RepositoryURL,
+			Branch:                strings.TrimSpace(subdomain.BranchName),
+			TargetDirectory:       subdomain.RootDirectory,
+			RunAsUser:             targetUser,
+			GitSiteName:           subdomain.FullDomain,
+			PostDeployCommand:     subdomain.PostDeployCommand,
 			PostDeployNodeVersion: strings.TrimSpace(subdomain.NodeVersion),
 		}
 		auditAction = "deploy.subdomain_sync"
@@ -1335,10 +1337,10 @@ func (a *App) handleSiteActionStream(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		helperAction = "site.fix_laravel_permissions"
-		payload = map[string]any{"root_dir": targetDirectory, "owner_user": site.OwnerLinuxUser}
+		payload = map[string]any{"root_dir": targetDirectory, "owner_user": site.OwnerLinuxUser, "extra_writable_paths": targetExtraWritablePaths}
 		auditAction = "site.fix_laravel_permissions"
 		label = "fix laravel permissions"
-		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "target_directory": targetDirectory}
+		auditMeta = map[string]any{"run_as_user": site.OwnerLinuxUser, "target_directory": targetDirectory, "extra_writable_paths": targetExtraWritablePaths}
 	case "clear_root_contents":
 		helperAction = "files.clear_directory"
 		payload = map[string]any{"path": targetDirectory}

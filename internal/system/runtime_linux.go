@@ -391,7 +391,7 @@ func StreamInstallComposer(stdout io.Writer, stderr io.Writer) error {
 	return runBashAsRootStream(ctx, composerInstallScript(), stdout, stderr)
 }
 
-func StreamFixLaravelPermissions(rootDir string, ownerUser string, stdout io.Writer, stderr io.Writer) error {
+func StreamFixLaravelPermissions(rootDir string, ownerUser string, extraWritablePaths []string, stdout io.Writer, stderr io.Writer) error {
 	ownerUser = strings.TrimSpace(ownerUser)
 	rootDir = strings.TrimSpace(rootDir)
 	if !usernamePattern.MatchString(ownerUser) {
@@ -400,13 +400,18 @@ func StreamFixLaravelPermissions(rootDir string, ownerUser string, stdout io.Wri
 	if !filepath.IsAbs(rootDir) {
 		return ErrInvalidTargetDirectory
 	}
+	normalizedExtraPaths, err := normalizeLaravelWritablePaths(extraWritablePaths)
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	script := strings.Join([]string{
+	scriptLines := []string{
 		"set -eu",
 		"cd " + shellQuote(rootDir),
 		"echo 'Checking Laravel directories'",
 		"mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache",
+		"if [ -d vendor/mpdf/mpdf ]; then mkdir -p vendor/mpdf/mpdf/tmp/mpdf; fi",
 		"touch storage/logs/laravel.log",
 		"echo 'Fixing base ownership'",
 		"chown -R " + shellQuote(ownerUser+":"+ownerUser) + " .",
@@ -419,9 +424,48 @@ func StreamFixLaravelPermissions(rootDir string, ownerUser string, stdout io.Wri
 		"find storage bootstrap/cache -type d -print -exec chmod 2775 {} \\;",
 		"find storage bootstrap/cache -type f -print -exec chmod 664 {} \\;",
 		"if command -v setfacl >/dev/null 2>&1; then setfacl -R -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage bootstrap/cache; setfacl -R -d -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage bootstrap/cache; else echo 'setfacl not found; continuing with chmod/chown fallback'; fi",
-		"echo 'Laravel permissions updated successfully.'",
-	}, "\n")
+		"if [ -d vendor/mpdf/mpdf/tmp ]; then echo 'Applying writable mPDF temp directories'; chown -R " + shellQuote(ownerUser+":www-data") + " vendor/mpdf/mpdf/tmp; chmod -R ug+rwX vendor/mpdf/mpdf/tmp; find vendor/mpdf/mpdf/tmp -type d -print -exec chmod 2775 {} \\;; find vendor/mpdf/mpdf/tmp -type f -print -exec chmod 664 {} \\;; if command -v setfacl >/dev/null 2>&1; then setfacl -R -m u:" + ownerUser + ":rwx -m u:www-data:rwx vendor/mpdf/mpdf/tmp; setfacl -R -d -m u:" + ownerUser + ":rwx -m u:www-data:rwx vendor/mpdf/mpdf/tmp; fi; fi",
+	}
+	for _, path := range normalizedExtraPaths {
+		scriptLines = append(scriptLines,
+			"echo 'Applying extra writable path: "+path+"'",
+			"mkdir -p "+shellQuote(path),
+			"chown -R "+shellQuote(ownerUser+":www-data")+" "+shellQuote(path),
+			"chmod -R ug+rwX "+shellQuote(path),
+			"find "+shellQuote(path)+" -type d -print -exec chmod 2775 {} \\;",
+			"find "+shellQuote(path)+" -type f -print -exec chmod 664 {} \\;",
+			"if command -v setfacl >/dev/null 2>&1; then setfacl -R -m u:"+ownerUser+":rwx -m u:www-data:rwx "+shellQuote(path)+"; setfacl -R -d -m u:"+ownerUser+":rwx -m u:www-data:rwx "+shellQuote(path)+"; else echo 'setfacl not found; continuing with chmod/chown fallback'; fi",
+		)
+	}
+	scriptLines = append(scriptLines, "echo 'Laravel permissions updated successfully.'")
+	script := strings.Join(scriptLines, "\n")
 	return runBashAsRootStream(ctx, script, stdout, stderr)
+}
+
+func normalizeLaravelWritablePaths(paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{}, len(paths))
+	normalized := make([]string, 0, len(paths))
+	for _, raw := range paths {
+		path := strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+		path = strings.TrimPrefix(path, "./")
+		if path == "" {
+			continue
+		}
+		cleaned := filepath.Clean(path)
+		cleaned = strings.ReplaceAll(cleaned, "\\", "/")
+		if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") || filepath.IsAbs(cleaned) {
+			return nil, fmt.Errorf("invalid extra writable path: %s", raw)
+		}
+		if _, exists := seen[cleaned]; exists {
+			continue
+		}
+		seen[cleaned] = struct{}{}
+		normalized = append(normalized, cleaned)
+	}
+	return normalized, nil
 }
 
 func lookupUserHome(username string) (string, error) {

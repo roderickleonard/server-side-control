@@ -747,6 +747,19 @@
         </div>
         {{if .ProjectHasArtisan}}
         <p class="muted details-note">This uses the same root helper flow as the main site and streams the exact shell output into the terminal drawer.</p>
+        <form method="post" class="stack-form compact-form" style="margin-bottom:10px;gap:8px;">
+            <input type="hidden" name="details_action" value="save_laravel_extra_writable_paths">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="subdomain_id" value="{{.SelectedSubdomain.ID}}">
+            <label>
+                <span>Extra writable paths</span>
+                <textarea name="laravel_extra_writable_paths" rows="4" placeholder="vendor/mpdf/mpdf/tmp&#10;vendor/package/cache">{{.LaravelExtraWritablePaths}}</textarea>
+                <small class="muted details-note">Use relative paths inside this subdomain root. One path per line.</small>
+            </label>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Save writable paths</button>
+            </div>
+        </form>
         <form method="post" class="stack-form compact-form site-action-stream-form" data-stream-endpoint="/sites/details/action-stream">
             <input type="hidden" name="details_action" value="fix_laravel_permissions">
             <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">

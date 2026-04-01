@@ -180,26 +180,26 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		passkeys, err := a.store.ListPanelUserPasskeys(r.Context(), username)
 		if err != nil {
 			a.render(r.Context(), w, r.URL.Path, "login.html", TemplateData{
-				Title:              "Login",
-				LoginStage:         "passkey",
-				LoginUsername:      username,
+				Title:                "Login",
+				LoginStage:           "passkey",
+				LoginUsername:        username,
 				LoginPasswordVisible: true,
-				RequestError:       "Sign-in method could not be prepared. Continue with your password.",
+				RequestError:         "Sign-in method could not be prepared. Continue with your password.",
 			})
 			return
 		}
 		data := TemplateData{
-			Title:                "Login",
-			LoginStage:           "passkey",
-			LoginUsername:        username,
-			LoginPasswordVisible: true,
+			Title:                 "Login",
+			LoginStage:            "passkey",
+			LoginUsername:         username,
+			LoginPasswordVisible:  true,
 			LoginPasskeyAvailable: len(passkeys) > 0,
 			LoginPasskeyAutostart: false,
 		}
 		if len(passkeys) > 0 {
 			data.SuccessMessage = "Choose how you want to continue. Passkey sign-in opens directly, or you can continue with your password."
 		}
-			a.render(r.Context(), w, r.URL.Path, "login.html", data)
+		a.render(r.Context(), w, r.URL.Path, "login.html", data)
 		return
 	}
 	password := r.FormValue("password")
@@ -308,20 +308,20 @@ func (a *App) handleDashboard(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	identity, _ := auth.IdentityFromContext(r.Context())
 	data := TemplateData{
-		Title:           "Settings",
-		DatabaseStatus:  a.databaseStatus(r.Context()),
-		Metrics:         a.metrics.Snapshot(),
-		PanelListenAddr: a.cfg.ListenAddr,
-		PanelBaseURL:    a.cfg.BaseURL,
-		PanelServiceName: firstNonEmpty(a.cfg.ServiceName, "server-side-control"),
+		Title:                "Settings",
+		DatabaseStatus:       a.databaseStatus(r.Context()),
+		Metrics:              a.metrics.Snapshot(),
+		PanelListenAddr:      a.cfg.ListenAddr,
+		PanelBaseURL:         a.cfg.BaseURL,
+		PanelServiceName:     firstNonEmpty(a.cfg.ServiceName, "server-side-control"),
 		SubdomainRootBaseDir: strings.TrimSpace(a.cfg.SubdomainRootBaseDir),
-		SMTPHost:        a.cfg.SMTPHost,
-		SMTPPort:        firstNonEmpty(a.cfg.SMTPPort, "587"),
-		SMTPUsername:    a.cfg.SMTPUsername,
-		SMTPPassword:    a.cfg.SMTPPassword,
-		SMTPFrom:        a.cfg.SMTPFrom,
-		SMTPTo:          a.cfg.SMTPTo,
-		PanelEnvPath:    a.cfg.EnvPath,
+		SMTPHost:             a.cfg.SMTPHost,
+		SMTPPort:             firstNonEmpty(a.cfg.SMTPPort, "587"),
+		SMTPUsername:         a.cfg.SMTPUsername,
+		SMTPPassword:         a.cfg.SMTPPassword,
+		SMTPFrom:             a.cfg.SMTPFrom,
+		SMTPTo:               a.cfg.SMTPTo,
+		PanelEnvPath:         a.cfg.EnvPath,
 	}
 	data.PanelDomain = panelDomainFromBaseURL(a.cfg.BaseURL)
 	data.PanelProxyConfigPath = filepath.Join(a.cfg.NginxAvailableDir, "server-side-control-panel.conf")
@@ -689,11 +689,11 @@ func (a *App) handlePasskeyLoginFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		ChallengeID string `json:"challenge_id"`
-		CredentialID string `json:"credential_id"`
-		ClientDataJSON string `json:"client_data_json"`
+		ChallengeID       string `json:"challenge_id"`
+		CredentialID      string `json:"credential_id"`
+		ClientDataJSON    string `json:"client_data_json"`
 		AuthenticatorData string `json:"authenticator_data"`
-		Signature string `json:"signature"`
+		Signature         string `json:"signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
@@ -750,14 +750,14 @@ func (a *App) handlePasskeyRegisterBegin(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"challenge_id": challenge.ID,
 		"publicKey": map[string]any{
-			"challenge": challenge.Challenge,
-			"rp": map[string]string{"name": a.cfg.AppName, "id": strings.Split(a.requestHost(r), ":")[0]},
-			"user": map[string]string{"id": auth.Base64URLEncode([]byte(identity.Username)), "name": identity.Username, "displayName": firstNonEmpty(identity.DisplayName, identity.Username)},
-			"pubKeyCredParams": []map[string]any{{"type": "public-key", "alg": -7}},
+			"challenge":              challenge.Challenge,
+			"rp":                     map[string]string{"name": a.cfg.AppName, "id": strings.Split(a.requestHost(r), ":")[0]},
+			"user":                   map[string]string{"id": auth.Base64URLEncode([]byte(identity.Username)), "name": identity.Username, "displayName": firstNonEmpty(identity.DisplayName, identity.Username)},
+			"pubKeyCredParams":       []map[string]any{{"type": "public-key", "alg": -7}},
 			"authenticatorSelection": map[string]string{"residentKey": "preferred", "userVerification": "preferred"},
-			"excludeCredentials": excludeCredentials,
-			"attestation": "none",
-			"timeout": 60000,
+			"excludeCredentials":     excludeCredentials,
+			"attestation":            "none",
+			"timeout":                60000,
 		},
 	})
 }
@@ -773,11 +773,11 @@ func (a *App) handlePasskeyRegisterFinish(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var payload struct {
-		ChallengeID string `json:"challenge_id"`
-		CredentialID string `json:"credential_id"`
+		ChallengeID    string `json:"challenge_id"`
+		CredentialID   string `json:"credential_id"`
 		ClientDataJSON string `json:"client_data_json"`
-		PublicKeySPKI string `json:"public_key_spki"`
-		Label string `json:"label"`
+		PublicKeySPKI  string `json:"public_key_spki"`
+		Label          string `json:"label"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
@@ -802,7 +802,7 @@ func (a *App) handlePasskeyRegisterFinish(w http.ResponseWriter, r *http.Request
 		return
 	}
 	a.webauthnChallenges.Delete(r.Context(), challenge.ID)
-		a.recordAudit(r.Context(), "panel.passkey.register", identity.Username, "success", nil)
+	a.recordAudit(r.Context(), "panel.passkey.register", identity.Username, "success", nil)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -835,7 +835,7 @@ func siteDetailTabForAction(action string) string {
 		return "runtime"
 	case "enable_tls", "add_subdomain", "delete_subdomain", "enable_subdomain_tls":
 		return "domains"
-	case "assign_database", "assign_linux_user", "edit_env", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "create_cron_job", "update_cron_job", "delete_cron_job", "clear_cron_log", "rotate_cron_log":
+	case "assign_database", "assign_linux_user", "save_laravel_extra_writable_paths", "edit_env", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "create_cron_job", "update_cron_job", "delete_cron_job", "clear_cron_log", "rotate_cron_log":
 		return "settings"
 	default:
 		return "overview"
@@ -848,7 +848,7 @@ func subdomainDetailTabForAction(action string) string {
 		return "deploy"
 	case "npm_install", "run_npm_script", "run_custom_command", "install_nvm", "install_node", "install_pm2", "install_composer", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "list_pm2", "show_pm2_logs", "save_runtime_command", "delete_runtime_command", "save_node_version":
 		return "runtime"
-	case "enable_subdomain_tls", "move_subdomain_root", "move_subdomain_root_preview", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "edit_subdomain_env", "delete_subdomain":
+	case "enable_subdomain_tls", "move_subdomain_root", "move_subdomain_root_preview", "save_laravel_extra_writable_paths", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "edit_subdomain_env", "delete_subdomain":
 		return "settings"
 	default:
 		return "overview"
@@ -1301,12 +1301,12 @@ func recommendedDeployCommand(hasComposer bool, hasLaravel bool, packageScripts 
 }
 
 type subdomainMovePreview struct {
-	From        string
-	To          string
-	TargetExists bool
-	TargetEmpty bool
+	From          string
+	To            string
+	TargetExists  bool
+	TargetEmpty   bool
 	TargetGitRepo bool
-	TargetState string
+	TargetState   string
 }
 
 func buildAutoDeployWebhookURL(baseURL string, siteName string, secret string) string {
@@ -1483,7 +1483,7 @@ func sanitizeSubdomainDirectoryName(value string) string {
 	return strings.Trim(string(buffer), "-. ")
 }
 
-	func buildManagedSubdomainRootDirectory(site domain.ManagedSite, baseDirectory string, directoryName string) string {
+func buildManagedSubdomainRootDirectory(site domain.ManagedSite, baseDirectory string, directoryName string) string {
 	directoryName = sanitizeSubdomainDirectoryName(directoryName)
 	if directoryName == "" {
 		directoryName = sanitizeSubdomainDirectoryName(site.Name + "-subdomain")
@@ -1696,12 +1696,12 @@ func (a *App) handleSiteDeployWebhook(w http.ResponseWriter, r *http.Request) {
 			gitSiteName = subdomain.FullDomain
 		}
 		result, deployErr := a.deploys.Deploy(system.DeploySpec{
-			RepositoryURL:     repositoryURL,
-			Branch:            branch,
-			TargetDirectory:   deployDirectory,
-			RunAsUser:         site.OwnerLinuxUser,
-			GitSiteName:       gitSiteName,
-			PostDeployCommand: postDeployCommand,
+			RepositoryURL:         repositoryURL,
+			Branch:                branch,
+			TargetDirectory:       deployDirectory,
+			RunAsUser:             site.OwnerLinuxUser,
+			GitSiteName:           gitSiteName,
+			PostDeployCommand:     postDeployCommand,
 			PostDeployNodeVersion: postDeployNodeVersion,
 		})
 		notifySite := site
@@ -2714,52 +2714,53 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := TemplateData{
-		SiteDetailTab:       siteDetailTabForAction(action),
-		GitRepositoryURL:    firstNonEmpty(strings.TrimSpace(r.FormValue("repository_url")), repositoryURL),
-		GitBranch:           firstNonEmpty(strings.TrimSpace(r.FormValue("branch")), branch),
-		GitPostDeployCommand: r.FormValue("post_deploy_command"),
-		GitCustomCommand:   r.FormValue("git_custom_command"),
-		SSHWorkingDirectory: firstNonEmpty(strings.TrimSpace(r.FormValue("ssh_working_directory")), site.RootDirectory),
-		SSHCommandBody: r.FormValue("ssh_command_body"),
-		AutoDeployEnabled:  r.FormValue("auto_deploy_enabled") == "1",
-		AutoDeployBranch:   strings.TrimSpace(r.FormValue("auto_deploy_branch")),
-		AutoDeploySecret:   strings.TrimSpace(r.FormValue("auto_deploy_secret")),
-		AutoDeployCommand:  r.FormValue("auto_deploy_command"),
-		AutoDeployNodeVersion: strings.TrimSpace(r.FormValue("auto_deploy_node_version")),
-		AutoDeployNotifyEmail: strings.TrimSpace(r.FormValue("auto_deploy_notify_email")),
-		RuntimeNodeVersion:  strings.TrimSpace(r.FormValue("node_version")),
-		PreferredNodeVersion: strings.TrimSpace(r.FormValue("preferred_node_version")),
-		PM2NodeVersion:      strings.TrimSpace(r.FormValue("pm2_node_version")),
-		PM2ProcessName:      firstNonEmpty(strings.TrimSpace(r.FormValue("process_name")), site.Name),
-		PM2ScriptPath:       strings.TrimSpace(r.FormValue("script_path")),
-		PM2Arguments:        strings.TrimSpace(r.FormValue("process_arguments")),
-		SubdomainLabel:      strings.TrimSpace(r.FormValue("subdomain_label")),
-		SubdomainMode:       firstNonEmpty(strings.TrimSpace(r.FormValue("subdomain_mode")), "reverse_proxy"),
-		SubdomainDirectoryName: strings.TrimSpace(r.FormValue("subdomain_directory_name")),
-		SubdomainUpstreamURL: strings.TrimSpace(r.FormValue("subdomain_upstream_url")),
-		SubdomainPHPVersion: strings.TrimSpace(r.FormValue("subdomain_php_version")),
-		SubdomainRootDirectory: strings.TrimSpace(r.FormValue("subdomain_root_directory")),
-		SubdomainRepositoryURL: strings.TrimSpace(r.FormValue("subdomain_repository_url")),
-		SubdomainBranch: strings.TrimSpace(r.FormValue("subdomain_branch")),
-		SubdomainPostDeployCommand: r.FormValue("subdomain_post_deploy_command"),
-		SubdomainAutoDeployEnabled: r.FormValue("subdomain_auto_deploy_enabled") == "1",
-		SubdomainAutoDeployBranch: strings.TrimSpace(r.FormValue("subdomain_auto_deploy_branch")),
-		SubdomainAutoDeploySecret: strings.TrimSpace(r.FormValue("subdomain_auto_deploy_secret")),
-		SubdomainAutoDeployCommand: r.FormValue("subdomain_auto_deploy_command"),
+		SiteDetailTab:                  siteDetailTabForAction(action),
+		GitRepositoryURL:               firstNonEmpty(strings.TrimSpace(r.FormValue("repository_url")), repositoryURL),
+		GitBranch:                      firstNonEmpty(strings.TrimSpace(r.FormValue("branch")), branch),
+		GitPostDeployCommand:           r.FormValue("post_deploy_command"),
+		GitCustomCommand:               r.FormValue("git_custom_command"),
+		SSHWorkingDirectory:            firstNonEmpty(strings.TrimSpace(r.FormValue("ssh_working_directory")), site.RootDirectory),
+		SSHCommandBody:                 r.FormValue("ssh_command_body"),
+		AutoDeployEnabled:              r.FormValue("auto_deploy_enabled") == "1",
+		AutoDeployBranch:               strings.TrimSpace(r.FormValue("auto_deploy_branch")),
+		AutoDeploySecret:               strings.TrimSpace(r.FormValue("auto_deploy_secret")),
+		AutoDeployCommand:              r.FormValue("auto_deploy_command"),
+		AutoDeployNodeVersion:          strings.TrimSpace(r.FormValue("auto_deploy_node_version")),
+		AutoDeployNotifyEmail:          strings.TrimSpace(r.FormValue("auto_deploy_notify_email")),
+		RuntimeNodeVersion:             strings.TrimSpace(r.FormValue("node_version")),
+		PreferredNodeVersion:           strings.TrimSpace(r.FormValue("preferred_node_version")),
+		PM2NodeVersion:                 strings.TrimSpace(r.FormValue("pm2_node_version")),
+		PM2ProcessName:                 firstNonEmpty(strings.TrimSpace(r.FormValue("process_name")), site.Name),
+		PM2ScriptPath:                  strings.TrimSpace(r.FormValue("script_path")),
+		PM2Arguments:                   strings.TrimSpace(r.FormValue("process_arguments")),
+		SubdomainLabel:                 strings.TrimSpace(r.FormValue("subdomain_label")),
+		SubdomainMode:                  firstNonEmpty(strings.TrimSpace(r.FormValue("subdomain_mode")), "reverse_proxy"),
+		SubdomainDirectoryName:         strings.TrimSpace(r.FormValue("subdomain_directory_name")),
+		SubdomainUpstreamURL:           strings.TrimSpace(r.FormValue("subdomain_upstream_url")),
+		SubdomainPHPVersion:            strings.TrimSpace(r.FormValue("subdomain_php_version")),
+		SubdomainRootDirectory:         strings.TrimSpace(r.FormValue("subdomain_root_directory")),
+		SubdomainRepositoryURL:         strings.TrimSpace(r.FormValue("subdomain_repository_url")),
+		SubdomainBranch:                strings.TrimSpace(r.FormValue("subdomain_branch")),
+		SubdomainPostDeployCommand:     r.FormValue("subdomain_post_deploy_command"),
+		SubdomainAutoDeployEnabled:     r.FormValue("subdomain_auto_deploy_enabled") == "1",
+		SubdomainAutoDeployBranch:      strings.TrimSpace(r.FormValue("subdomain_auto_deploy_branch")),
+		SubdomainAutoDeploySecret:      strings.TrimSpace(r.FormValue("subdomain_auto_deploy_secret")),
+		SubdomainAutoDeployCommand:     r.FormValue("subdomain_auto_deploy_command"),
 		SubdomainAutoDeployNodeVersion: strings.TrimSpace(r.FormValue("subdomain_auto_deploy_node_version")),
 		SubdomainAutoDeployNotifyEmail: strings.TrimSpace(r.FormValue("subdomain_auto_deploy_notify_email")),
-		SubdomainTLSEmail:   strings.TrimSpace(r.FormValue("subdomain_tls_email")),
-		RuntimeCommandName:  strings.TrimSpace(r.FormValue("runtime_command_name")),
-		RuntimeCommandNodeVersion: strings.TrimSpace(r.FormValue("runtime_command_node_version")),
-		RuntimeCommandBody:  r.FormValue("runtime_command_body"),
-		CronSchedule:        strings.TrimSpace(r.FormValue("cron_schedule")),
-		CronCommand:         strings.TrimSpace(r.FormValue("cron_command")),
-		CronRunInSiteRoot:   r.FormValue("cron_run_in_site_root") != "0",
-		CronFilter:          firstNonEmpty(strings.TrimSpace(r.FormValue("cron_filter")), "site"),
-		CronEditID:          strings.TrimSpace(r.FormValue("cron_id")),
-		CronLogID:           strings.TrimSpace(r.FormValue("cron_log_id")),
-		GitCredentialHost:   firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
-		NginxConfigContent:  r.FormValue("nginx_config_content"),
+		SubdomainTLSEmail:              strings.TrimSpace(r.FormValue("subdomain_tls_email")),
+		RuntimeCommandName:             strings.TrimSpace(r.FormValue("runtime_command_name")),
+		RuntimeCommandNodeVersion:      strings.TrimSpace(r.FormValue("runtime_command_node_version")),
+		RuntimeCommandBody:             r.FormValue("runtime_command_body"),
+		CronSchedule:                   strings.TrimSpace(r.FormValue("cron_schedule")),
+		CronCommand:                    strings.TrimSpace(r.FormValue("cron_command")),
+		CronRunInSiteRoot:              r.FormValue("cron_run_in_site_root") != "0",
+		CronFilter:                     firstNonEmpty(strings.TrimSpace(r.FormValue("cron_filter")), "site"),
+		CronEditID:                     strings.TrimSpace(r.FormValue("cron_id")),
+		CronLogID:                      strings.TrimSpace(r.FormValue("cron_log_id")),
+		GitCredentialHost:              firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
+		LaravelExtraWritablePaths:      r.FormValue("laravel_extra_writable_paths"),
+		NginxConfigContent:             r.FormValue("nginx_config_content"),
 	}
 	if commandID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("runtime_command_id")), 10, 64); err == nil {
 		data.RuntimeCommandID = commandID
@@ -2789,12 +2790,12 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		spec := system.DeploySpec{
-			RepositoryURL:     data.GitRepositoryURL,
-			Branch:            data.GitBranch,
-			TargetDirectory:   site.RootDirectory,
-			RunAsUser:         site.OwnerLinuxUser,
-			GitSiteName:       site.Name,
-			PostDeployCommand: data.GitPostDeployCommand,
+			RepositoryURL:         data.GitRepositoryURL,
+			Branch:                data.GitBranch,
+			TargetDirectory:       site.RootDirectory,
+			RunAsUser:             site.OwnerLinuxUser,
+			GitSiteName:           site.Name,
+			PostDeployCommand:     data.GitPostDeployCommand,
 			PostDeployNodeVersion: strings.TrimSpace(data.PreferredNodeVersion),
 		}
 		wasGitRepo := repositoryStatus.IsGitRepo
@@ -3373,6 +3374,20 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		site.OwnerLinuxUser = newOwner
 		successMessage = "Linux user reassigned to \"" + newOwner + "\"."
 		a.recordAudit(r.Context(), "site.assign_linux_user", site.Name, "success", map[string]any{"owner": newOwner})
+	case "save_laravel_extra_writable_paths":
+		normalizedPaths, normalizedRaw, normalizeErr := normalizeLaravelExtraWritablePathsInput(data.LaravelExtraWritablePaths)
+		if normalizeErr != nil {
+			data.RequestError = normalizeErr.Error()
+			break
+		}
+		if err := a.store.UpdateManagedSiteLaravelExtraWritablePaths(r.Context(), site.Name, normalizedRaw); err != nil {
+			data.RequestError = "Could not save Laravel extra writable paths: " + err.Error()
+			break
+		}
+		data.LaravelExtraWritablePaths = normalizedRaw
+		site.LaravelExtraWritablePaths = normalizedRaw
+		a.recordAudit(r.Context(), "site.laravel_paths.save", site.Name, "success", map[string]any{"paths": normalizedPaths})
+		successMessage = "Laravel extra writable paths saved."
 	case "create_cron_job":
 		output, actionErr = a.helper.Call(r.Context(), "cron.create", system.CronJobSpec{
 			User:             site.OwnerLinuxUser,
@@ -3660,39 +3675,40 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := TemplateData{
-		SiteDetailTab:                   subdomainDetailTabForAction(action),
-		SubdomainDeleteID:               subdomain.ID,
-		SubdomainDirectoryName:          strings.TrimSpace(r.FormValue("subdomain_directory_name")),
-		SubdomainRepositoryURL:          strings.TrimSpace(r.FormValue("subdomain_repository_url")),
-		SubdomainBranch:                 strings.TrimSpace(r.FormValue("subdomain_branch")),
-		SubdomainPostDeployCommand:      r.FormValue("subdomain_post_deploy_command"),
-		SubdomainAutoDeployEnabled:      r.FormValue("subdomain_auto_deploy_enabled") == "1",
-		SubdomainAutoDeployBranch:       strings.TrimSpace(r.FormValue("subdomain_auto_deploy_branch")),
-		SubdomainAutoDeploySecret:       strings.TrimSpace(r.FormValue("subdomain_auto_deploy_secret")),
-		SubdomainAutoDeployCommand:      r.FormValue("subdomain_auto_deploy_command"),
-		SubdomainAutoDeployNodeVersion:  strings.TrimSpace(r.FormValue("subdomain_auto_deploy_node_version")),
-		SubdomainAutoDeployNotifyEmail:  strings.TrimSpace(r.FormValue("subdomain_auto_deploy_notify_email")),
-		SubdomainAutoDeployPreset:       firstNonEmpty(strings.TrimSpace(r.FormValue("subdomain_auto_deploy_preset")), "custom"),
-		SubdomainAutoDeployPM2Process:   strings.TrimSpace(r.FormValue("subdomain_auto_deploy_pm2_process")),
-		SubdomainTLSEmail:               strings.TrimSpace(r.FormValue("subdomain_tls_email")),
-		NginxConfigContent:              r.FormValue("nginx_config_content"),
-		RuntimeNodeVersion:              strings.TrimSpace(r.FormValue("node_version")),
-		PreferredNodeVersion:            strings.TrimSpace(r.FormValue("preferred_node_version")),
-		PM2NodeVersion:                  strings.TrimSpace(r.FormValue("pm2_node_version")),
-		PM2ProcessName:                  firstNonEmpty(strings.TrimSpace(r.FormValue("process_name")), subdomain.FullDomain),
-		PM2ScriptPath:                   strings.TrimSpace(r.FormValue("script_path")),
-		PM2Arguments:                    strings.TrimSpace(r.FormValue("process_arguments")),
-		PM2LogLines:                     firstNonEmpty(strings.TrimSpace(r.FormValue("pm2_log_lines")), "100"),
-		RuntimeCommandName:              strings.TrimSpace(r.FormValue("runtime_command_name")),
-		RuntimeCommandNodeVersion:       strings.TrimSpace(r.FormValue("runtime_command_node_version")),
-		RuntimeCommandBody:              r.FormValue("env_content"),
-		CronSchedule:                    strings.TrimSpace(r.FormValue("cron_schedule")),
-		CronCommand:                     strings.TrimSpace(r.FormValue("cron_command")),
-		CronRunInSiteRoot:               r.FormValue("cron_run_in_site_root") != "0",
-		CronFilter:                      firstNonEmpty(strings.TrimSpace(r.FormValue("cron_filter")), "subdomain"),
-		CronEditID:                      strings.TrimSpace(r.FormValue("cron_id")),
-		CronLogID:                       strings.TrimSpace(r.FormValue("cron_log_id")),
-		GitCredentialHost:               firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
+		SiteDetailTab:                  subdomainDetailTabForAction(action),
+		SubdomainDeleteID:              subdomain.ID,
+		SubdomainDirectoryName:         strings.TrimSpace(r.FormValue("subdomain_directory_name")),
+		SubdomainRepositoryURL:         strings.TrimSpace(r.FormValue("subdomain_repository_url")),
+		SubdomainBranch:                strings.TrimSpace(r.FormValue("subdomain_branch")),
+		SubdomainPostDeployCommand:     r.FormValue("subdomain_post_deploy_command"),
+		SubdomainAutoDeployEnabled:     r.FormValue("subdomain_auto_deploy_enabled") == "1",
+		SubdomainAutoDeployBranch:      strings.TrimSpace(r.FormValue("subdomain_auto_deploy_branch")),
+		SubdomainAutoDeploySecret:      strings.TrimSpace(r.FormValue("subdomain_auto_deploy_secret")),
+		SubdomainAutoDeployCommand:     r.FormValue("subdomain_auto_deploy_command"),
+		SubdomainAutoDeployNodeVersion: strings.TrimSpace(r.FormValue("subdomain_auto_deploy_node_version")),
+		SubdomainAutoDeployNotifyEmail: strings.TrimSpace(r.FormValue("subdomain_auto_deploy_notify_email")),
+		SubdomainAutoDeployPreset:      firstNonEmpty(strings.TrimSpace(r.FormValue("subdomain_auto_deploy_preset")), "custom"),
+		SubdomainAutoDeployPM2Process:  strings.TrimSpace(r.FormValue("subdomain_auto_deploy_pm2_process")),
+		SubdomainTLSEmail:              strings.TrimSpace(r.FormValue("subdomain_tls_email")),
+		NginxConfigContent:             r.FormValue("nginx_config_content"),
+		RuntimeNodeVersion:             strings.TrimSpace(r.FormValue("node_version")),
+		PreferredNodeVersion:           strings.TrimSpace(r.FormValue("preferred_node_version")),
+		PM2NodeVersion:                 strings.TrimSpace(r.FormValue("pm2_node_version")),
+		PM2ProcessName:                 firstNonEmpty(strings.TrimSpace(r.FormValue("process_name")), subdomain.FullDomain),
+		PM2ScriptPath:                  strings.TrimSpace(r.FormValue("script_path")),
+		PM2Arguments:                   strings.TrimSpace(r.FormValue("process_arguments")),
+		PM2LogLines:                    firstNonEmpty(strings.TrimSpace(r.FormValue("pm2_log_lines")), "100"),
+		RuntimeCommandName:             strings.TrimSpace(r.FormValue("runtime_command_name")),
+		RuntimeCommandNodeVersion:      strings.TrimSpace(r.FormValue("runtime_command_node_version")),
+		RuntimeCommandBody:             r.FormValue("env_content"),
+		CronSchedule:                   strings.TrimSpace(r.FormValue("cron_schedule")),
+		CronCommand:                    strings.TrimSpace(r.FormValue("cron_command")),
+		CronRunInSiteRoot:              r.FormValue("cron_run_in_site_root") != "0",
+		CronFilter:                     firstNonEmpty(strings.TrimSpace(r.FormValue("cron_filter")), "subdomain"),
+		CronEditID:                     strings.TrimSpace(r.FormValue("cron_id")),
+		CronLogID:                      strings.TrimSpace(r.FormValue("cron_log_id")),
+		GitCredentialHost:              firstNonEmpty(strings.TrimSpace(r.FormValue("credential_host")), gitAuthStatus.RepositoryHost),
+		LaravelExtraWritablePaths:      r.FormValue("laravel_extra_writable_paths"),
 	}
 	data.RuntimeCommandBody = firstNonEmpty(r.FormValue("runtime_command_body"), data.RuntimeCommandBody)
 	if commandID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("runtime_command_id")), 10, 64); err == nil {
@@ -3852,6 +3868,20 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 		}
 		a.recordAudit(r.Context(), "site.subdomain.deploy.save", subdomain.FullDomain, "success", map[string]any{"enabled": data.SubdomainAutoDeployEnabled})
 		successMessage = "Subdomain deploy settings saved."
+	case "save_laravel_extra_writable_paths":
+		normalizedPaths, normalizedRaw, normalizeErr := normalizeLaravelExtraWritablePathsInput(data.LaravelExtraWritablePaths)
+		if normalizeErr != nil {
+			data.RequestError = normalizeErr.Error()
+			break
+		}
+		if err := a.store.UpdateSiteSubdomainLaravelExtraWritablePaths(r.Context(), site.ID, subdomain.ID, normalizedRaw); err != nil {
+			data.RequestError = "Could not save subdomain Laravel extra writable paths: " + err.Error()
+			break
+		}
+		data.LaravelExtraWritablePaths = normalizedRaw
+		subdomain.LaravelExtraWritablePaths = normalizedRaw
+		a.recordAudit(r.Context(), "site.subdomain.laravel_paths.save", subdomain.FullDomain, "success", map[string]any{"paths": normalizedPaths})
+		successMessage = "Subdomain Laravel extra writable paths saved."
 	case "rotate_subdomain_auto_deploy_secret":
 		if data.SubdomainAutoDeployPreset != "custom" && strings.TrimSpace(firstNonEmpty(data.SubdomainAutoDeployPM2Process, data.PM2ProcessName, subdomain.FullDomain)) == "" {
 			data.RequestError = "Select a PM2 process name for the webhook preset action."
@@ -4155,10 +4185,10 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodGet {
 		a.render(r.Context(), w, r.URL.Path, "deploys.html", TemplateData{
-			Title:          "Deploys",
-			DatabaseStatus: a.databaseStatus(r.Context()),
-			Metrics:        a.metrics.Snapshot(),
-			LinuxUsers:     users,
+			Title:              "Deploys",
+			DatabaseStatus:     a.databaseStatus(r.Context()),
+			Metrics:            a.metrics.Snapshot(),
+			LinuxUsers:         users,
 			NodeVersionOptions: nodeVersionOptions,
 			DeploymentReleases: releases,
 		})
@@ -4172,12 +4202,12 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 
 	if err := r.ParseForm(); err != nil {
 		a.render(r.Context(), w, r.URL.Path, "deploys.html", TemplateData{
-			Title:          "Deploys",
-			DatabaseStatus: a.databaseStatus(r.Context()),
-			Metrics:        a.metrics.Snapshot(),
-			LinuxUsers:     users,
-				NodeVersionOptions: nodeVersionOptions,
-			RequestError:   "The submitted deploy form could not be parsed.",
+			Title:              "Deploys",
+			DatabaseStatus:     a.databaseStatus(r.Context()),
+			Metrics:            a.metrics.Snapshot(),
+			LinuxUsers:         users,
+			NodeVersionOptions: nodeVersionOptions,
+			RequestError:       "The submitted deploy form could not be parsed.",
 			DeploymentReleases: releases,
 		})
 		return
@@ -4190,12 +4220,12 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 	}
 
 	spec := system.DeploySpec{
-		RepositoryURL:     r.FormValue("repository_url"),
-		Branch:            r.FormValue("branch"),
-		TargetDirectory:   r.FormValue("target_directory"),
-		RunAsUser:         r.FormValue("run_as_user"),
-		GitSiteName:       r.FormValue("git_site_name"),
-		PostDeployCommand: r.FormValue("post_deploy_command"),
+		RepositoryURL:         r.FormValue("repository_url"),
+		Branch:                r.FormValue("branch"),
+		TargetDirectory:       r.FormValue("target_directory"),
+		RunAsUser:             r.FormValue("run_as_user"),
+		GitSiteName:           r.FormValue("git_site_name"),
+		PostDeployCommand:     r.FormValue("post_deploy_command"),
 		PostDeployNodeVersion: strings.TrimSpace(r.FormValue("post_deploy_node_version")),
 	}
 
@@ -4214,14 +4244,14 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 			message = "Run-as user is invalid for Ubuntu deployment."
 		}
 		a.render(r.Context(), w, r.URL.Path, "deploys.html", TemplateData{
-			Title:          "Deploys",
-			DatabaseStatus: a.databaseStatus(r.Context()),
-			Metrics:        a.metrics.Snapshot(),
-			LinuxUsers:     users,
+			Title:              "Deploys",
+			DatabaseStatus:     a.databaseStatus(r.Context()),
+			Metrics:            a.metrics.Snapshot(),
+			LinuxUsers:         users,
 			NodeVersionOptions: nodeVersionOptions,
-			DeployNodeVersion: spec.PostDeployNodeVersion,
-			RequestError:   message,
-			CommandOutput:  result.Output,
+			DeployNodeVersion:  spec.PostDeployNodeVersion,
+			RequestError:       message,
+			CommandOutput:      result.Output,
 			DeploymentReleases: releases,
 		})
 		return
@@ -4233,12 +4263,12 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 			branch = "main"
 		}
 		_ = a.store.CreateDeployment(r.Context(), domain.Deployment{
-			RepositoryURL:  spec.RepositoryURL,
-			BranchName:     branch,
+			RepositoryURL:   spec.RepositoryURL,
+			BranchName:      branch,
 			TargetDirectory: spec.TargetDirectory,
-			RunAsUser:      spec.RunAsUser,
-			LastStatus:     "success",
-			LastOutput:     result.Output,
+			RunAsUser:       spec.RunAsUser,
+			LastStatus:      "success",
+			LastOutput:      result.Output,
 		})
 		_ = a.store.CreateDeploymentRelease(r.Context(), domain.DeploymentRelease{
 			RepositoryURL:     spec.RepositoryURL,
@@ -4260,17 +4290,17 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.render(r.Context(), w, r.URL.Path, "deploys.html", TemplateData{
-		Title:          "Deploys",
-		DatabaseStatus: a.databaseStatus(r.Context()),
-		Metrics:        a.metrics.Snapshot(),
-		LinuxUsers:     users,
+		Title:              "Deploys",
+		DatabaseStatus:     a.databaseStatus(r.Context()),
+		Metrics:            a.metrics.Snapshot(),
+		LinuxUsers:         users,
 		NodeVersionOptions: nodeVersionOptions,
-		DeployNodeVersion: spec.PostDeployNodeVersion,
-		SuccessMessage: "Repository deploy completed successfully.",
-		ResultPath:     spec.TargetDirectory,
-		CommandOutput:  result.Output,
-		CommitSHA:      result.CommitSHA,
-		PreviousCommitSHA: result.PreviousCommitSHA,
+		DeployNodeVersion:  spec.PostDeployNodeVersion,
+		SuccessMessage:     "Repository deploy completed successfully.",
+		ResultPath:         spec.TargetDirectory,
+		CommandOutput:      result.Output,
+		CommitSHA:          result.CommitSHA,
+		PreviousCommitSHA:  result.PreviousCommitSHA,
 		DeploymentReleases: releases,
 	})
 }
@@ -4278,10 +4308,10 @@ func (a *App) handleDeploys(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, users []system.LinuxUser, releases []domain.DeploymentRelease) {
 	nodeVersionOptions := a.collectDeployNodeVersionOptions(users)
 	spec := system.RollbackSpec{
-		TargetDirectory:   r.FormValue("rollback_target_directory"),
-		RunAsUser:         r.FormValue("rollback_run_as_user"),
-		ReleaseCommitSHA:  r.FormValue("release_commit_sha"),
-		PostDeployCommand: r.FormValue("rollback_post_deploy_command"),
+		TargetDirectory:       r.FormValue("rollback_target_directory"),
+		RunAsUser:             r.FormValue("rollback_run_as_user"),
+		ReleaseCommitSHA:      r.FormValue("release_commit_sha"),
+		PostDeployCommand:     r.FormValue("rollback_post_deploy_command"),
 		PostDeployNodeVersion: strings.TrimSpace(r.FormValue("rollback_post_deploy_node_version")),
 	}
 
@@ -4289,15 +4319,15 @@ func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, users
 	if err != nil {
 		a.recordAudit(r.Context(), "deploy.rollback", spec.TargetDirectory, "failure", map[string]any{"run_as_user": spec.RunAsUser, "commit_sha": spec.ReleaseCommitSHA, "error": err.Error()})
 		a.render(r.Context(), w, r.URL.Path, "deploys.html", TemplateData{
-			Title:          "Deploys",
-			DatabaseStatus: a.databaseStatus(r.Context()),
-			Metrics:        a.metrics.Snapshot(),
-			LinuxUsers:     users,
-			NodeVersionOptions: nodeVersionOptions,
+			Title:               "Deploys",
+			DatabaseStatus:      a.databaseStatus(r.Context()),
+			Metrics:             a.metrics.Snapshot(),
+			LinuxUsers:          users,
+			NodeVersionOptions:  nodeVersionOptions,
 			RollbackNodeVersion: spec.PostDeployNodeVersion,
-			RequestError:   err.Error(),
-			CommandOutput:  result.Output,
-			DeploymentReleases: releases,
+			RequestError:        err.Error(),
+			CommandOutput:       result.Output,
+			DeploymentReleases:  releases,
 		})
 		return
 	}
@@ -4321,18 +4351,18 @@ func (a *App) handleDeployRollback(w http.ResponseWriter, r *http.Request, users
 
 	a.recordAudit(r.Context(), "deploy.rollback", spec.TargetDirectory, "success", map[string]any{"run_as_user": spec.RunAsUser, "commit_sha": spec.ReleaseCommitSHA})
 	a.render(r.Context(), w, r.URL.Path, "deploys.html", TemplateData{
-		Title:          "Deploys",
-		DatabaseStatus: a.databaseStatus(r.Context()),
-		Metrics:        a.metrics.Snapshot(),
-		LinuxUsers:     users,
-		NodeVersionOptions: nodeVersionOptions,
+		Title:               "Deploys",
+		DatabaseStatus:      a.databaseStatus(r.Context()),
+		Metrics:             a.metrics.Snapshot(),
+		LinuxUsers:          users,
+		NodeVersionOptions:  nodeVersionOptions,
 		RollbackNodeVersion: spec.PostDeployNodeVersion,
-		SuccessMessage: "Rollback completed successfully.",
-		ResultPath:     spec.TargetDirectory,
-		CommandOutput:  result.Output,
-		CommitSHA:      result.CommitSHA,
-		PreviousCommitSHA: result.PreviousCommitSHA,
-		DeploymentReleases: releases,
+		SuccessMessage:      "Rollback completed successfully.",
+		ResultPath:          spec.TargetDirectory,
+		CommandOutput:       result.Output,
+		CommitSHA:           result.CommitSHA,
+		PreviousCommitSHA:   result.PreviousCommitSHA,
+		DeploymentReleases:  releases,
 	})
 }
 
@@ -4524,7 +4554,8 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		}
 	}
 	if data.ProjectHasArtisan {
-		data.LaravelPermissionCommand = buildLaravelPermissionDisplayCommand(site.RootDirectory, site.OwnerLinuxUser)
+		data.LaravelExtraWritablePaths = firstNonEmpty(data.LaravelExtraWritablePaths, site.LaravelExtraWritablePaths)
+		data.LaravelPermissionCommand = buildLaravelPermissionDisplayCommand(site.RootDirectory, site.OwnerLinuxUser, data.LaravelExtraWritablePaths)
 	}
 	envPath := filepath.Join(site.RootDirectory, ".env")
 	var envContent string
@@ -4592,7 +4623,8 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 	data.PackageScripts = readPackageJSONScripts(subdomain.RootDirectory)
 	data.ProjectHasComposer, data.ProjectHasArtisan = a.detectProjectMarkers(r.Context(), subdomain.RootDirectory)
 	if data.ProjectHasArtisan {
-		data.LaravelPermissionCommand = buildLaravelPermissionDisplayCommand(subdomain.RootDirectory, site.OwnerLinuxUser)
+		data.LaravelExtraWritablePaths = firstNonEmpty(data.LaravelExtraWritablePaths, subdomain.LaravelExtraWritablePaths)
+		data.LaravelPermissionCommand = buildLaravelPermissionDisplayCommand(subdomain.RootDirectory, site.OwnerLinuxUser, data.LaravelExtraWritablePaths)
 	}
 	data.DeployCommandPlaceholder = recommendedDeployCommand(data.ProjectHasComposer, data.ProjectHasArtisan, data.PackageScripts, subdomain.FullDomain)
 	data.AutoDeployCommandPlaceholder = data.DeployCommandPlaceholder
@@ -4714,15 +4746,15 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 				return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
 			})
 			data.SiteBrowserEntries = entries
-		data.NodeVersionOptions = mergeNodeVersionOptions(
-			singleNodeVersionOptions(data.PreferredNodeVersion, data.SubdomainAutoDeployNodeVersion, data.NpmScriptNodeVersion, data.RuntimeCommandNodeVersion, data.PM2NodeVersion),
-			runtimeStatus.InstalledNodeVersions,
-		)
-		data.InstallNodeVersionOptions = mergeNodeVersionOptions(
-			singleNodeVersionOptions(data.RuntimeNodeVersion, data.PreferredNodeVersion),
-			runtimeStatus.AvailableNodeVersions,
-			runtimeStatus.InstalledNodeVersions,
-		)
+			data.NodeVersionOptions = mergeNodeVersionOptions(
+				singleNodeVersionOptions(data.PreferredNodeVersion, data.SubdomainAutoDeployNodeVersion, data.NpmScriptNodeVersion, data.RuntimeCommandNodeVersion, data.PM2NodeVersion),
+				runtimeStatus.InstalledNodeVersions,
+			)
+			data.InstallNodeVersionOptions = mergeNodeVersionOptions(
+				singleNodeVersionOptions(data.RuntimeNodeVersion, data.PreferredNodeVersion),
+				runtimeStatus.AvailableNodeVersions,
+				runtimeStatus.InstalledNodeVersions,
+			)
 		}
 	}
 	selectedFile := strings.TrimSpace(r.URL.Query().Get("file"))
@@ -4863,10 +4895,12 @@ func shellQuoteForDisplay(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
-func buildLaravelPermissionDisplayCommand(rootDir string, ownerUser string) string {
+func buildLaravelPermissionDisplayCommand(rootDir string, ownerUser string, extraPathsRaw string) string {
+	extraPaths := parseStoredLaravelExtraWritablePaths(extraPathsRaw)
 	commands := []string{
 		"cd " + shellQuoteForDisplay(rootDir),
 		"sudo mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache",
+		"if [ -d vendor/mpdf/mpdf ]; then sudo mkdir -p vendor/mpdf/mpdf/tmp/mpdf; fi",
 		"sudo touch storage/logs/laravel.log",
 		"sudo chown -R " + ownerUser + ":" + ownerUser + " .",
 		"sudo find . -path './.git' -prune -o -type d -exec chmod 755 {} \\;",
@@ -4876,8 +4910,53 @@ func buildLaravelPermissionDisplayCommand(rootDir string, ownerUser string) stri
 		"sudo find storage bootstrap/cache -type d -exec chmod 2775 {} \\;",
 		"sudo find storage bootstrap/cache -type f -exec chmod 664 {} \\;",
 		"if command -v setfacl >/dev/null 2>&1; then sudo setfacl -R -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage bootstrap/cache && sudo setfacl -R -d -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage bootstrap/cache; fi",
+		"if [ -d vendor/mpdf/mpdf/tmp ]; then sudo chown -R " + ownerUser + ":www-data vendor/mpdf/mpdf/tmp && sudo chmod -R ug+rwX vendor/mpdf/mpdf/tmp && sudo find vendor/mpdf/mpdf/tmp -type d -exec chmod 2775 {} \\; && sudo find vendor/mpdf/mpdf/tmp -type f -exec chmod 664 {} \\; && if command -v setfacl >/dev/null 2>&1; then sudo setfacl -R -m u:" + ownerUser + ":rwx -m u:www-data:rwx vendor/mpdf/mpdf/tmp && sudo setfacl -R -d -m u:" + ownerUser + ":rwx -m u:www-data:rwx vendor/mpdf/mpdf/tmp; fi; fi",
+	}
+	for _, path := range extraPaths {
+		commands = append(commands,
+			"sudo mkdir -p "+shellQuoteForDisplay(path),
+			"sudo chown -R "+ownerUser+":www-data "+shellQuoteForDisplay(path),
+			"sudo chmod -R ug+rwX "+shellQuoteForDisplay(path),
+			"sudo find "+shellQuoteForDisplay(path)+" -type d -exec chmod 2775 {} \\;",
+			"sudo find "+shellQuoteForDisplay(path)+" -type f -exec chmod 664 {} \\;",
+			"if command -v setfacl >/dev/null 2>&1; then sudo setfacl -R -m u:"+ownerUser+":rwx -m u:www-data:rwx "+shellQuoteForDisplay(path)+" && sudo setfacl -R -d -m u:"+ownerUser+":rwx -m u:www-data:rwx "+shellQuoteForDisplay(path)+"; fi",
+		)
 	}
 	return strings.Join(commands, "\n")
+}
+
+func normalizeLaravelExtraWritablePathsInput(raw string) ([]string, string, error) {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == '\n' || r == '\r' || r == ','
+	})
+	seen := make(map[string]struct{}, len(parts))
+	normalized := make([]string, 0, len(parts))
+	for _, part := range parts {
+		path := strings.TrimSpace(strings.ReplaceAll(part, "\\", "/"))
+		path = strings.TrimPrefix(path, "./")
+		if path == "" {
+			continue
+		}
+		cleaned := filepath.Clean(path)
+		cleaned = strings.ReplaceAll(cleaned, "\\", "/")
+		if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") || filepath.IsAbs(cleaned) {
+			return nil, "", fmt.Errorf("extra writable paths must stay inside the project root and be relative, for example vendor/mpdf/mpdf/tmp")
+		}
+		if _, exists := seen[cleaned]; exists {
+			continue
+		}
+		seen[cleaned] = struct{}{}
+		normalized = append(normalized, cleaned)
+	}
+	return normalized, strings.Join(normalized, "\n"), nil
+}
+
+func parseStoredLaravelExtraWritablePaths(raw string) []string {
+	paths, _, err := normalizeLaravelExtraWritablePathsInput(raw)
+	if err != nil {
+		return nil
+	}
+	return paths
 }
 
 func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
@@ -4888,12 +4967,12 @@ func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodGet {
 		a.render(r.Context(), w, r.URL.Path, "processes.html", TemplateData{
-			Title:          "Processes",
-			DatabaseStatus: a.databaseStatus(r.Context()),
-			Metrics:        a.metrics.Snapshot(),
-			LinuxUsers:     users,
-			ProcessNames:   processNames,
-			ProcessSelectedUser: selectedUser,
+			Title:                 "Processes",
+			DatabaseStatus:        a.databaseStatus(r.Context()),
+			Metrics:               a.metrics.Snapshot(),
+			LinuxUsers:            users,
+			ProcessNames:          processNames,
+			ProcessSelectedUser:   selectedUser,
 			ProcessSelectedAction: selectedAction,
 		})
 		return
@@ -4953,30 +5032,30 @@ func (a *App) handleProcesses(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.recordAudit(r.Context(), "pm2."+action, processName, "failure", map[string]any{"run_as_user": user, "error": err.Error()})
 		a.render(r.Context(), w, r.URL.Path, "processes.html", TemplateData{
-			Title:          "Processes",
-			DatabaseStatus: a.databaseStatus(r.Context()),
-			Metrics:        a.metrics.Snapshot(),
-			LinuxUsers:     users,
-				ProcessNames:   processNames,
-				ProcessSelectedUser: strings.TrimSpace(user),
-				ProcessSelectedAction: firstNonEmpty(strings.TrimSpace(action), "list"),
-			RequestError:   err.Error(),
-			CommandOutput:  output,
+			Title:                 "Processes",
+			DatabaseStatus:        a.databaseStatus(r.Context()),
+			Metrics:               a.metrics.Snapshot(),
+			LinuxUsers:            users,
+			ProcessNames:          processNames,
+			ProcessSelectedUser:   strings.TrimSpace(user),
+			ProcessSelectedAction: firstNonEmpty(strings.TrimSpace(action), "list"),
+			RequestError:          err.Error(),
+			CommandOutput:         output,
 		})
 		return
 	}
 
 	a.recordAudit(r.Context(), "pm2."+action, processName, "success", map[string]any{"run_as_user": user})
 	a.render(r.Context(), w, r.URL.Path, "processes.html", TemplateData{
-		Title:          "Processes",
-		DatabaseStatus: a.databaseStatus(r.Context()),
-		Metrics:        a.metrics.Snapshot(),
-		LinuxUsers:     users,
-		ProcessNames:   processNames,
-		ProcessSelectedUser: strings.TrimSpace(user),
+		Title:                 "Processes",
+		DatabaseStatus:        a.databaseStatus(r.Context()),
+		Metrics:               a.metrics.Snapshot(),
+		LinuxUsers:            users,
+		ProcessNames:          processNames,
+		ProcessSelectedUser:   strings.TrimSpace(user),
 		ProcessSelectedAction: firstNonEmpty(strings.TrimSpace(action), "list"),
-		SuccessMessage: message,
-		CommandOutput:  output,
+		SuccessMessage:        message,
+		CommandOutput:         output,
 	})
 }
 
@@ -5145,9 +5224,9 @@ func (a *App) handlePHP(w http.ResponseWriter, r *http.Request) {
 		data.PHPINISelectedVersion = strings.TrimSpace(r.FormValue("ini_version"))
 		data.CommandOutput = output
 		data.SuccessMessage = "PHP ini settings were updated and php-fpm was restarted successfully."
-			a.recordAudit(r.Context(), "php.update_ini", data.PHPINISelectedVersion, "success", map[string]any{})
-			a.render(r.Context(), w, r.URL.Path, "php.html", data)
-			return
+		a.recordAudit(r.Context(), "php.update_ini", data.PHPINISelectedVersion, "success", map[string]any{})
+		a.render(r.Context(), w, r.URL.Path, "php.html", data)
+		return
 	default:
 		if a.store == nil {
 			data.RequestError = "Managed site storage is not configured yet. Set PANEL_DATABASE_DSN first."
@@ -5302,19 +5381,19 @@ func (a *App) phpTemplateData(r *http.Request) TemplateData {
 	iniSettings := a.listPHPINISettings(versions)
 	encodedINISettings, _ := json.Marshal(iniSettings)
 	return TemplateData{
-		Title:                "PHP",
-		DatabaseStatus:       a.databaseStatus(r.Context()),
-		Metrics:              a.metrics.Snapshot(),
-		ManagedSites:         a.listManagedSites(r),
-		PHPVersions:          versions,
-		PHPInstallableVersions: a.listPHPInstallableVersions(),
-		PHPExtensionStatuses: statuses,
+		Title:                    "PHP",
+		DatabaseStatus:           a.databaseStatus(r.Context()),
+		Metrics:                  a.metrics.Snapshot(),
+		ManagedSites:             a.listManagedSites(r),
+		PHPVersions:              versions,
+		PHPInstallableVersions:   a.listPHPInstallableVersions(),
+		PHPExtensionStatuses:     statuses,
 		PHPExtensionStatusesJSON: template.JS(encodedStatuses),
-		PHPDiagnostics:       a.listPHPDiagnostics(versions),
-		PHPINISettings:       iniSettings,
-		PHPINISettingsJSON:   template.JS(encodedINISettings),
-		PHPCommonExtensions:  phpCommonExtensions(),
-		PHPExtensionPresets:  phpExtensionPresets(),
+		PHPDiagnostics:           a.listPHPDiagnostics(versions),
+		PHPINISettings:           iniSettings,
+		PHPINISettingsJSON:       template.JS(encodedINISettings),
+		PHPCommonExtensions:      phpCommonExtensions(),
+		PHPExtensionPresets:      phpExtensionPresets(),
 	}
 }
 
@@ -5369,12 +5448,12 @@ func phpActionErrorMessage(err error) string {
 func (a *App) handleRedis(w http.ResponseWriter, r *http.Request) {
 	status, inspectErr := a.redis.Inspect()
 	data := TemplateData{
-		Title:          "Redis",
-		DatabaseStatus: a.databaseStatus(r.Context()),
-		Metrics:        a.metrics.Snapshot(),
-		RedisStatus:    status,
-		RedisUsername:  status.Username,
-		RedisPassword:  "",
+		Title:               "Redis",
+		DatabaseStatus:      a.databaseStatus(r.Context()),
+		Metrics:             a.metrics.Snapshot(),
+		RedisStatus:         status,
+		RedisUsername:       status.Username,
+		RedisPassword:       "",
 		RedisEvictionPolicy: firstNonEmpty(status.EvictionPolicy, "noeviction"),
 	}
 	if status.Port > 0 {
@@ -5455,9 +5534,9 @@ func (a *App) handleRedis(w http.ResponseWriter, r *http.Request) {
 		}
 
 		output, err := a.redis.Configure(system.RedisConfigSpec{
-			Username: data.RedisUsername,
-			Password: password,
-			Port:     port,
+			Username:       data.RedisUsername,
+			Password:       password,
+			Port:           port,
 			MaxMemoryBytes: maxMemoryMB * 1024 * 1024,
 			EvictionPolicy: data.RedisEvictionPolicy,
 		})
@@ -5828,15 +5907,15 @@ func (a *App) supervisorTemplateData(r *http.Request) TemplateData {
 	status, inspectErr := a.supervisor.Inspect()
 	programs, programsErr := a.supervisor.ListPrograms()
 	data := TemplateData{
-		Title:                         "Supervisor",
-		DatabaseStatus:                a.databaseStatus(r.Context()),
-		Metrics:                       a.metrics.Snapshot(),
-		LinuxUsers:                    a.listLinuxUsers(),
-		SupervisorStatus:              status,
-		SupervisorPrograms:            programs,
-		SupervisorProgramAutostart:    true,
-		SupervisorProgramAutorestart:  true,
-		SupervisorLogLines:            "200",
+		Title:                        "Supervisor",
+		DatabaseStatus:               a.databaseStatus(r.Context()),
+		Metrics:                      a.metrics.Snapshot(),
+		LinuxUsers:                   a.listLinuxUsers(),
+		SupervisorStatus:             status,
+		SupervisorPrograms:           programs,
+		SupervisorProgramAutostart:   true,
+		SupervisorProgramAutorestart: true,
+		SupervisorLogLines:           "200",
 	}
 	if inspectErr != nil {
 		data.RequestError = "Supervisor status could not be loaded: " + inspectErr.Error()
@@ -5899,12 +5978,12 @@ func (a *App) handleLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.render(r.Context(), w, r.URL.Path, "logs.html", TemplateData{
-		Title:          "Logs",
-		DatabaseStatus: a.databaseStatus(r.Context()),
-		Metrics:        a.metrics.Snapshot(),
-		AuditLogs:      logs,
-		AuditSort:      sortField,
-		AuditDirection: sortDirection,
+		Title:              "Logs",
+		DatabaseStatus:     a.databaseStatus(r.Context()),
+		Metrics:            a.metrics.Snapshot(),
+		AuditLogs:          logs,
+		AuditSort:          sortField,
+		AuditDirection:     sortDirection,
 		AuditOutcomeFilter: outcomeFilter,
 	})
 }
