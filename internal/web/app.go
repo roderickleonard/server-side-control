@@ -436,7 +436,7 @@ func (a *App) renderNamedTemplate(ctx context.Context, w http.ResponseWriter, pa
 		return
 	}
 
-	tmpl, err := template.ParseFS(assets, "templates/"+page)
+	tmpl, err := template.ParseFS(assets, templateFilesForPage(page)...)
 	if err != nil {
 		a.logger.Error("parse named template", "page", page, "name", name, "error", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
@@ -461,6 +461,8 @@ func templateFilesForPage(page string) []string {
 	files := []string{"templates/layout.html", "templates/" + page}
 
 	switch page {
+	case "dashboard.html":
+		files = append(files, "templates/dashboard_partials.html")
 	case "sites.html":
 		files = append(files, "templates/site_tls.html")
 	case "deploys.html":
