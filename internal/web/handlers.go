@@ -4945,6 +4945,13 @@ func buildLaravelPermissionDisplayCommand(rootDir string, ownerUser string, extr
 		"sudo find storage bootstrap/cache -type d -exec chmod 2775 {} \\;",
 		"sudo find storage bootstrap/cache -type f -exec chmod 664 {} \\;",
 		"if command -v setfacl >/dev/null 2>&1; then sudo setfacl -R -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage bootstrap/cache && sudo setfacl -R -d -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage bootstrap/cache; fi",
+		"sudo mkdir -p storage/logs",
+		"sudo touch storage/logs/laravel.log",
+		"sudo chown " + ownerUser + ":www-data storage/logs storage/logs/laravel.log",
+		"sudo chmod 2775 storage/logs",
+		"sudo chmod 664 storage/logs/laravel.log",
+		"if command -v setfacl >/dev/null 2>&1; then sudo setfacl -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage/logs && sudo setfacl -d -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage/logs && sudo setfacl -m u:" + ownerUser + ":rw -m u:www-data:rw storage/logs/laravel.log; fi",
+		"if find storage -maxdepth 1 -type f -name 'oauth-p*' | grep -q .; then sudo find storage -maxdepth 1 -type f -name 'oauth-p*' -exec chmod 640 {} \\; fi",
 		"if [ -d vendor/mpdf/mpdf/tmp ]; then sudo chown -R " + ownerUser + ":www-data vendor/mpdf/mpdf/tmp && sudo chmod -R ug+rwX vendor/mpdf/mpdf/tmp && sudo find vendor/mpdf/mpdf/tmp -type d -exec chmod 2775 {} \\; && sudo find vendor/mpdf/mpdf/tmp -type f -exec chmod 664 {} \\; && if command -v setfacl >/dev/null 2>&1; then sudo setfacl -R -m u:" + ownerUser + ":rwx -m u:www-data:rwx vendor/mpdf/mpdf/tmp && sudo setfacl -R -d -m u:" + ownerUser + ":rwx -m u:www-data:rwx vendor/mpdf/mpdf/tmp; fi; fi",
 	}
 	for _, path := range extraPaths {

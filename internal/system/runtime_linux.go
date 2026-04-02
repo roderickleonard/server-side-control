@@ -424,6 +424,14 @@ func StreamFixLaravelPermissions(rootDir string, ownerUser string, extraWritable
 		"find storage bootstrap/cache -type d -print -exec chmod 2775 {} \\;",
 		"find storage bootstrap/cache -type f -print -exec chmod 664 {} \\;",
 		"if command -v setfacl >/dev/null 2>&1; then setfacl -R -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage bootstrap/cache; setfacl -R -d -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage bootstrap/cache; else echo 'setfacl not found; continuing with chmod/chown fallback'; fi",
+		"echo 'Hardening Laravel log directory permissions'",
+		"mkdir -p storage/logs",
+		"touch storage/logs/laravel.log",
+		"chown " + shellQuote(ownerUser+":www-data") + " storage/logs storage/logs/laravel.log",
+		"chmod 2775 storage/logs",
+		"chmod 664 storage/logs/laravel.log",
+		"if command -v setfacl >/dev/null 2>&1; then setfacl -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage/logs; setfacl -d -m u:" + ownerUser + ":rwx -m u:www-data:rwx storage/logs; setfacl -m u:" + ownerUser + ":rw -m u:www-data:rw storage/logs/laravel.log; fi",
+		"if find storage -maxdepth 1 -type f -name 'oauth-p*' | grep -q .; then echo 'Securing Laravel oauth key files'; find storage -maxdepth 1 -type f -name 'oauth-p*' -print -exec chmod 640 {} \\;; fi",
 		"if [ -d vendor/mpdf/mpdf/tmp ]; then echo 'Applying writable mPDF temp directories'; chown -R " + shellQuote(ownerUser+":www-data") + " vendor/mpdf/mpdf/tmp; chmod -R ug+rwX vendor/mpdf/mpdf/tmp; find vendor/mpdf/mpdf/tmp -type d -print -exec chmod 2775 {} \\;; find vendor/mpdf/mpdf/tmp -type f -print -exec chmod 664 {} \\;; if command -v setfacl >/dev/null 2>&1; then setfacl -R -m u:" + ownerUser + ":rwx -m u:www-data:rwx vendor/mpdf/mpdf/tmp; setfacl -R -d -m u:" + ownerUser + ":rwx -m u:www-data:rwx vendor/mpdf/mpdf/tmp; fi; fi",
 	}
 	for _, path := range normalizedExtraPaths {
