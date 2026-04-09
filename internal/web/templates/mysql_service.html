@@ -1,0 +1,233 @@
+{{define "content"}}
+<div class="page-banner pb-green">
+    <div class="pb-icon"><i class="bi bi-database-gear"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Database Service</span>
+        <h2>MySQL</h2>
+        <p class="pb-lead">Monitor connection pressure, change persistent server limits, control the service, and run admin SQL from one screen.</p>
+    </div>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{.MySQLServiceStatus.CurrentConnections}}</strong>
+            <span>Current connections</span>
+        </div>
+        <div class="pb-stat">
+            <strong>{{.MySQLServiceStatus.MaxConnections}}</strong>
+            <span>Max connections</span>
+        </div>
+    </div>
+</div>
+
+{{if .RequestError}}
+<div class="alert mb-3">{{.RequestError}}</div>
+{{end}}
+{{if .SuccessMessage}}
+<div class="alert success mb-3">{{.SuccessMessage}}</div>
+{{end}}
+
+<div class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-activity" style="color:var(--accent);"></i>Service status</h3>
+        <div class="info-grid">
+            <div class="info-grid-item"><span class="info-label">Installed</span><span>{{if .MySQLServiceStatus.Installed}}Yes{{else}}No{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Active</span><span>{{if .MySQLServiceStatus.Active}}<span class="status-pill running">Running</span>{{else}}<span class="status-pill stopped">Stopped</span>{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Enabled</span><span>{{if .MySQLServiceStatus.Enabled}}On boot{{else}}Manual{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Service</span><span>{{if .MySQLServiceStatus.ServiceName}}{{.MySQLServiceStatus.ServiceName}}{{else}}mysql{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Version</span><span>{{if .MySQLServiceStatus.Version}}{{.MySQLServiceStatus.Version}}{{else}}-{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Config override</span><span class="text-break">{{if .MySQLServiceStatus.ConfigPath}}{{.MySQLServiceStatus.ConfigPath}}{{else}}-{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Admin defaults</span><span class="text-break">{{if .MySQLServiceStatus.AdminDefaultsFile}}{{.MySQLServiceStatus.AdminDefaultsFile}}{{else}}-{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Managed schemas</span><span>{{len .DatabaseAccess}}</span></div>
+        </div>
+    </article>
+    <article class="panel">
+        <h3><i class="bi bi-broadcast" style="color:var(--muted);"></i>Connection metrics</h3>
+        <div class="info-grid">
+            <div class="info-grid-item"><span class="info-label">Current connections</span><span>{{.MySQLServiceStatus.CurrentConnections}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Max connections</span><span>{{.MySQLServiceStatus.MaxConnections}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Peak used</span><span>{{.MySQLServiceStatus.MaxUsedConnections}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Max per user</span><span>{{.MySQLServiceStatus.MaxUserConnections}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Aborted connects</span><span>{{.MySQLServiceStatus.AbortedConnects}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Wait timeout</span><span>{{.MySQLServiceStatus.WaitTimeout}} sec</span></div>
+            <div class="info-grid-item"><span class="info-label">Interactive timeout</span><span>{{.MySQLServiceStatus.InteractiveTimeout}} sec</span></div>
+            <div class="info-grid-item"><span class="info-label">Thread cache</span><span>{{.MySQLServiceStatus.ThreadCacheSize}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Table open cache</span><span>{{.MySQLServiceStatus.TableOpenCache}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Max connect errors</span><span>{{.MySQLServiceStatus.MaxConnectErrors}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Port</span><span>{{.MySQLServiceStatus.Port}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Bind address</span><span>{{if .MySQLServiceStatus.BindAddress}}{{.MySQLServiceStatus.BindAddress}}{{else}}-{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Slow query log</span><span>{{if .MySQLServiceStatus.SlowQueryLogEnabled}}Enabled{{else}}Disabled{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Long query time</span><span>{{if .MySQLServiceStatus.LongQueryTimeSeconds}}{{.MySQLServiceStatus.LongQueryTimeSeconds}} sec{{else}}-{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">InnoDB buffer pool</span><span>{{if .MySQLServiceStatus.InnodbBufferPoolSizeDisplay}}{{.MySQLServiceStatus.InnodbBufferPoolSizeDisplay}}{{else}}-{{end}}</span></div>
+        </div>
+        <p class="muted details-note" style="margin-top:12px;">Current connections comes from <strong>Threads_connected</strong>, peak usage from <strong>Max_used_connections</strong>, and the hard limit from <strong>max_connections</strong>.</p>
+    </article>
+</div>
+
+<div class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-download" style="color:var(--muted);"></i>Install or upgrade</h3>
+        <form method="post" class="stack-form">
+            <p class="muted">Install MySQL or MariaDB from the host package repository, or upgrade the currently installed package to the latest available version.</p>
+            <div class="form-actions">
+                <button type="submit" name="mysql_action" value="install_service">Install MySQL</button>
+                <button type="submit" name="mysql_action" value="upgrade_service" class="btn btn-outline-secondary">Upgrade MySQL</button>
+            </div>
+        </form>
+    </article>
+</div>
+
+<div class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-sliders" style="color:var(--accent);"></i>Persistent server settings</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="mysql_action" value="save_config">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Max connections</span>
+                    <input type="text" name="max_connections" value="{{.MySQLMaxConnections}}" required>
+                </label>
+                <label>
+                    <span>Max user connections</span>
+                    <input type="text" name="max_user_connections" value="{{.MySQLMaxUserConnections}}" required>
+                </label>
+                <label>
+                    <span>Wait timeout (sec)</span>
+                    <input type="text" name="wait_timeout" value="{{.MySQLWaitTimeout}}" required>
+                </label>
+                <label>
+                    <span>Interactive timeout (sec)</span>
+                    <input type="text" name="interactive_timeout" value="{{.MySQLInteractiveTimeout}}" required>
+                </label>
+                <label>
+                    <span>Max connect errors</span>
+                    <input type="text" name="max_connect_errors" value="{{.MySQLMaxConnectErrors}}" required>
+                </label>
+                <label>
+                    <span>Thread cache size</span>
+                    <input type="text" name="thread_cache_size" value="{{.MySQLThreadCacheSize}}" required>
+                </label>
+                <label>
+                    <span>Table open cache</span>
+                    <input type="text" name="table_open_cache" value="{{.MySQLTableOpenCache}}" required>
+                </label>
+                <label>
+                    <span>Port</span>
+                    <input type="text" name="mysql_port" value="{{.MySQLPort}}" required>
+                </label>
+                <label>
+                    <span>Bind address</span>
+                    <input type="text" name="mysql_bind_address" value="{{.MySQLBindAddress}}" placeholder="127.0.0.1" required>
+                </label>
+                <label>
+                    <span>InnoDB buffer pool (MB)</span>
+                    <input type="text" name="innodb_buffer_pool_size_mb" value="{{.MySQLInnodbBufferPoolSizeMB}}" required>
+                </label>
+                <label>
+                    <span>Long query time (sec)</span>
+                    <input type="text" name="mysql_long_query_time" value="{{.MySQLLongQueryTime}}" required>
+                </label>
+                <label class="span-2">
+                    <span>Slow query log file</span>
+                    <input type="text" name="mysql_slow_query_log_file" value="{{.MySQLSlowQueryLogFile}}" placeholder="/var/log/mysql/slow-query.log">
+                </label>
+            </div>
+            <div class="form-actions" style="justify-content:flex-start;gap:18px;">
+                <label class="checkbox-row compact"><input type="checkbox" name="mysql_slow_query_log_enabled" value="1" {{if .MySQLSlowQueryLogEnabled}}checked{{end}}><span>Enable slow query log</span></label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Save MySQL settings</button>
+            </div>
+        </form>
+        <p class="muted">These values are written to a dedicated panel-managed MySQL config file so they survive reboot and package updates.</p>
+        <p class="muted">After saving, restart MySQL from the panel to apply the persistent changes. Bind address and slow query settings are included here too.</p>
+    </article>
+    <article class="panel">
+        <h3><i class="bi bi-arrow-repeat" style="color:var(--muted);"></i>Service control</h3>
+        <form method="post" class="stack-form">
+            <p class="muted">Start, stop, or restart the MySQL service without leaving the panel.</p>
+            <div class="form-actions">
+                <button type="submit" name="mysql_action" value="start_service" class="btn btn-outline-secondary">Start MySQL</button>
+                <button type="submit" name="mysql_action" value="stop_service" class="btn btn-outline-secondary">Stop MySQL</button>
+                <button type="submit" name="mysql_action" value="restart_service" class="btn btn-outline-secondary">Restart MySQL</button>
+            </div>
+        </form>
+        <div class="form-actions" style="margin-top:12px;justify-content:flex-start;">
+            <a class="btn btn-outline-secondary" href="/databases">Open database provisioning</a>
+            <a class="btn btn-outline-secondary" href="/mysql/logs">Open MySQL logs</a>
+        </div>
+        <p class="muted" style="margin-top:12px;">Schema creation, password rotation, restore, and per-database inspection stay available on the Databases screen.</p>
+    </article>
+</div>
+
+<div class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-terminal" style="color:var(--accent);"></i>Admin SQL</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="mysql_action" value="run_query">
+            <div class="form-grid">
+                <label>
+                    <span>SQL statement</span>
+                    <textarea name="mysql_admin_query" rows="8" style="font-family:monospace;font-size:13px;" placeholder="SHOW GLOBAL STATUS LIKE 'Threads_connected';&#10;SHOW GLOBAL VARIABLES LIKE 'max_connections';">{{.MySQLAdminQuery}}</textarea>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Run admin SQL</button>
+            </div>
+        </form>
+        <p class="muted details-note">This runs with the saved MySQL admin defaults file. Use it for service-level checks, grants, schema operations, diagnostics, and emergency SQL.</p>
+    </article>
+    <article class="panel">
+        <h3><i class="bi bi-shield-check" style="color:var(--muted);"></i>Operational notes</h3>
+        <ul class="rule-list">
+            <li>Current connection count is live usage, while max connections is the configured upper bound.</li>
+            <li>Peak used connections helps you judge whether the current limit is too low or overly large.</li>
+            <li>Saving settings updates the panel-managed config file only; restart the service to apply them persistently.</li>
+            <li>Bind address controls where MySQL listens, and slow query settings help you diagnose heavy statements.</li>
+            <li>Admin SQL executes immediately and is audited. Review destructive statements carefully before running them.</li>
+        </ul>
+    </article>
+</div>
+
+{{if .MySQLAdminQueryResult.Columns}}
+<div class="grid single">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Query result</span>
+                <h3 style="margin-bottom:0;">Rows</h3>
+            </div>
+            <span class="count-chip">{{.MySQLAdminQueryResult.RowCount}}</span>
+        </div>
+        <p class="muted">{{.MySQLAdminQueryResult.Message}}</p>
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0 table-nowrap">
+                <thead>
+                    <tr>
+                        {{range .MySQLAdminQueryResult.Columns}}
+                        <th>{{.}}</th>
+                        {{end}}
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .MySQLAdminQueryResult.Rows}}
+                    <tr>
+                        {{range .}}
+                        <td class="text-break">{{.}}</td>
+                        {{end}}
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</div>
+{{end}}
+
+{{if .CommandOutput}}
+<div class="grid single">
+    <article class="panel">
+        <h3><i class="bi bi-journal-code" style="color:var(--accent);"></i>Last command output</h3>
+        <pre class="command-output">{{.CommandOutput}}</pre>
+    </article>
+</div>
+{{end}}
+{{end}}

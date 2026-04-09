@@ -71,6 +71,9 @@
                 <div class="sidebar-nav-group">
                     <span class="nav-group-label">Services</span>
                     <nav class="nav">
+                        <a class="nav-link {{if or (eq .CurrentPath "/mysql") (eq .CurrentPath "/mysql/logs")}}is-active{{end}}" href="/mysql">
+                            <i class="bi bi-database-gear"></i><span>MySQL</span>
+                        </a>
                         <a class="nav-link {{if eq .CurrentPath "/php"}}is-active{{end}}" href="/php">
                             <i class="bi bi-code-slash"></i><span>PHP</span>
                         </a>

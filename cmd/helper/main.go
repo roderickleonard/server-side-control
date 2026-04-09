@@ -748,6 +748,53 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		result, err := system.ExecuteDatabaseQuery(cfg.MySQLAdminDefaultsFile, input.DatabaseName, input.QuerySQL, input.MaxRows)
 		writeSuccess(result, "", err)
+	case "mysql.inspect_service":
+		result, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).InspectService()
+		writeSuccess(result, "", err)
+	case "mysql.configure_service":
+		var spec system.MySQLServiceConfigSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).ConfigureService(spec)
+		writeSuccess(nil, output, err)
+	case "mysql.install_service":
+		output, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).InstallService()
+		writeSuccess(nil, output, err)
+	case "mysql.upgrade_service":
+		output, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).UpgradeService()
+		writeSuccess(nil, output, err)
+	case "mysql.start_service":
+		output, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).StartService()
+		writeSuccess(nil, output, err)
+	case "mysql.stop_service":
+		output, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).StopService()
+		writeSuccess(nil, output, err)
+	case "mysql.restart_service":
+		output, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).RestartService()
+		writeSuccess(nil, output, err)
+	case "mysql.service_logs":
+		var input struct {
+			Lines int `json:"lines"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).ServiceLogs(input.Lines)
+		writeSuccess(nil, output, err)
+	case "mysql.execute_admin_query":
+		var input struct {
+			QuerySQL string `json:"query_sql"`
+			MaxRows  int    `json:"max_rows"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		result, err := system.NewDatabaseManager(cfg.MySQLAdminDefaultsFile).ExecuteAdminQuery(input.QuerySQL, input.MaxRows)
+		writeSuccess(result, "", err)
 	case "mysql.export_database":
 		var input struct {
 			DatabaseName string `json:"database_name"`

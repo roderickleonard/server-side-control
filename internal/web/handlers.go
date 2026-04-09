@@ -2343,6 +2343,315 @@ func databaseDetailErrorMessage(err error) string {
 	return message
 }
 
+func (a *App) handleMySQLService(w http.ResponseWriter, r *http.Request) {
+	entries, listErr := a.databases.ListDatabaseAccess()
+	if listErr != nil {
+		entries = nil
+	}
+	status, inspectErr := a.databases.InspectService()
+	data := a.mysqlServiceTemplateData(r, status, entries)
+	if inspectErr != nil {
+		data.RequestError = "MySQL service status could not be loaded: " + mysqlServiceErrorMessage(inspectErr)
+	}
+
+	if r.Method == http.MethodGet {
+		a.render(r.Context(), w, r.URL.Path, "mysql_service.html", data)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		data.RequestError = "The submitted MySQL form could not be parsed."
+		a.render(r.Context(), w, r.URL.Path, "mysql_service.html", data)
+		return
+	}
+
+	data.MySQLMaxConnections = firstNonEmpty(strings.TrimSpace(r.FormValue("max_connections")), data.MySQLMaxConnections)
+	data.MySQLMaxUserConnections = firstNonEmpty(strings.TrimSpace(r.FormValue("max_user_connections")), data.MySQLMaxUserConnections)
+	data.MySQLWaitTimeout = firstNonEmpty(strings.TrimSpace(r.FormValue("wait_timeout")), data.MySQLWaitTimeout)
+	data.MySQLInteractiveTimeout = firstNonEmpty(strings.TrimSpace(r.FormValue("interactive_timeout")), data.MySQLInteractiveTimeout)
+	data.MySQLMaxConnectErrors = firstNonEmpty(strings.TrimSpace(r.FormValue("max_connect_errors")), data.MySQLMaxConnectErrors)
+	data.MySQLThreadCacheSize = firstNonEmpty(strings.TrimSpace(r.FormValue("thread_cache_size")), data.MySQLThreadCacheSize)
+	data.MySQLTableOpenCache = firstNonEmpty(strings.TrimSpace(r.FormValue("table_open_cache")), data.MySQLTableOpenCache)
+	data.MySQLInnodbBufferPoolSizeMB = firstNonEmpty(strings.TrimSpace(r.FormValue("innodb_buffer_pool_size_mb")), data.MySQLInnodbBufferPoolSizeMB)
+	data.MySQLPort = firstNonEmpty(strings.TrimSpace(r.FormValue("mysql_port")), data.MySQLPort)
+	data.MySQLBindAddress = firstNonEmpty(strings.TrimSpace(r.FormValue("mysql_bind_address")), data.MySQLBindAddress)
+	data.MySQLSlowQueryLogEnabled = r.FormValue("mysql_slow_query_log_enabled") == "1"
+	data.MySQLSlowQueryLogFile = firstNonEmpty(strings.TrimSpace(r.FormValue("mysql_slow_query_log_file")), data.MySQLSlowQueryLogFile)
+	data.MySQLLongQueryTime = firstNonEmpty(strings.TrimSpace(r.FormValue("mysql_long_query_time")), data.MySQLLongQueryTime)
+	data.MySQLAdminQuery = strings.TrimSpace(r.FormValue("mysql_admin_query"))
+
+	action := strings.TrimSpace(r.FormValue("mysql_action"))
+	switch action {
+	case "install_service":
+		output, err := a.databases.InstallService()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "MySQL service could not be installed: " + mysqlServiceErrorMessage(err)
+			a.recordAudit(r.Context(), "mysql.install_service", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "MySQL service was installed successfully."
+		a.recordAudit(r.Context(), "mysql.install_service", status.ServiceName, "success", nil)
+	case "upgrade_service":
+		output, err := a.databases.UpgradeService()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "MySQL service could not be upgraded: " + mysqlServiceErrorMessage(err)
+			a.recordAudit(r.Context(), "mysql.upgrade_service", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "MySQL service was upgraded successfully."
+		a.recordAudit(r.Context(), "mysql.upgrade_service", status.ServiceName, "success", nil)
+	case "save_config":
+		spec, err := mysqlServiceConfigSpecFromForm(data)
+		if err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		output, err := a.databases.ConfigureService(spec)
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = mysqlServiceErrorMessage(err)
+			a.recordAudit(r.Context(), "mysql.configure_service", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "MySQL settings were saved successfully. Restart the service to apply persistent changes."
+		a.recordAudit(r.Context(), "mysql.configure_service", status.ServiceName, "success", map[string]any{"max_connections": spec.MaxConnections, "max_user_connections": spec.MaxUserConnections, "port": spec.Port, "bind_address": spec.BindAddress, "slow_query_log_enabled": spec.SlowQueryLogEnabled})
+	case "start_service":
+		output, err := a.databases.StartService()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "MySQL service could not be started: " + mysqlServiceErrorMessage(err)
+			a.recordAudit(r.Context(), "mysql.start_service", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "MySQL service started successfully."
+		a.recordAudit(r.Context(), "mysql.start_service", status.ServiceName, "success", nil)
+	case "stop_service":
+		output, err := a.databases.StopService()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "MySQL service could not be stopped: " + mysqlServiceErrorMessage(err)
+			a.recordAudit(r.Context(), "mysql.stop_service", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "MySQL service stopped successfully."
+		a.recordAudit(r.Context(), "mysql.stop_service", status.ServiceName, "success", nil)
+	case "restart_service":
+		output, err := a.databases.RestartService()
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "MySQL service could not be restarted: " + mysqlServiceErrorMessage(err)
+			a.recordAudit(r.Context(), "mysql.restart_service", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+			break
+		}
+		data.SuccessMessage = "MySQL service restarted successfully."
+		a.recordAudit(r.Context(), "mysql.restart_service", status.ServiceName, "success", nil)
+	case "run_query":
+		result, err := a.databases.ExecuteAdminQuery(data.MySQLAdminQuery, 250)
+		if err != nil {
+			data.RequestError = mysqlServiceErrorMessage(err)
+			a.recordAudit(r.Context(), "mysql.admin_query", status.ServiceName, "failure", map[string]any{"error": err.Error(), "query": auditQueryPreview(data.MySQLAdminQuery)})
+			break
+		}
+		data.MySQLAdminQueryResult = result
+		data.SuccessMessage = firstNonEmpty(result.Message, "MySQL query executed successfully.")
+		a.recordAudit(r.Context(), "mysql.admin_query", status.ServiceName, "success", map[string]any{"query": auditQueryPreview(data.MySQLAdminQuery), "rows": result.RowCount, "truncated": result.Truncated})
+	default:
+		data.RequestError = "Invalid MySQL action."
+	}
+
+	if refreshedEntries, err := a.databases.ListDatabaseAccess(); err == nil {
+		data.DatabaseAccess = refreshedEntries
+	}
+	if refreshedStatus, err := a.databases.InspectService(); err == nil {
+		data.MySQLServiceStatus = refreshedStatus
+	}
+
+	a.render(r.Context(), w, r.URL.Path, "mysql_service.html", data)
+}
+
+func (a *App) mysqlServiceTemplateData(r *http.Request, status system.MySQLServiceStatus, entries []system.DatabaseAccess) TemplateData {
+	data := TemplateData{
+		Title:              "MySQL",
+		DatabaseStatus:     a.databaseStatus(r.Context()),
+		Metrics:            a.metrics.Snapshot(),
+		DatabaseAccess:     entries,
+		MySQLServiceStatus: status,
+	}
+	data.MySQLMaxConnections = defaultMySQLServiceField(status.MaxConnections, "151")
+	data.MySQLMaxUserConnections = strconv.Itoa(status.MaxUserConnections)
+	data.MySQLWaitTimeout = defaultMySQLServiceField(status.WaitTimeout, "28800")
+	data.MySQLInteractiveTimeout = defaultMySQLServiceField(status.InteractiveTimeout, "28800")
+	data.MySQLMaxConnectErrors = defaultMySQLServiceField(status.MaxConnectErrors, "100")
+	data.MySQLThreadCacheSize = defaultMySQLServiceField(status.ThreadCacheSize, "9")
+	data.MySQLTableOpenCache = defaultMySQLServiceField(status.TableOpenCache, "2000")
+	data.MySQLPort = defaultMySQLServiceField(status.Port, "3306")
+	data.MySQLBindAddress = firstNonEmpty(status.BindAddress, "127.0.0.1")
+	data.MySQLSlowQueryLogEnabled = status.SlowQueryLogEnabled
+	data.MySQLSlowQueryLogFile = firstNonEmpty(status.SlowQueryLogFile, "/var/log/mysql/slow-query.log")
+	data.MySQLLongQueryTime = firstNonEmpty(status.LongQueryTimeSeconds, "2")
+	data.MySQLLogLines = "200"
+	bufferPoolMB := status.InnodbBufferPoolSizeBytes / (1024 * 1024)
+	if bufferPoolMB <= 0 {
+		data.MySQLInnodbBufferPoolSizeMB = "128"
+	} else {
+		data.MySQLInnodbBufferPoolSizeMB = strconv.FormatInt(bufferPoolMB, 10)
+	}
+	return data
+}
+
+func defaultMySQLServiceField(value int, fallback string) string {
+	if value <= 0 {
+		return fallback
+	}
+	return strconv.Itoa(value)
+}
+
+func mysqlServiceConfigSpecFromForm(data TemplateData) (system.MySQLServiceConfigSpec, error) {
+	maxConnections, err := strconv.Atoi(strings.TrimSpace(data.MySQLMaxConnections))
+	if err != nil {
+		return system.MySQLServiceConfigSpec{}, errors.New("Max connections must be a valid number.")
+	}
+	maxUserConnections, err := strconv.Atoi(strings.TrimSpace(data.MySQLMaxUserConnections))
+	if err != nil {
+		return system.MySQLServiceConfigSpec{}, errors.New("Max user connections must be a valid number.")
+	}
+	waitTimeout, err := strconv.Atoi(strings.TrimSpace(data.MySQLWaitTimeout))
+	if err != nil {
+		return system.MySQLServiceConfigSpec{}, errors.New("Wait timeout must be a valid number.")
+	}
+	interactiveTimeout, err := strconv.Atoi(strings.TrimSpace(data.MySQLInteractiveTimeout))
+	if err != nil {
+		return system.MySQLServiceConfigSpec{}, errors.New("Interactive timeout must be a valid number.")
+	}
+	maxConnectErrors, err := strconv.Atoi(strings.TrimSpace(data.MySQLMaxConnectErrors))
+	if err != nil {
+		return system.MySQLServiceConfigSpec{}, errors.New("Max connect errors must be a valid number.")
+	}
+	threadCacheSize, err := strconv.Atoi(strings.TrimSpace(data.MySQLThreadCacheSize))
+	if err != nil {
+		return system.MySQLServiceConfigSpec{}, errors.New("Thread cache size must be a valid number.")
+	}
+	tableOpenCache, err := strconv.Atoi(strings.TrimSpace(data.MySQLTableOpenCache))
+	if err != nil {
+		return system.MySQLServiceConfigSpec{}, errors.New("Table open cache must be a valid number.")
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(data.MySQLPort))
+	if err != nil {
+		return system.MySQLServiceConfigSpec{}, errors.New("MySQL port must be a valid number.")
+	}
+	innodbBufferPoolSizeMB, err := strconv.Atoi(strings.TrimSpace(data.MySQLInnodbBufferPoolSizeMB))
+	if err != nil {
+		return system.MySQLServiceConfigSpec{}, errors.New("InnoDB buffer pool size must be a valid number in MB.")
+	}
+	return system.MySQLServiceConfigSpec{
+		MaxConnections:         maxConnections,
+		MaxUserConnections:     maxUserConnections,
+		WaitTimeout:            waitTimeout,
+		InteractiveTimeout:     interactiveTimeout,
+		MaxConnectErrors:       maxConnectErrors,
+		ThreadCacheSize:        threadCacheSize,
+		TableOpenCache:         tableOpenCache,
+		InnodbBufferPoolSizeMB: innodbBufferPoolSizeMB,
+		Port:                   port,
+		BindAddress:            strings.TrimSpace(data.MySQLBindAddress),
+		SlowQueryLogEnabled:    data.MySQLSlowQueryLogEnabled,
+		SlowQueryLogFile:       strings.TrimSpace(data.MySQLSlowQueryLogFile),
+		LongQueryTimeSeconds:   strings.TrimSpace(data.MySQLLongQueryTime),
+	}, nil
+}
+
+func mysqlServiceErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := err.Error()
+	switch {
+	case errors.Is(err, system.ErrInvalidMySQLMaxConnections):
+		message = "Max connections must be greater than zero."
+	case errors.Is(err, system.ErrInvalidMySQLMaxUserConnections):
+		message = "Max user connections must be zero or a positive number."
+	case errors.Is(err, system.ErrInvalidMySQLWaitTimeout):
+		message = "Wait timeout must be greater than zero."
+	case errors.Is(err, system.ErrInvalidMySQLInteractiveTimeout):
+		message = "Interactive timeout must be greater than zero."
+	case errors.Is(err, system.ErrInvalidMySQLMaxConnectErrors):
+		message = "Max connect errors must be greater than zero."
+	case errors.Is(err, system.ErrInvalidMySQLThreadCacheSize):
+		message = "Thread cache size must be zero or a positive number."
+	case errors.Is(err, system.ErrInvalidMySQLTableOpenCache):
+		message = "Table open cache must be greater than zero."
+	case errors.Is(err, system.ErrInvalidMySQLBufferPoolSize):
+		message = "InnoDB buffer pool size must be greater than zero MB."
+	case errors.Is(err, system.ErrInvalidMySQLBindAddress):
+		message = "Bind address is not valid. Use values like 127.0.0.1, 0.0.0.0, ::, or localhost."
+	case errors.Is(err, system.ErrInvalidMySQLPort):
+		message = "MySQL port must be between 1 and 65535."
+	case errors.Is(err, system.ErrInvalidMySQLLongQueryTime):
+		message = "Long query time must be a valid number such as 1, 2, or 0.5."
+	case errors.Is(err, system.ErrInvalidMySQLSlowQueryLogPath):
+		message = "Slow query log path must be an absolute file path."
+	case errors.Is(err, system.ErrInvalidMySQLLogLines):
+		message = "Log line count must be between 1 and 2000."
+	case errors.Is(err, system.ErrInvalidDatabaseQuery):
+		message = "MySQL query cannot be empty."
+	}
+	return message
+}
+
+func (a *App) handleMySQLLogs(w http.ResponseWriter, r *http.Request) {
+	status, inspectErr := a.databases.InspectService()
+	data := TemplateData{
+		Title:              "MySQL logs",
+		DatabaseStatus:     a.databaseStatus(r.Context()),
+		Metrics:            a.metrics.Snapshot(),
+		MySQLServiceStatus: status,
+		MySQLLogLines:      "200",
+	}
+	if inspectErr != nil {
+		data.RequestError = "MySQL service status could not be loaded: " + mysqlServiceErrorMessage(inspectErr)
+	}
+
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			data.RequestError = "The submitted MySQL logs form could not be parsed."
+			a.render(r.Context(), w, r.URL.Path, "mysql_logs.html", data)
+			return
+		}
+		if lines := strings.TrimSpace(r.FormValue("mysql_log_lines")); lines != "" {
+			data.MySQLLogLines = lines
+		}
+	}
+	lines, err := strconv.Atoi(strings.TrimSpace(data.MySQLLogLines))
+	if err != nil || lines <= 0 {
+		lines = 200
+		data.MySQLLogLines = "200"
+	}
+	output, logsErr := a.databases.ServiceLogs(lines)
+	data.CommandOutput = output
+	if logsErr != nil {
+		data.RequestError = "MySQL logs could not be loaded: " + mysqlServiceErrorMessage(logsErr)
+	} else {
+		data.SuccessMessage = "MySQL logs loaded successfully."
+	}
+	if refreshedStatus, err := a.databases.InspectService(); err == nil {
+		data.MySQLServiceStatus = refreshedStatus
+	}
+	data.MySQLSlowQueryLogEnabled = data.MySQLServiceStatus.SlowQueryLogEnabled
+	data.MySQLSlowQueryLogFile = data.MySQLServiceStatus.SlowQueryLogFile
+	a.render(r.Context(), w, r.URL.Path, "mysql_logs.html", data)
+}
+
 func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 	users := a.listLinuxUsers()
 	sites := []domain.ManagedSite(nil)

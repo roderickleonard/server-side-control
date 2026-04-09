@@ -47,6 +47,19 @@ var ErrInvalidGitCommand = errors.New("invalid git command")
 var ErrInvalidTableName = errors.New("invalid mysql table name")
 var ErrInvalidRestorePath = errors.New("invalid mysql restore file path")
 var ErrInvalidDatabaseQuery = errors.New("invalid mysql query")
+var ErrInvalidMySQLMaxConnections = errors.New("invalid mysql max connections")
+var ErrInvalidMySQLMaxUserConnections = errors.New("invalid mysql max user connections")
+var ErrInvalidMySQLWaitTimeout = errors.New("invalid mysql wait timeout")
+var ErrInvalidMySQLInteractiveTimeout = errors.New("invalid mysql interactive timeout")
+var ErrInvalidMySQLMaxConnectErrors = errors.New("invalid mysql max connect errors")
+var ErrInvalidMySQLThreadCacheSize = errors.New("invalid mysql thread cache size")
+var ErrInvalidMySQLTableOpenCache = errors.New("invalid mysql table open cache")
+var ErrInvalidMySQLBufferPoolSize = errors.New("invalid mysql InnoDB buffer pool size")
+var ErrInvalidMySQLBindAddress = errors.New("invalid mysql bind address")
+var ErrInvalidMySQLPort = errors.New("invalid mysql port")
+var ErrInvalidMySQLLongQueryTime = errors.New("invalid mysql long query time")
+var ErrInvalidMySQLSlowQueryLogPath = errors.New("invalid mysql slow query log path")
+var ErrInvalidMySQLLogLines = errors.New("invalid mysql log lines")
 var ErrInvalidCronSchedule = errors.New("invalid cron schedule")
 var ErrInvalidCronCommand = errors.New("invalid cron command")
 
@@ -60,12 +73,12 @@ type UserManager interface {
 }
 
 type LinuxUser struct {
-	Username      string
-	UID           int
-	HomeDirectory string
-	Shell         string
-	PasswordSet   bool
-	SudoEnabled   bool
+	Username         string
+	UID              int
+	HomeDirectory    string
+	Shell            string
+	PasswordSet      bool
+	SudoEnabled      bool
 	PasswordlessSudo bool
 }
 
@@ -77,6 +90,15 @@ type DatabaseManager interface {
 	RotateAdminPassword(password string) error
 	InspectDatabase(spec DatabaseInspectSpec) (DatabaseDetails, error)
 	RestoreDatabase(name string, filePath string) (string, error)
+	InspectService() (MySQLServiceStatus, error)
+	ConfigureService(spec MySQLServiceConfigSpec) (string, error)
+	InstallService() (string, error)
+	UpgradeService() (string, error)
+	StartService() (string, error)
+	StopService() (string, error)
+	RestartService() (string, error)
+	ServiceLogs(lines int) (string, error)
+	ExecuteAdminQuery(statement string, maxRows int) (DatabaseQueryResult, error)
 }
 
 type DatabaseAccess struct {
@@ -92,38 +114,81 @@ type DatabaseInspectSpec struct {
 }
 
 type DatabaseTableSummary struct {
-	Name      string
-	Engine    string
-	RowCount  int64
-	DataSize  int64
-	IndexSize int64
-	DataSizeDisplay string
+	Name             string
+	Engine           string
+	RowCount         int64
+	DataSize         int64
+	IndexSize        int64
+	DataSizeDisplay  string
 	IndexSizeDisplay string
 	TotalSizeDisplay string
 }
 
 type DatabaseTablePreview struct {
-	Name    string
-	Columns []string
-	Rows    [][]string
+	Name      string
+	Columns   []string
+	Rows      [][]string
 	Truncated bool
 }
 
 type DatabaseDetails struct {
-	DatabaseName   string
-	SelectedTable  string
-	Tables         []DatabaseTableSummary
-	Preview        DatabaseTablePreview
-	ApproximateSize int64
+	DatabaseName           string
+	SelectedTable          string
+	Tables                 []DatabaseTableSummary
+	Preview                DatabaseTablePreview
+	ApproximateSize        int64
 	ApproximateSizeDisplay string
 }
 
 type DatabaseQueryResult struct {
-	Columns   []string `json:"columns"`
+	Columns   []string   `json:"columns"`
 	Rows      [][]string `json:"rows"`
-	Message   string `json:"message"`
-	RowCount  int `json:"row_count"`
-	Truncated bool `json:"truncated"`
+	Message   string     `json:"message"`
+	RowCount  int        `json:"row_count"`
+	Truncated bool       `json:"truncated"`
+}
+
+type MySQLServiceStatus struct {
+	Installed                   bool   `json:"installed"`
+	Active                      bool   `json:"active"`
+	Enabled                     bool   `json:"enabled"`
+	ServiceName                 string `json:"service_name"`
+	Version                     string `json:"version"`
+	ConfigPath                  string `json:"config_path"`
+	AdminDefaultsFile           string `json:"admin_defaults_file"`
+	CurrentConnections          int    `json:"current_connections"`
+	MaxConnections              int    `json:"max_connections"`
+	MaxUsedConnections          int    `json:"max_used_connections"`
+	MaxUserConnections          int    `json:"max_user_connections"`
+	AbortedConnects             int    `json:"aborted_connects"`
+	WaitTimeout                 int    `json:"wait_timeout"`
+	InteractiveTimeout          int    `json:"interactive_timeout"`
+	MaxConnectErrors            int    `json:"max_connect_errors"`
+	ThreadCacheSize             int    `json:"thread_cache_size"`
+	TableOpenCache              int    `json:"table_open_cache"`
+	Port                        int    `json:"port"`
+	BindAddress                 string `json:"bind_address"`
+	SlowQueryLogEnabled         bool   `json:"slow_query_log_enabled"`
+	SlowQueryLogFile            string `json:"slow_query_log_file"`
+	LongQueryTimeSeconds        string `json:"long_query_time_seconds"`
+	InnodbBufferPoolSizeBytes   int64  `json:"innodb_buffer_pool_size_bytes"`
+	InnodbBufferPoolSizeDisplay string `json:"innodb_buffer_pool_size_display"`
+}
+
+type MySQLServiceConfigSpec struct {
+	MaxConnections         int    `json:"max_connections"`
+	MaxUserConnections     int    `json:"max_user_connections"`
+	WaitTimeout            int    `json:"wait_timeout"`
+	InteractiveTimeout     int    `json:"interactive_timeout"`
+	MaxConnectErrors       int    `json:"max_connect_errors"`
+	ThreadCacheSize        int    `json:"thread_cache_size"`
+	TableOpenCache         int    `json:"table_open_cache"`
+	InnodbBufferPoolSizeMB int    `json:"innodb_buffer_pool_size_mb"`
+	Port                   int    `json:"port"`
+	BindAddress            string `json:"bind_address"`
+	SlowQueryLogEnabled    bool   `json:"slow_query_log_enabled"`
+	SlowQueryLogFile       string `json:"slow_query_log_file"`
+	LongQueryTimeSeconds   string `json:"long_query_time_seconds"`
 }
 
 type SiteSpec struct {
@@ -178,12 +243,12 @@ type RepositoryStatus struct {
 }
 
 type DeploySpec struct {
-	RepositoryURL     string
-	Branch            string
-	TargetDirectory   string
-	RunAsUser         string
-	GitSiteName       string
-	PostDeployCommand string
+	RepositoryURL         string
+	Branch                string
+	TargetDirectory       string
+	RunAsUser             string
+	GitSiteName           string
+	PostDeployCommand     string
 	PostDeployNodeVersion string
 }
 
@@ -194,10 +259,10 @@ type GitCommandSpec struct {
 }
 
 type RollbackSpec struct {
-	TargetDirectory   string
-	RunAsUser         string
-	ReleaseCommitSHA  string
-	PostDeployCommand string
+	TargetDirectory       string
+	RunAsUser             string
+	ReleaseCommitSHA      string
+	PostDeployCommand     string
 	PostDeployNodeVersion string
 }
 
@@ -219,15 +284,15 @@ type RuntimeInspectSpec struct {
 }
 
 type RuntimeStatus struct {
-	User               string
-	HomeDirectory      string
-	NVMInstalled       bool
+	User                  string
+	HomeDirectory         string
+	NVMInstalled          bool
 	InstalledNodeVersions []string
 	AvailableNodeVersions []string
-	DefaultNodeVersion string
-	PM2Installed       bool
-	ComposerInstalled  bool
-	ComposerVersion    string
+	DefaultNodeVersion    string
+	PM2Installed          bool
+	ComposerInstalled     bool
+	ComposerVersion       string
 }
 
 type NodeInstallSpec struct {
@@ -362,10 +427,10 @@ type PHPExtensionSpec struct {
 }
 
 type PHPExtensionStatus struct {
-	Version           string   `json:"version"`
-	InstalledModules  []string `json:"installed_modules"`
-	EnabledModules    []string `json:"enabled_modules"`
-	AvailableModules  []string `json:"available_modules"`
+	Version          string   `json:"version"`
+	InstalledModules []string `json:"installed_modules"`
+	EnabledModules   []string `json:"enabled_modules"`
+	AvailableModules []string `json:"available_modules"`
 }
 
 type PHPDiagnostics struct {
@@ -377,39 +442,39 @@ type PHPDiagnostics struct {
 }
 
 type PHPINISettings struct {
-	Version            string `json:"version"`
-	MemoryLimit        string `json:"memory_limit"`
-	UploadMaxFilesize  string `json:"upload_max_filesize"`
-	PostMaxSize        string `json:"post_max_size"`
-	MaxExecutionTime   string `json:"max_execution_time"`
+	Version           string `json:"version"`
+	MemoryLimit       string `json:"memory_limit"`
+	UploadMaxFilesize string `json:"upload_max_filesize"`
+	PostMaxSize       string `json:"post_max_size"`
+	MaxExecutionTime  string `json:"max_execution_time"`
 }
 
 type PHPINIUpdateSpec struct {
-	Version            string `json:"version"`
-	MemoryLimit        string `json:"memory_limit"`
-	UploadMaxFilesize  string `json:"upload_max_filesize"`
-	PostMaxSize        string `json:"post_max_size"`
-	MaxExecutionTime   string `json:"max_execution_time"`
+	Version           string `json:"version"`
+	MemoryLimit       string `json:"memory_limit"`
+	UploadMaxFilesize string `json:"upload_max_filesize"`
+	PostMaxSize       string `json:"post_max_size"`
+	MaxExecutionTime  string `json:"max_execution_time"`
 }
 
 type RedisStatus struct {
-	Installed   bool   `json:"installed"`
-	Active      bool   `json:"active"`
-	Enabled     bool   `json:"enabled"`
-	ServiceName string `json:"service_name"`
-	Version     string `json:"version"`
-	ConfigPath  string `json:"config_path"`
-	ACLFilePath string `json:"acl_file_path"`
-	Username    string `json:"username"`
-	Port        int    `json:"port"`
+	Installed      bool   `json:"installed"`
+	Active         bool   `json:"active"`
+	Enabled        bool   `json:"enabled"`
+	ServiceName    string `json:"service_name"`
+	Version        string `json:"version"`
+	ConfigPath     string `json:"config_path"`
+	ACLFilePath    string `json:"acl_file_path"`
+	Username       string `json:"username"`
+	Port           int    `json:"port"`
 	MaxMemoryBytes int64  `json:"max_memory_bytes"`
 	EvictionPolicy string `json:"eviction_policy"`
 }
 
 type RedisConfigSpec struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Port     int    `json:"port"`
+	Username       string `json:"username"`
+	Password       string `json:"password"`
+	Port           int    `json:"port"`
 	MaxMemoryBytes int64  `json:"max_memory_bytes"`
 	EvictionPolicy string `json:"eviction_policy"`
 }

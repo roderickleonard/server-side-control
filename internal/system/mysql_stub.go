@@ -38,6 +38,42 @@ func (stubDatabaseManager) RestoreDatabase(name string, filePath string) (string
 	return "", fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
 }
 
+func (stubDatabaseManager) InspectService() (MySQLServiceStatus, error) {
+	return MySQLServiceStatus{}, fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}
+
+func (stubDatabaseManager) ConfigureService(spec MySQLServiceConfigSpec) (string, error) {
+	return "", fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}
+
+func (stubDatabaseManager) InstallService() (string, error) {
+	return "", fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}
+
+func (stubDatabaseManager) UpgradeService() (string, error) {
+	return "", fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}
+
+func (stubDatabaseManager) StartService() (string, error) {
+	return "", fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}
+
+func (stubDatabaseManager) StopService() (string, error) {
+	return "", fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}
+
+func (stubDatabaseManager) RestartService() (string, error) {
+	return "", fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}
+
+func (stubDatabaseManager) ServiceLogs(lines int) (string, error) {
+	return "", fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}
+
+func (stubDatabaseManager) ExecuteAdminQuery(statement string, maxRows int) (DatabaseQueryResult, error) {
+	return DatabaseQueryResult{}, fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
+}
+
 func ExecuteDatabaseQuery(adminDefaultsFile string, databaseName string, statement string, maxRows int) (DatabaseQueryResult, error) {
 	return DatabaseQueryResult{}, fmt.Errorf("mysql provisioning is only supported on Ubuntu target hosts")
 }

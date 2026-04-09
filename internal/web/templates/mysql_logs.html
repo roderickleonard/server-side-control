@@ -1,0 +1,68 @@
+{{define "content"}}
+<div class="page-banner pb-green">
+    <div class="pb-icon"><i class="bi bi-journal-code"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Database Service Logs</span>
+        <h2>MySQL logs</h2>
+        <p class="pb-lead">Inspect recent MySQL service logs and, when enabled, the slow query log from one page.</p>
+    </div>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            {{if .MySQLServiceStatus.Active}}<strong style="color:#4ade80;">Running</strong>{{else}}<strong style="color:#f87171;">Stopped</strong>{{end}}
+            <span>Service</span>
+        </div>
+        <div class="pb-stat">
+            <strong>{{if .MySQLServiceStatus.SlowQueryLogEnabled}}On{{else}}Off{{end}}</strong>
+            <span>Slow query log</span>
+        </div>
+    </div>
+</div>
+
+{{if .RequestError}}
+<div class="alert mb-3">{{.RequestError}}</div>
+{{end}}
+{{if .SuccessMessage}}
+<div class="alert success mb-3">{{.SuccessMessage}}</div>
+{{end}}
+
+<div class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-journal-text" style="color:var(--accent);"></i>Load logs</h3>
+        <form method="post" class="stack-form">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Lines</span>
+                    <input type="text" name="mysql_log_lines" value="{{.MySQLLogLines}}" placeholder="200" required>
+                </label>
+                <label>
+                    <span>Slow query log file</span>
+                    <input type="text" value="{{if .MySQLSlowQueryLogFile}}{{.MySQLSlowQueryLogFile}}{{else}}-{{end}}" readonly>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Load MySQL logs</button>
+                <a class="btn btn-outline-secondary" href="/mysql">Back to MySQL</a>
+            </div>
+        </form>
+        <p class="muted">The output includes the MySQL service journal when available. If the slow query log is enabled and the file exists, it is appended below the service log.</p>
+    </article>
+    <article class="panel">
+        <h3><i class="bi bi-info-circle" style="color:var(--muted);"></i>Status</h3>
+        <div class="info-grid">
+            <div class="info-grid-item"><span class="info-label">Service</span><span>{{if .MySQLServiceStatus.ServiceName}}{{.MySQLServiceStatus.ServiceName}}{{else}}mysql{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Active</span><span>{{if .MySQLServiceStatus.Active}}Running{{else}}Stopped{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Slow query log</span><span>{{if .MySQLServiceStatus.SlowQueryLogEnabled}}Enabled{{else}}Disabled{{end}}</span></div>
+            <div class="info-grid-item"><span class="info-label">Long query time</span><span>{{if .MySQLServiceStatus.LongQueryTimeSeconds}}{{.MySQLServiceStatus.LongQueryTimeSeconds}} sec{{else}}-{{end}}</span></div>
+        </div>
+    </article>
+</div>
+
+{{if .CommandOutput}}
+<div class="grid single">
+    <article class="panel">
+        <h3><i class="bi bi-terminal" style="color:var(--accent);"></i>Log output</h3>
+        <pre class="command-output">{{.CommandOutput}}</pre>
+    </article>
+</div>
+{{end}}
+{{end}}

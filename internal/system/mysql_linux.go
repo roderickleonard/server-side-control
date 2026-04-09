@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 
 var mysqlProvisionNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,63}$`)
 var mysqlTableNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,63}$`)
+var mysqlBindAddressPattern = regexp.MustCompile(`^[a-zA-Z0-9:._-]{1,255}$`)
 
 type mysqlAdminDefaults struct {
 	User     string
@@ -252,12 +254,12 @@ func (m mysqlDatabaseManager) InspectDatabase(spec DatabaseInspectSpec) (Databas
 		dataSize, _ := strconv.ParseInt(strings.TrimSpace(parts[3]), 10, 64)
 		indexSize, _ := strconv.ParseInt(strings.TrimSpace(parts[4]), 10, 64)
 		details.Tables = append(details.Tables, DatabaseTableSummary{
-			Name:      strings.TrimSpace(parts[0]),
-			Engine:    strings.TrimSpace(parts[1]),
-			RowCount:  rowCount,
-			DataSize:  dataSize,
-			IndexSize: indexSize,
-			DataSizeDisplay: formatDatabaseBytes(dataSize),
+			Name:             strings.TrimSpace(parts[0]),
+			Engine:           strings.TrimSpace(parts[1]),
+			RowCount:         rowCount,
+			DataSize:         dataSize,
+			IndexSize:        indexSize,
+			DataSizeDisplay:  formatDatabaseBytes(dataSize),
 			IndexSizeDisplay: formatDatabaseBytes(indexSize),
 			TotalSizeDisplay: formatDatabaseBytes(dataSize + indexSize),
 		})
@@ -308,6 +310,304 @@ func (m mysqlDatabaseManager) RestoreDatabase(name string, filePath string) (str
 		return strings.TrimSpace(string(output)), fmt.Errorf("mysql restore failed: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+func (m mysqlDatabaseManager) InspectService() (MySQLServiceStatus, error) {
+	status := MySQLServiceStatus{
+		ServiceName:       detectMySQLServiceName(),
+		ConfigPath:        detectMySQLManagedConfigPath(),
+		AdminDefaultsFile: m.adminDefaultsFile,
+	}
+
+	if output, err := exec.Command("mysql", "--version").CombinedOutput(); err == nil {
+		status.Installed = true
+		status.Version = strings.TrimSpace(string(output))
+	}
+	if status.ServiceName != "" {
+		if systemdUnitExists(status.ServiceName) {
+			status.Installed = true
+		}
+		status.Active = systemctlCheck("is-active", status.ServiceName)
+		status.Enabled = systemctlCheck("is-enabled", status.ServiceName)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	variables, err := m.readNamedValues(ctx, "SHOW GLOBAL VARIABLES", []string{
+		"max_connections",
+		"max_user_connections",
+		"wait_timeout",
+		"interactive_timeout",
+		"max_connect_errors",
+		"thread_cache_size",
+		"table_open_cache",
+		"port",
+		"bind_address",
+		"slow_query_log",
+		"slow_query_log_file",
+		"long_query_time",
+		"innodb_buffer_pool_size",
+	})
+	if err != nil {
+		return status, err
+	}
+	serverStatus, err := m.readNamedValues(ctx, "SHOW GLOBAL STATUS", []string{
+		"threads_connected",
+		"max_used_connections",
+		"aborted_connects",
+	})
+	if err != nil {
+		return status, err
+	}
+
+	status.CurrentConnections = parseMySQLInt(variablesOrStatusValue(serverStatus, "threads_connected"))
+	status.MaxConnections = parseMySQLInt(variablesOrStatusValue(variables, "max_connections"))
+	status.MaxUsedConnections = parseMySQLInt(variablesOrStatusValue(serverStatus, "max_used_connections"))
+	status.MaxUserConnections = parseMySQLInt(variablesOrStatusValue(variables, "max_user_connections"))
+	status.AbortedConnects = parseMySQLInt(variablesOrStatusValue(serverStatus, "aborted_connects"))
+	status.WaitTimeout = parseMySQLInt(variablesOrStatusValue(variables, "wait_timeout"))
+	status.InteractiveTimeout = parseMySQLInt(variablesOrStatusValue(variables, "interactive_timeout"))
+	status.MaxConnectErrors = parseMySQLInt(variablesOrStatusValue(variables, "max_connect_errors"))
+	status.ThreadCacheSize = parseMySQLInt(variablesOrStatusValue(variables, "thread_cache_size"))
+	status.TableOpenCache = parseMySQLInt(variablesOrStatusValue(variables, "table_open_cache"))
+	status.Port = parseMySQLInt(variablesOrStatusValue(variables, "port"))
+	status.BindAddress = variablesOrStatusValue(variables, "bind_address")
+	status.SlowQueryLogEnabled = parseMySQLBool(variablesOrStatusValue(variables, "slow_query_log"))
+	status.SlowQueryLogFile = variablesOrStatusValue(variables, "slow_query_log_file")
+	status.LongQueryTimeSeconds = variablesOrStatusValue(variables, "long_query_time")
+	status.InnodbBufferPoolSizeBytes = parseMySQLInt64(variablesOrStatusValue(variables, "innodb_buffer_pool_size"))
+	status.InnodbBufferPoolSizeDisplay = formatDatabaseBytes(status.InnodbBufferPoolSizeBytes)
+	if status.Port <= 0 {
+		status.Port = 3306
+	}
+
+	return status, nil
+}
+
+func (m mysqlDatabaseManager) ConfigureService(spec MySQLServiceConfigSpec) (string, error) {
+	if spec.MaxConnections <= 0 || spec.MaxConnections > 100000 {
+		return "", ErrInvalidMySQLMaxConnections
+	}
+	if spec.MaxUserConnections < 0 || spec.MaxUserConnections > 100000 {
+		return "", ErrInvalidMySQLMaxUserConnections
+	}
+	if spec.WaitTimeout <= 0 {
+		return "", ErrInvalidMySQLWaitTimeout
+	}
+	if spec.InteractiveTimeout <= 0 {
+		return "", ErrInvalidMySQLInteractiveTimeout
+	}
+	if spec.MaxConnectErrors <= 0 {
+		return "", ErrInvalidMySQLMaxConnectErrors
+	}
+	if spec.ThreadCacheSize < 0 {
+		return "", ErrInvalidMySQLThreadCacheSize
+	}
+	if spec.TableOpenCache <= 0 {
+		return "", ErrInvalidMySQLTableOpenCache
+	}
+	if spec.InnodbBufferPoolSizeMB <= 0 {
+		return "", ErrInvalidMySQLBufferPoolSize
+	}
+	if spec.Port < 1 || spec.Port > 65535 {
+		return "", ErrInvalidMySQLPort
+	}
+	bindAddress := strings.TrimSpace(spec.BindAddress)
+	if !isValidMySQLBindAddress(bindAddress) {
+		return "", ErrInvalidMySQLBindAddress
+	}
+	longQueryTime := strings.TrimSpace(spec.LongQueryTimeSeconds)
+	if _, err := strconv.ParseFloat(longQueryTime, 64); err != nil || longQueryTime == "" {
+		return "", ErrInvalidMySQLLongQueryTime
+	}
+	slowQueryLogFile := strings.TrimSpace(spec.SlowQueryLogFile)
+	if spec.SlowQueryLogEnabled {
+		if !filepath.IsAbs(slowQueryLogFile) {
+			return "", ErrInvalidMySQLSlowQueryLogPath
+		}
+		if err := os.MkdirAll(filepath.Dir(slowQueryLogFile), 0o755); err != nil {
+			return "", fmt.Errorf("create mysql slow query log directory: %w", err)
+		}
+	}
+
+	configPath := detectMySQLManagedConfigPath()
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return "", fmt.Errorf("create mysql config directory: %w", err)
+	}
+
+	content := strings.Join([]string{
+		"[mysqld]",
+		fmt.Sprintf("max_connections=%d", spec.MaxConnections),
+		fmt.Sprintf("max_user_connections=%d", spec.MaxUserConnections),
+		fmt.Sprintf("wait_timeout=%d", spec.WaitTimeout),
+		fmt.Sprintf("interactive_timeout=%d", spec.InteractiveTimeout),
+		fmt.Sprintf("max_connect_errors=%d", spec.MaxConnectErrors),
+		fmt.Sprintf("thread_cache_size=%d", spec.ThreadCacheSize),
+		fmt.Sprintf("table_open_cache=%d", spec.TableOpenCache),
+		fmt.Sprintf("port=%d", spec.Port),
+		fmt.Sprintf("bind-address=%s", bindAddress),
+		fmt.Sprintf("slow_query_log=%s", mysqlConfigBool(spec.SlowQueryLogEnabled)),
+		fmt.Sprintf("slow_query_log_file=%s", slowQueryLogFile),
+		fmt.Sprintf("long_query_time=%s", longQueryTime),
+		fmt.Sprintf("innodb_buffer_pool_size=%dM", spec.InnodbBufferPoolSizeMB),
+		"",
+	}, "\n")
+
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		return "", fmt.Errorf("write mysql managed config: %w", err)
+	}
+
+	return fmt.Sprintf("MySQL service overrides saved to %s\nRestart %s to apply the persistent configuration.", configPath, firstNonEmptyString(detectMySQLServiceName(), "mysql")), nil
+}
+
+func (m mysqlDatabaseManager) InstallService() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	command := `set -euo pipefail
+apt-get update
+if apt-cache show mysql-server >/dev/null 2>&1; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server
+elif apt-cache show mariadb-server >/dev/null 2>&1; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y mariadb-server
+else
+  echo "No mysql-server or mariadb-server package is available on this host." >&2
+  exit 1
+fi
+svc=""
+for candidate in mysql mariadb mysqld; do
+  if systemctl list-unit-files "${candidate}.service" --no-legend --no-pager 2>/dev/null | grep -q .; then
+    svc="$candidate"
+    break
+  fi
+done
+if [ -z "$svc" ]; then svc="mysql"; fi
+systemctl enable "$svc" || true
+systemctl restart "$svc"
+systemctl show "$svc" --property=ActiveState --property=SubState --property=UnitFileState --no-pager`
+	cmd := exec.CommandContext(ctx, "bash", "-lc", command)
+	output, err := cmd.CombinedOutput()
+	result := strings.TrimSpace(string(output))
+	if err != nil {
+		return result, fmt.Errorf("install mysql service: %w", err)
+	}
+	return result, nil
+}
+
+func (m mysqlDatabaseManager) UpgradeService() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	command := `set -euo pipefail
+apt-get update
+pkg=""
+if dpkg-query -W -f='${Status}' mysql-server 2>/dev/null | grep -q "install ok installed"; then
+  pkg="mysql-server"
+elif dpkg-query -W -f='${Status}' mariadb-server 2>/dev/null | grep -q "install ok installed"; then
+  pkg="mariadb-server"
+elif apt-cache show mysql-server >/dev/null 2>&1; then
+  pkg="mysql-server"
+elif apt-cache show mariadb-server >/dev/null 2>&1; then
+  pkg="mariadb-server"
+else
+  echo "No mysql-server or mariadb-server package is available on this host." >&2
+  exit 1
+fi
+DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade "$pkg" || DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg"
+svc=""
+for candidate in mysql mariadb mysqld; do
+  if systemctl list-unit-files "${candidate}.service" --no-legend --no-pager 2>/dev/null | grep -q .; then
+    svc="$candidate"
+    break
+  fi
+done
+if [ -z "$svc" ]; then svc="mysql"; fi
+systemctl restart "$svc"
+systemctl show "$svc" --property=ActiveState --property=SubState --property=UnitFileState --no-pager`
+	cmd := exec.CommandContext(ctx, "bash", "-lc", command)
+	output, err := cmd.CombinedOutput()
+	result := strings.TrimSpace(string(output))
+	if err != nil {
+		return result, fmt.Errorf("upgrade mysql service: %w", err)
+	}
+	return result, nil
+}
+
+func (m mysqlDatabaseManager) StartService() (string, error) {
+	return runMySQLServiceCommand("start", detectMySQLServiceName())
+}
+
+func (m mysqlDatabaseManager) StopService() (string, error) {
+	return runMySQLServiceCommand("stop", detectMySQLServiceName())
+}
+
+func (m mysqlDatabaseManager) RestartService() (string, error) {
+	return runMySQLServiceCommand("restart", detectMySQLServiceName())
+}
+
+func (m mysqlDatabaseManager) ServiceLogs(lines int) (string, error) {
+	if lines <= 0 || lines > 2000 {
+		return "", ErrInvalidMySQLLogLines
+	}
+	status, err := m.InspectService()
+	if err != nil {
+		return "", err
+	}
+	serviceName := firstNonEmptyString(status.ServiceName, detectMySQLServiceName(), "mysql")
+	slowQuerySection := ""
+	if status.SlowQueryLogEnabled && filepath.IsAbs(strings.TrimSpace(status.SlowQueryLogFile)) {
+		slowQuerySection = fmt.Sprintf(`
+printf '\n=== Slow Query Log (%s) ===\n'
+if [ -f %q ]; then
+  tail -n %d %q
+else
+  echo 'Slow query log file not found.'
+fi
+`, status.SlowQueryLogFile, status.SlowQueryLogFile, lines, status.SlowQueryLogFile)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	command := fmt.Sprintf(`set -euo pipefail
+printf '=== Service Log (%s) ===\n'
+if command -v journalctl >/dev/null 2>&1; then
+  journalctl -u %s -n %d --no-pager
+else
+  for candidate in /var/log/mysql/error.log /var/log/mysql/mysql-error.log /var/log/mysqld.log; do
+    if [ -f "$candidate" ]; then
+      tail -n %d "$candidate"
+      exit 0
+    fi
+  done
+  echo 'No MySQL log file was found.'
+fi
+%s`, serviceName, serviceName, lines, lines, slowQuerySection)
+	cmd := exec.CommandContext(ctx, "bash", "-lc", command)
+	output, err := cmd.CombinedOutput()
+	result := strings.TrimSpace(string(output))
+	if err != nil {
+		return result, fmt.Errorf("read mysql logs: %w", err)
+	}
+	return result, nil
+}
+
+func (m mysqlDatabaseManager) ExecuteAdminQuery(statement string, maxRows int) (DatabaseQueryResult, error) {
+	statement = strings.TrimSpace(statement)
+	if statement == "" {
+		return DatabaseQueryResult{}, ErrInvalidDatabaseQuery
+	}
+	if maxRows <= 0 || maxRows > 500 {
+		maxRows = 250
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	args := []string{
+		"--defaults-extra-file=" + m.adminDefaultsFile,
+		"--batch",
+		"--raw",
+		"--execute",
+		statement,
+	}
+	return runMySQLBatchQuery(ctx, args, maxRows)
 }
 
 func (m mysqlDatabaseManager) currentAccount(ctx context.Context) (string, error) {
@@ -388,46 +688,7 @@ func (m mysqlDatabaseManager) executeQuery(databaseName string, statement string
 		"--execute",
 		statement,
 	}
-	cmd := exec.CommandContext(ctx, "mysql", args...)
-	output, err := cmd.CombinedOutput()
-	trimmed := strings.TrimSpace(string(output))
-	if err != nil {
-		return DatabaseQueryResult{}, fmt.Errorf("mysql query failed: %w: %s", err, trimmed)
-	}
-	result := DatabaseQueryResult{Message: firstNonEmptyString(trimmed, "Query executed successfully.")}
-	if trimmed == "" {
-		return result, nil
-	}
-	scanner := bufio.NewScanner(strings.NewReader(trimmed))
-	if !scanner.Scan() {
-		return result, nil
-	}
-	result.Columns = strings.Split(scanner.Text(), "\t")
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		if len(result.Rows) >= maxRows {
-			result.Truncated = true
-			break
-		}
-		result.Rows = append(result.Rows, strings.Split(line, "\t"))
-	}
-	if err := scanner.Err(); err != nil {
-		return DatabaseQueryResult{}, err
-	}
-	if len(result.Columns) > 0 {
-		result.RowCount = len(result.Rows)
-		if result.Truncated {
-			result.Message = fmt.Sprintf("Showing the first %d rows returned by the query.", maxRows)
-		} else if result.RowCount > 0 {
-			result.Message = fmt.Sprintf("Query returned %d rows.", result.RowCount)
-		} else {
-			result.Message = "Query returned no rows."
-		}
-	}
-	return result, nil
+	return runMySQLBatchQuery(ctx, args, maxRows)
 }
 
 func (m mysqlDatabaseManager) exportDatabase(databaseName string, filePath string) (string, error) {
@@ -632,4 +893,162 @@ func mysqlQuoteIdentifier(value string) string {
 func mysqlQuoteString(value string) string {
 	replacer := strings.NewReplacer(`\\`, `\\\\`, `'`, `\\'`)
 	return "'" + replacer.Replace(value) + "'"
+}
+
+func runMySQLBatchQuery(ctx context.Context, args []string, maxRows int) (DatabaseQueryResult, error) {
+	cmd := exec.CommandContext(ctx, "mysql", args...)
+	output, err := cmd.CombinedOutput()
+	trimmed := strings.TrimSpace(string(output))
+	if err != nil {
+		return DatabaseQueryResult{}, fmt.Errorf("mysql query failed: %w: %s", err, trimmed)
+	}
+	result := DatabaseQueryResult{Message: firstNonEmptyString(trimmed, "Query executed successfully.")}
+	if trimmed == "" {
+		return result, nil
+	}
+	scanner := bufio.NewScanner(strings.NewReader(trimmed))
+	if !scanner.Scan() {
+		return result, nil
+	}
+	result.Columns = strings.Split(scanner.Text(), "\t")
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if len(result.Rows) >= maxRows {
+			result.Truncated = true
+			break
+		}
+		result.Rows = append(result.Rows, strings.Split(line, "\t"))
+	}
+	if err := scanner.Err(); err != nil {
+		return DatabaseQueryResult{}, err
+	}
+	if len(result.Columns) > 0 {
+		result.RowCount = len(result.Rows)
+		if result.Truncated {
+			result.Message = fmt.Sprintf("Showing the first %d rows returned by the query.", maxRows)
+		} else if result.RowCount > 0 {
+			result.Message = fmt.Sprintf("Query returned %d rows.", result.RowCount)
+		} else {
+			result.Message = "Query returned no rows."
+		}
+	}
+	return result, nil
+}
+
+func (m mysqlDatabaseManager) readNamedValues(ctx context.Context, prefix string, names []string) (map[string]string, error) {
+	quoted := make([]string, 0, len(names))
+	for _, name := range names {
+		quoted = append(quoted, mysqlQuoteString(strings.ToLower(strings.TrimSpace(name))))
+	}
+	query := fmt.Sprintf("%s WHERE Variable_name IN (%s)", prefix, strings.Join(quoted, ","))
+	output, err := m.runMySQL(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	values := make(map[string]string, len(names))
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		values[strings.ToLower(strings.TrimSpace(parts[0]))] = strings.TrimSpace(parts[1])
+	}
+	return values, nil
+}
+
+func variablesOrStatusValue(values map[string]string, key string) string {
+	if values == nil {
+		return ""
+	}
+	return strings.TrimSpace(values[strings.ToLower(strings.TrimSpace(key))])
+}
+
+func parseMySQLInt(value string) int {
+	parsed, _ := strconv.Atoi(strings.TrimSpace(value))
+	return parsed
+}
+
+func parseMySQLInt64(value string) int64 {
+	parsed, _ := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	return parsed
+}
+
+func parseMySQLBool(value string) bool {
+	value = strings.TrimSpace(strings.ToLower(value))
+	return value == "1" || value == "on" || value == "yes" || value == "true"
+}
+
+func isValidMySQLBindAddress(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if ip := net.ParseIP(value); ip != nil {
+		return true
+	}
+	if strings.EqualFold(value, "localhost") {
+		return true
+	}
+	return mysqlBindAddressPattern.MatchString(value)
+}
+
+func mysqlConfigBool(value bool) string {
+	if value {
+		return "ON"
+	}
+	return "OFF"
+}
+
+func detectMySQLServiceName() string {
+	for _, candidate := range []string{"mysql", "mariadb", "mysqld"} {
+		if systemctlCheck("is-active", candidate) || systemctlCheck("is-enabled", candidate) || systemdUnitExists(candidate) {
+			return candidate
+		}
+	}
+	return "mysql"
+}
+
+func detectMySQLManagedConfigPath() string {
+	for _, dir := range []string{"/etc/mysql/conf.d", "/etc/mysql/mysql.conf.d", "/etc/my.cnf.d"} {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return filepath.Join(dir, "server-side-control.cnf")
+		}
+	}
+	if info, err := os.Stat("/etc/mysql"); err == nil && info.IsDir() {
+		return "/etc/mysql/conf.d/server-side-control.cnf"
+	}
+	return "/etc/my.cnf.d/server-side-control.cnf"
+}
+
+func systemdUnitExists(service string) bool {
+	service = strings.TrimSpace(service)
+	if service == "" {
+		return false
+	}
+	output, err := exec.Command("systemctl", "list-unit-files", service+".service", "--no-legend", "--no-pager").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	trimmed := strings.TrimSpace(string(output))
+	return trimmed != "" && !strings.Contains(trimmed, "0 unit files listed")
+}
+
+func runMySQLServiceCommand(action string, service string) (string, error) {
+	service = firstNonEmptyString(strings.TrimSpace(service), "mysql")
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bash", "-lc", fmt.Sprintf("set -euo pipefail\nsystemctl %s %s\nsystemctl show %s --property=ActiveState --property=SubState --property=UnitFileState --no-pager", action, service, service))
+	output, err := cmd.CombinedOutput()
+	result := strings.TrimSpace(string(output))
+	if err != nil {
+		return result, fmt.Errorf("mysql service %s failed: %w", action, err)
+	}
+	return result, nil
 }

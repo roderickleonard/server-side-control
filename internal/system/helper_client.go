@@ -194,8 +194,8 @@ func (m *helperUserManager) SetLinuxUserPasswordlessSudo(username string, enable
 
 func (m *helperDatabaseManager) ProvisionDatabase(name string, username string, password string) error {
 	_, err := m.client.Call(context.Background(), "mysql.provision_database", map[string]any{
-		"database_name": name,
-		"database_user": username,
+		"database_name":     name,
+		"database_user":     username,
 		"database_password": password,
 	}, nil)
 	return err
@@ -219,8 +219,8 @@ func (m *helperDatabaseManager) DeleteDatabaseAccess(name string, username strin
 
 func (m *helperDatabaseManager) RotateUserPassword(username string, host string, password string) error {
 	_, err := m.client.Call(context.Background(), "mysql.rotate_user_password", map[string]any{
-		"database_user": username,
-		"database_host": host,
+		"database_user":     username,
+		"database_host":     host,
 		"database_password": password,
 	}, nil)
 	return err
@@ -244,6 +244,49 @@ func (m *helperDatabaseManager) RestoreDatabase(name string, filePath string) (s
 		"database_name": name,
 		"file_path":     filePath,
 	}, nil)
+}
+
+func (m *helperDatabaseManager) InspectService() (MySQLServiceStatus, error) {
+	var status MySQLServiceStatus
+	_, err := m.client.Call(context.Background(), "mysql.inspect_service", map[string]any{}, &status)
+	return status, err
+}
+
+func (m *helperDatabaseManager) ConfigureService(spec MySQLServiceConfigSpec) (string, error) {
+	return m.client.Call(context.Background(), "mysql.configure_service", spec, nil)
+}
+
+func (m *helperDatabaseManager) InstallService() (string, error) {
+	return m.client.Call(context.Background(), "mysql.install_service", map[string]any{}, nil)
+}
+
+func (m *helperDatabaseManager) UpgradeService() (string, error) {
+	return m.client.Call(context.Background(), "mysql.upgrade_service", map[string]any{}, nil)
+}
+
+func (m *helperDatabaseManager) StartService() (string, error) {
+	return m.client.Call(context.Background(), "mysql.start_service", map[string]any{}, nil)
+}
+
+func (m *helperDatabaseManager) StopService() (string, error) {
+	return m.client.Call(context.Background(), "mysql.stop_service", map[string]any{}, nil)
+}
+
+func (m *helperDatabaseManager) RestartService() (string, error) {
+	return m.client.Call(context.Background(), "mysql.restart_service", map[string]any{}, nil)
+}
+
+func (m *helperDatabaseManager) ServiceLogs(lines int) (string, error) {
+	return m.client.Call(context.Background(), "mysql.service_logs", map[string]any{"lines": lines}, nil)
+}
+
+func (m *helperDatabaseManager) ExecuteAdminQuery(statement string, maxRows int) (DatabaseQueryResult, error) {
+	var result DatabaseQueryResult
+	_, err := m.client.Call(context.Background(), "mysql.execute_admin_query", map[string]any{
+		"query_sql": statement,
+		"max_rows":  maxRows,
+	}, &result)
+	return result, err
 }
 
 func (m *helperNginxManager) ApplySite(spec SiteSpec) (string, error) {

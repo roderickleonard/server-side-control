@@ -178,6 +178,23 @@ type TemplateData struct {
 	PanelProxyConfig                  string
 	PanelTLSStatus                    domain.PanelTLSStatus
 	RedisStatus                       system.RedisStatus
+	MySQLServiceStatus                system.MySQLServiceStatus
+	MySQLMaxConnections               string
+	MySQLMaxUserConnections           string
+	MySQLWaitTimeout                  string
+	MySQLInteractiveTimeout           string
+	MySQLMaxConnectErrors             string
+	MySQLThreadCacheSize              string
+	MySQLTableOpenCache               string
+	MySQLInnodbBufferPoolSizeMB       string
+	MySQLPort                         string
+	MySQLBindAddress                  string
+	MySQLSlowQueryLogEnabled          bool
+	MySQLSlowQueryLogFile             string
+	MySQLLongQueryTime                string
+	MySQLLogLines                     string
+	MySQLAdminQuery                   string
+	MySQLAdminQueryResult             system.DatabaseQueryResult
 	RedisUsername                     string
 	RedisPort                         string
 	RedisPassword                     string
@@ -363,6 +380,8 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/settings/passkeys/finish", a.handlePasskeyRegisterFinish)
 	a.router.HandleFunc("/php", a.handlePHP)
 	a.router.HandleFunc("/php/stream", a.handlePHPStream)
+	a.router.HandleFunc("/mysql", a.handleMySQLService)
+	a.router.HandleFunc("/mysql/logs", a.handleMySQLLogs)
 	a.router.HandleFunc("/redis", a.handleRedis)
 	a.router.HandleFunc("/redis/stream", a.handleRedisStream)
 	a.router.HandleFunc("/redis/logs", a.handleRedisLogs)
@@ -390,6 +409,7 @@ func (a *App) nav() []NavItem {
 		{Label: "Sites", Path: "/sites"},
 		{Label: "Settings", Path: "/settings"},
 		{Label: "PHP", Path: "/php"},
+		{Label: "MySQL", Path: "/mysql"},
 		{Label: "Redis", Path: "/redis"},
 		{Label: "Supervisor", Path: "/supervisor"},
 		{Label: "Deploys", Path: "/deploys"},
