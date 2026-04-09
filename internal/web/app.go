@@ -173,6 +173,14 @@ type TemplateData struct {
 	SMTPPassword                      string
 	SMTPFrom                          string
 	SMTPTo                            string
+	OpenAIAPIKey                      string
+	OpenAIModel                       string
+	OpenAIConfigured                  bool
+	AIRecommendationSummary           string
+	AIRecommendation                  string
+	MySQLAISuggestedConfig            system.MySQLServiceConfigSpec
+	MySQLAISuggestionReady            bool
+	MySQLAIPreviewChanges             []string
 	PanelEnvPath                      string
 	PanelProxyConfigPath              string
 	PanelProxyConfig                  string
@@ -483,6 +491,8 @@ func templateFilesForPage(page string) []string {
 	switch page {
 	case "dashboard.html":
 		files = append(files, "templates/dashboard_partials.html")
+	case "php.html", "redis.html", "supervisor.html", "mysql_service.html":
+		files = append(files, "templates/service_ai_panel.html")
 	case "sites.html":
 		files = append(files, "templates/site_tls.html")
 	case "deploys.html":

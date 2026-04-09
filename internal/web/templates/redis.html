@@ -26,6 +26,10 @@
 <div class="alert success mb-3">{{.SuccessMessage}}{{if .GeneratedSecret}} — Generated password: <strong>{{.GeneratedSecret}}</strong>{{end}}</div>
 {{end}}
 
+<div class="grid single">
+    {{template "service_ai_panel" .}}
+</div>
+
 <div class="grid">
     <article class="panel">
         <h3><i class="bi bi-activity" style="color:var(--accent);"></i>Service status</h3>

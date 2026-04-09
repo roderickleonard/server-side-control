@@ -149,30 +149,46 @@ type DatabaseQueryResult struct {
 }
 
 type MySQLServiceStatus struct {
-	Installed                   bool   `json:"installed"`
-	Active                      bool   `json:"active"`
-	Enabled                     bool   `json:"enabled"`
-	ServiceName                 string `json:"service_name"`
-	Version                     string `json:"version"`
-	ConfigPath                  string `json:"config_path"`
-	AdminDefaultsFile           string `json:"admin_defaults_file"`
-	CurrentConnections          int    `json:"current_connections"`
-	MaxConnections              int    `json:"max_connections"`
-	MaxUsedConnections          int    `json:"max_used_connections"`
-	MaxUserConnections          int    `json:"max_user_connections"`
-	AbortedConnects             int    `json:"aborted_connects"`
-	WaitTimeout                 int    `json:"wait_timeout"`
-	InteractiveTimeout          int    `json:"interactive_timeout"`
-	MaxConnectErrors            int    `json:"max_connect_errors"`
-	ThreadCacheSize             int    `json:"thread_cache_size"`
-	TableOpenCache              int    `json:"table_open_cache"`
-	Port                        int    `json:"port"`
-	BindAddress                 string `json:"bind_address"`
-	SlowQueryLogEnabled         bool   `json:"slow_query_log_enabled"`
-	SlowQueryLogFile            string `json:"slow_query_log_file"`
-	LongQueryTimeSeconds        string `json:"long_query_time_seconds"`
-	InnodbBufferPoolSizeBytes   int64  `json:"innodb_buffer_pool_size_bytes"`
-	InnodbBufferPoolSizeDisplay string `json:"innodb_buffer_pool_size_display"`
+	Installed                   bool                              `json:"installed"`
+	Active                      bool                              `json:"active"`
+	Enabled                     bool                              `json:"enabled"`
+	ServiceName                 string                            `json:"service_name"`
+	Version                     string                            `json:"version"`
+	ConfigPath                  string                            `json:"config_path"`
+	AdminDefaultsFile           string                            `json:"admin_defaults_file"`
+	CurrentConnections          int                               `json:"current_connections"`
+	MaxConnections              int                               `json:"max_connections"`
+	MaxUsedConnections          int                               `json:"max_used_connections"`
+	MaxUserConnections          int                               `json:"max_user_connections"`
+	AbortedConnects             int                               `json:"aborted_connects"`
+	WaitTimeout                 int                               `json:"wait_timeout"`
+	InteractiveTimeout          int                               `json:"interactive_timeout"`
+	MaxConnectErrors            int                               `json:"max_connect_errors"`
+	ThreadCacheSize             int                               `json:"thread_cache_size"`
+	TableOpenCache              int                               `json:"table_open_cache"`
+	Port                        int                               `json:"port"`
+	BindAddress                 string                            `json:"bind_address"`
+	SlowQueryLogEnabled         bool                              `json:"slow_query_log_enabled"`
+	SlowQueryLogFile            string                            `json:"slow_query_log_file"`
+	LongQueryTimeSeconds        string                            `json:"long_query_time_seconds"`
+	TopUsers                    []MySQLConnectionUserSummary      `json:"top_users"`
+	TopOperations               []MySQLConnectionOperationSummary `json:"top_operations"`
+	InnodbBufferPoolSizeBytes   int64                             `json:"innodb_buffer_pool_size_bytes"`
+	InnodbBufferPoolSizeDisplay string                            `json:"innodb_buffer_pool_size_display"`
+}
+
+type MySQLConnectionUserSummary struct {
+	Username    string `json:"username"`
+	Host        string `json:"host"`
+	Connections int    `json:"connections"`
+}
+
+type MySQLConnectionOperationSummary struct {
+	Command      string `json:"command"`
+	DatabaseName string `json:"database_name"`
+	State        string `json:"state"`
+	Connections  int    `json:"connections"`
+	ExampleQuery string `json:"example_query"`
 }
 
 type MySQLServiceConfigSpec struct {

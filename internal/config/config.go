@@ -9,31 +9,33 @@ import (
 )
 
 type Config struct {
-	AppName           string
-	Environment       string
-	EnvPath           string
-	ListenAddr        string
-	BaseURL           string
-	DatabaseDSN       string
-	BootstrapUser     string
-	BootstrapPassword string
-	PAMService        string
-	SessionCookieName string
-	ServiceName string
-	SMTPHost          string
-	SMTPPort          string
-	SMTPUsername      string
-	SMTPPassword      string
-	SMTPFrom          string
-	SMTPTo            string
-	MySQLAdminDefaultsFile string
+	AppName                 string
+	Environment             string
+	EnvPath                 string
+	ListenAddr              string
+	BaseURL                 string
+	DatabaseDSN             string
+	BootstrapUser           string
+	BootstrapPassword       string
+	PAMService              string
+	SessionCookieName       string
+	ServiceName             string
+	SMTPHost                string
+	SMTPPort                string
+	SMTPUsername            string
+	SMTPPassword            string
+	SMTPFrom                string
+	SMTPTo                  string
+	OpenAIAPIKey            string
+	OpenAIModel             string
+	MySQLAdminDefaultsFile  string
 	DatabaseRestoreMaxBytes int64
-	NginxBinary       string
-	NginxAvailableDir string
-	NginxEnabledDir   string
-	SubdomainRootBaseDir string
-	CertbotBinary     string
-	HelperBinary      string
+	NginxBinary             string
+	NginxAvailableDir       string
+	NginxEnabledDir         string
+	SubdomainRootBaseDir    string
+	CertbotBinary           string
+	HelperBinary            string
 }
 
 func Load() (Config, error) {
@@ -42,31 +44,33 @@ func Load() (Config, error) {
 	_ = loadEnvFile(envPath)
 
 	cfg := Config{
-		AppName:           getenv("PANEL_APP_NAME", "Server Side Control"),
-		Environment:       getenv("PANEL_ENV", "development"),
-		EnvPath:           envPath,
-		ListenAddr:        getenv("PANEL_LISTEN_ADDR", ":8080"),
-		BaseURL:           getenv("PANEL_BASE_URL", "http://127.0.0.1:8080"),
-		DatabaseDSN:       os.Getenv("PANEL_DATABASE_DSN"),
-		BootstrapUser:     getenv("PANEL_BOOTSTRAP_USER", "admin"),
-		BootstrapPassword: os.Getenv("PANEL_BOOTSTRAP_PASSWORD"),
-		PAMService:        getenv("PANEL_PAM_SERVICE", "login"),
-		SessionCookieName: getenv("PANEL_SESSION_COOKIE_NAME", "ssc_session"),
-		ServiceName:       getenv("PANEL_SERVICE_NAME", "server-side-control"),
-		SMTPHost:          getenv("PANEL_SMTP_HOST", ""),
-		SMTPPort:          getenv("PANEL_SMTP_PORT", "587"),
-		SMTPUsername:      getenv("PANEL_SMTP_USERNAME", ""),
-		SMTPPassword:      os.Getenv("PANEL_SMTP_PASSWORD"),
-		SMTPFrom:          getenv("PANEL_SMTP_FROM", ""),
-		SMTPTo:            getenv("PANEL_SMTP_TO", ""),
-		MySQLAdminDefaultsFile: getenv("PANEL_MYSQL_ADMIN_DEFAULTS_FILE", "/etc/server-side-control/mysql-admin.cnf"),
+		AppName:                 getenv("PANEL_APP_NAME", "Server Side Control"),
+		Environment:             getenv("PANEL_ENV", "development"),
+		EnvPath:                 envPath,
+		ListenAddr:              getenv("PANEL_LISTEN_ADDR", ":8080"),
+		BaseURL:                 getenv("PANEL_BASE_URL", "http://127.0.0.1:8080"),
+		DatabaseDSN:             os.Getenv("PANEL_DATABASE_DSN"),
+		BootstrapUser:           getenv("PANEL_BOOTSTRAP_USER", "admin"),
+		BootstrapPassword:       os.Getenv("PANEL_BOOTSTRAP_PASSWORD"),
+		PAMService:              getenv("PANEL_PAM_SERVICE", "login"),
+		SessionCookieName:       getenv("PANEL_SESSION_COOKIE_NAME", "ssc_session"),
+		ServiceName:             getenv("PANEL_SERVICE_NAME", "server-side-control"),
+		SMTPHost:                getenv("PANEL_SMTP_HOST", ""),
+		SMTPPort:                getenv("PANEL_SMTP_PORT", "587"),
+		SMTPUsername:            getenv("PANEL_SMTP_USERNAME", ""),
+		SMTPPassword:            os.Getenv("PANEL_SMTP_PASSWORD"),
+		SMTPFrom:                getenv("PANEL_SMTP_FROM", ""),
+		SMTPTo:                  getenv("PANEL_SMTP_TO", ""),
+		OpenAIAPIKey:            os.Getenv("PANEL_OPENAI_API_KEY"),
+		OpenAIModel:             getenv("PANEL_OPENAI_MODEL", "gpt-4.1-mini"),
+		MySQLAdminDefaultsFile:  getenv("PANEL_MYSQL_ADMIN_DEFAULTS_FILE", "/etc/server-side-control/mysql-admin.cnf"),
 		DatabaseRestoreMaxBytes: getenvInt64Bytes("PANEL_DATABASE_RESTORE_MAX_MB", 64) * (1 << 20),
-		NginxBinary:       getenv("PANEL_NGINX_BINARY", "nginx"),
-		NginxAvailableDir: getenv("PANEL_NGINX_AVAILABLE_DIR", "/etc/nginx/sites-available"),
-		NginxEnabledDir:   getenv("PANEL_NGINX_ENABLED_DIR", "/etc/nginx/sites-enabled"),
-		SubdomainRootBaseDir: getenv("PANEL_SUBDOMAIN_ROOT_BASE", ""),
-		CertbotBinary:     getenv("PANEL_CERTBOT_BINARY", "certbot"),
-		HelperBinary:      getenv("PANEL_HELPER_BINARY", "/usr/local/bin/server-side-control-helper"),
+		NginxBinary:             getenv("PANEL_NGINX_BINARY", "nginx"),
+		NginxAvailableDir:       getenv("PANEL_NGINX_AVAILABLE_DIR", "/etc/nginx/sites-available"),
+		NginxEnabledDir:         getenv("PANEL_NGINX_ENABLED_DIR", "/etc/nginx/sites-enabled"),
+		SubdomainRootBaseDir:    getenv("PANEL_SUBDOMAIN_ROOT_BASE", ""),
+		CertbotBinary:           getenv("PANEL_CERTBOT_BINARY", "certbot"),
+		HelperBinary:            getenv("PANEL_HELPER_BINARY", "/usr/local/bin/server-side-control-helper"),
 	}
 
 	return cfg, nil
@@ -103,6 +107,8 @@ func (c Config) ToEnv() string {
 		fmt.Sprintf("PANEL_SMTP_PASSWORD=%s", c.SMTPPassword),
 		fmt.Sprintf("PANEL_SMTP_FROM=%s", c.SMTPFrom),
 		fmt.Sprintf("PANEL_SMTP_TO=%s", c.SMTPTo),
+		fmt.Sprintf("PANEL_OPENAI_API_KEY=%s", c.OpenAIAPIKey),
+		fmt.Sprintf("PANEL_OPENAI_MODEL=%s", c.OpenAIModel),
 		fmt.Sprintf("PANEL_MYSQL_ADMIN_DEFAULTS_FILE=%s", c.MySQLAdminDefaultsFile),
 		fmt.Sprintf("PANEL_DATABASE_RESTORE_MAX_MB=%d", c.DatabaseRestoreMaxBytes/(1<<20)),
 		fmt.Sprintf("PANEL_NGINX_BINARY=%s", c.NginxBinary),

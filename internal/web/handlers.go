@@ -356,6 +356,9 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		SMTPPassword:         a.cfg.SMTPPassword,
 		SMTPFrom:             a.cfg.SMTPFrom,
 		SMTPTo:               a.cfg.SMTPTo,
+		OpenAIAPIKey:         a.cfg.OpenAIAPIKey,
+		OpenAIModel:          firstNonEmpty(strings.TrimSpace(a.cfg.OpenAIModel), "gpt-4.1-mini"),
+		OpenAIConfigured:     a.openAIConfigured(),
 		PanelEnvPath:         a.cfg.EnvPath,
 	}
 	data.PanelDomain = panelDomainFromBaseURL(a.cfg.BaseURL)
@@ -410,6 +413,9 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	data.SMTPPassword = r.FormValue("smtp_password")
 	data.SMTPFrom = strings.TrimSpace(r.FormValue("smtp_from"))
 	data.SMTPTo = strings.TrimSpace(r.FormValue("smtp_to"))
+	data.OpenAIAPIKey = firstNonEmpty(r.FormValue("openai_api_key"), data.OpenAIAPIKey)
+	data.OpenAIModel = firstNonEmpty(strings.TrimSpace(r.FormValue("openai_model")), data.OpenAIModel, "gpt-4.1-mini")
+	data.OpenAIConfigured = strings.TrimSpace(data.OpenAIAPIKey) != ""
 	data.TOTPCode = strings.TrimSpace(r.FormValue("totp_code"))
 	data.TOTPSetupSecret = firstNonEmpty(strings.TrimSpace(r.FormValue("totp_secret")), data.TOTPSetupSecret)
 	data.PasskeyLabel = strings.TrimSpace(r.FormValue("passkey_label"))
@@ -532,6 +538,8 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		updatedCfg.SMTPPassword = data.SMTPPassword
 		updatedCfg.SMTPFrom = data.SMTPFrom
 		updatedCfg.SMTPTo = data.SMTPTo
+		updatedCfg.OpenAIAPIKey = data.OpenAIAPIKey
+		updatedCfg.OpenAIModel = data.OpenAIModel
 		resultPath, err := a.helper.Call(r.Context(), "panel.write_env", map[string]string{"content": updatedCfg.ToEnv()}, nil)
 		if err != nil {
 			data.RequestError = "Panel config could not be saved: " + err.Error()
@@ -2384,6 +2392,53 @@ func (a *App) handleMySQLService(w http.ResponseWriter, r *http.Request) {
 	data.MySQLSlowQueryLogFile = firstNonEmpty(strings.TrimSpace(r.FormValue("mysql_slow_query_log_file")), data.MySQLSlowQueryLogFile)
 	data.MySQLLongQueryTime = firstNonEmpty(strings.TrimSpace(r.FormValue("mysql_long_query_time")), data.MySQLLongQueryTime)
 	data.MySQLAdminQuery = strings.TrimSpace(r.FormValue("mysql_admin_query"))
+	refreshData := func() {
+		if refreshedEntries, err := a.databases.ListDatabaseAccess(); err == nil {
+			data.DatabaseAccess = refreshedEntries
+		}
+		if refreshedStatus, err := a.databases.InspectService(); err == nil {
+			data.MySQLServiceStatus = refreshedStatus
+		}
+	}
+
+	if serviceAIAction := strings.TrimSpace(r.FormValue("service_ai_action")); serviceAIAction != "" {
+		switch serviceAIAction {
+		case "analyze":
+			result, err := a.requestServiceAIRecommendation(r.Context(), "mysql", mysqlAIRecommendationSnapshot(status, entries), true)
+			if err != nil {
+				data.RequestError = err.Error()
+				a.recordAudit(r.Context(), "mysql.ai.analyze", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+				break
+			}
+			applyAIRecommendation(&data, result)
+			data.SuccessMessage = "OpenAI recommendations loaded successfully."
+			a.recordAudit(r.Context(), "mysql.ai.analyze", status.ServiceName, "success", nil)
+		case "apply_mysql_ai":
+			spec, err := mysqlAIConfigSpecFromForm(r.FormValue)
+			if err != nil {
+				data.RequestError = err.Error()
+				break
+			}
+			applyMySQLServiceConfigToTemplateData(&data, spec)
+			output, err := a.databases.ConfigureService(spec)
+			data.CommandOutput = output
+			if err != nil {
+				data.RequestError = mysqlServiceErrorMessage(err)
+				a.recordAudit(r.Context(), "mysql.ai.apply", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+				break
+			}
+			data.SuccessMessage = "OpenAI suggested MySQL settings were saved successfully. Restart the service to apply persistent changes."
+			data.MySQLAISuggestionReady = false
+			data.MySQLAISuggestedConfig = system.MySQLServiceConfigSpec{}
+			data.MySQLAIPreviewChanges = nil
+			a.recordAudit(r.Context(), "mysql.ai.apply", status.ServiceName, "success", map[string]any{"max_connections": spec.MaxConnections, "port": spec.Port})
+		default:
+			data.RequestError = "Invalid OpenAI action."
+		}
+		refreshData()
+		a.render(r.Context(), w, r.URL.Path, "mysql_service.html", data)
+		return
+	}
 
 	action := strings.TrimSpace(r.FormValue("mysql_action"))
 	switch action {
@@ -2466,12 +2521,7 @@ func (a *App) handleMySQLService(w http.ResponseWriter, r *http.Request) {
 		data.RequestError = "Invalid MySQL action."
 	}
 
-	if refreshedEntries, err := a.databases.ListDatabaseAccess(); err == nil {
-		data.DatabaseAccess = refreshedEntries
-	}
-	if refreshedStatus, err := a.databases.InspectService(); err == nil {
-		data.MySQLServiceStatus = refreshedStatus
-	}
+	refreshData()
 
 	a.render(r.Context(), w, r.URL.Path, "mysql_service.html", data)
 }
@@ -2483,6 +2533,8 @@ func (a *App) mysqlServiceTemplateData(r *http.Request, status system.MySQLServi
 		Metrics:            a.metrics.Snapshot(),
 		DatabaseAccess:     entries,
 		MySQLServiceStatus: status,
+		OpenAIConfigured:   a.openAIConfigured(),
+		OpenAIModel:        firstNonEmpty(strings.TrimSpace(a.cfg.OpenAIModel), "gpt-4.1-mini"),
 	}
 	data.MySQLMaxConnections = defaultMySQLServiceField(status.MaxConnections, "151")
 	data.MySQLMaxUserConnections = strconv.Itoa(status.MaxUserConnections)
@@ -5490,6 +5542,25 @@ func (a *App) handlePHP(w http.ResponseWriter, r *http.Request) {
 	data.PHPINIPostMaxSize = strings.TrimSpace(r.FormValue("post_max_size"))
 	data.PHPINIMaxExecutionTime = strings.TrimSpace(r.FormValue("max_execution_time"))
 
+	if serviceAIAction := strings.TrimSpace(r.FormValue("service_ai_action")); serviceAIAction != "" {
+		switch serviceAIAction {
+		case "analyze":
+			result, err := a.requestServiceAIRecommendation(r.Context(), "php", phpAIRecommendationSnapshot(data), false)
+			if err != nil {
+				data.RequestError = err.Error()
+				a.recordAudit(r.Context(), "php.ai.analyze", "php", "failure", map[string]any{"error": err.Error()})
+				break
+			}
+			applyAIRecommendation(&data, result)
+			data.SuccessMessage = "OpenAI recommendations loaded successfully."
+			a.recordAudit(r.Context(), "php.ai.analyze", "php", "success", nil)
+		default:
+			data.RequestError = "Invalid OpenAI action."
+		}
+		a.render(r.Context(), w, r.URL.Path, "php.html", data)
+		return
+	}
+
 	switch action {
 	case "install_versions":
 		selectedVersions := append([]string{}, r.Form["install_versions"]...)
@@ -5735,6 +5806,8 @@ func (a *App) phpTemplateData(r *http.Request) TemplateData {
 		Title:                    "PHP",
 		DatabaseStatus:           a.databaseStatus(r.Context()),
 		Metrics:                  a.metrics.Snapshot(),
+		OpenAIConfigured:         a.openAIConfigured(),
+		OpenAIModel:              firstNonEmpty(strings.TrimSpace(a.cfg.OpenAIModel), "gpt-4.1-mini"),
 		ManagedSites:             a.listManagedSites(r),
 		PHPVersions:              versions,
 		PHPInstallableVersions:   a.listPHPInstallableVersions(),
@@ -5803,6 +5876,8 @@ func (a *App) handleRedis(w http.ResponseWriter, r *http.Request) {
 		DatabaseStatus:      a.databaseStatus(r.Context()),
 		Metrics:             a.metrics.Snapshot(),
 		RedisStatus:         status,
+		OpenAIConfigured:    a.openAIConfigured(),
+		OpenAIModel:         firstNonEmpty(strings.TrimSpace(a.cfg.OpenAIModel), "gpt-4.1-mini"),
 		RedisUsername:       status.Username,
 		RedisPassword:       "",
 		RedisEvictionPolicy: firstNonEmpty(status.EvictionPolicy, "noeviction"),
@@ -5846,6 +5921,25 @@ func (a *App) handleRedis(w http.ResponseWriter, r *http.Request) {
 	}
 	if evictionPolicy := strings.TrimSpace(r.FormValue("redis_eviction_policy")); evictionPolicy != "" {
 		data.RedisEvictionPolicy = evictionPolicy
+	}
+
+	if serviceAIAction := strings.TrimSpace(r.FormValue("service_ai_action")); serviceAIAction != "" {
+		switch serviceAIAction {
+		case "analyze":
+			result, err := a.requestServiceAIRecommendation(r.Context(), "redis", redisAIRecommendationSnapshot(data), false)
+			if err != nil {
+				data.RequestError = err.Error()
+				a.recordAudit(r.Context(), "redis.ai.analyze", status.ServiceName, "failure", map[string]any{"error": err.Error()})
+				break
+			}
+			applyAIRecommendation(&data, result)
+			data.SuccessMessage = "OpenAI recommendations loaded successfully."
+			a.recordAudit(r.Context(), "redis.ai.analyze", status.ServiceName, "success", nil)
+		default:
+			data.RequestError = "Invalid OpenAI action."
+		}
+		a.render(r.Context(), w, r.URL.Path, "redis.html", data)
+		return
 	}
 
 	action := strings.TrimSpace(r.FormValue("redis_action"))
@@ -6093,6 +6187,25 @@ func (a *App) handleSupervisor(w http.ResponseWriter, r *http.Request) {
 	}
 	data.SupervisorLogProgram = strings.TrimSpace(r.FormValue("supervisor_log_program"))
 
+	if serviceAIAction := strings.TrimSpace(r.FormValue("service_ai_action")); serviceAIAction != "" {
+		switch serviceAIAction {
+		case "analyze":
+			result, err := a.requestServiceAIRecommendation(r.Context(), "supervisor", supervisorAIRecommendationSnapshot(data), false)
+			if err != nil {
+				data.RequestError = err.Error()
+				a.recordAudit(r.Context(), "supervisor.ai.analyze", "supervisor", "failure", map[string]any{"error": err.Error()})
+				break
+			}
+			applyAIRecommendation(&data, result)
+			data.SuccessMessage = "OpenAI recommendations loaded successfully."
+			a.recordAudit(r.Context(), "supervisor.ai.analyze", "supervisor", "success", nil)
+		default:
+			data.RequestError = "Invalid OpenAI action."
+		}
+		a.render(r.Context(), w, r.URL.Path, "supervisor.html", data)
+		return
+	}
+
 	action := strings.TrimSpace(r.FormValue("supervisor_action"))
 	switch action {
 	case "install":
@@ -6261,6 +6374,8 @@ func (a *App) supervisorTemplateData(r *http.Request) TemplateData {
 		Title:                        "Supervisor",
 		DatabaseStatus:               a.databaseStatus(r.Context()),
 		Metrics:                      a.metrics.Snapshot(),
+		OpenAIConfigured:             a.openAIConfigured(),
+		OpenAIModel:                  firstNonEmpty(strings.TrimSpace(a.cfg.OpenAIModel), "gpt-4.1-mini"),
 		LinuxUsers:                   a.listLinuxUsers(),
 		SupervisorStatus:             status,
 		SupervisorPrograms:           programs,

@@ -44,6 +44,14 @@
                     <span>Subdomain root base directory</span>
                     <input type="text" name="subdomain_root_base_dir" value="{{.SubdomainRootBaseDir}}" placeholder="Leave empty to place subdomains next to each site root">
                 </label>
+                <label>
+                    <span>OpenAI API key</span>
+                    <input type="password" name="openai_api_key" value="{{.OpenAIAPIKey}}" placeholder="sk-...">
+                </label>
+                <label>
+                    <span>OpenAI model</span>
+                    <input type="text" name="openai_model" value="{{.OpenAIModel}}" placeholder="gpt-4.1-mini">
+                </label>
             </div>
             <div class="form-actions">
                 <button type="submit">Save panel settings</button>
@@ -54,6 +62,7 @@
             <li>Changing the listen address requires restarting the panel service.</li>
             <li>Before TLS is enabled, keep the base URL on <code>http://...</code>; switch it to <code>https://...</code> after the certificate is active.</li>
             <li>If subdomain root base is set, every managed subdomain is created under that directory instead of next to the main site root.</li>
+            <li>OpenAI service pages use the configured API key and model for runtime recommendations.</li>
         </ul>
     </article>
     <article class="panel">
@@ -260,6 +269,8 @@
                                 <input type="hidden" name="smtp_password" value="{{$.SMTPPassword}}">
                                 <input type="hidden" name="smtp_from" value="{{$.SMTPFrom}}">
                                 <input type="hidden" name="smtp_to" value="{{$.SMTPTo}}">
+                                <input type="hidden" name="openai_api_key" value="{{$.OpenAIAPIKey}}">
+                                <input type="hidden" name="openai_model" value="{{$.OpenAIModel}}">
                                 <button type="submit" class="btn btn-sm btn-outline-secondary">Delete</button>
                             </form>
                         </td>
@@ -290,6 +301,8 @@
             <input type="hidden" name="panel_listen_addr" value="{{.PanelListenAddr}}">
             <input type="hidden" name="panel_base_url" value="{{.PanelBaseURL}}">
             <input type="hidden" name="panel_service_name" value="{{.PanelServiceName}}">
+            <input type="hidden" name="openai_api_key" value="{{.OpenAIAPIKey}}">
+            <input type="hidden" name="openai_model" value="{{.OpenAIModel}}">
             <div class="form-grid two-up">
                 <label>
                     <span>SMTP host</span>

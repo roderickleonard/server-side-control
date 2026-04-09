@@ -124,6 +124,7 @@ func (a *App) handleSiteTerminalWS(w http.ResponseWriter, r *http.Request) {
 	_ = writeWS(websocket.TextMessage, []byte("[interactive terminal connected]\r\n"))
 	_ = writeResizeFrame(stdin, rows, cols)
 
+readLoop:
 	for {
 		var message terminalWSMessage
 		if err := conn.ReadJSON(&message); err != nil {
@@ -132,11 +133,11 @@ func (a *App) handleSiteTerminalWS(w http.ResponseWriter, r *http.Request) {
 		switch message.Type {
 		case terminalMessageInput:
 			if err := writeControlFrame(stdin, 1, []byte(message.Data)); err != nil {
-				break
+				break readLoop
 			}
 		case terminalMessageResize:
 			if err := writeResizeFrame(stdin, message.Rows, message.Cols); err != nil {
-				break
+				break readLoop
 			}
 		}
 	}

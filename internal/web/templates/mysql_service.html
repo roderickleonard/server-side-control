@@ -25,6 +25,10 @@
 <div class="alert success mb-3">{{.SuccessMessage}}</div>
 {{end}}
 
+<div class="grid single">
+    {{template "service_ai_panel" .}}
+</div>
+
 <div class="grid">
     <article class="panel">
         <h3><i class="bi bi-activity" style="color:var(--accent);"></i>Service status</h3>
@@ -59,6 +63,77 @@
             <div class="info-grid-item"><span class="info-label">InnoDB buffer pool</span><span>{{if .MySQLServiceStatus.InnodbBufferPoolSizeDisplay}}{{.MySQLServiceStatus.InnodbBufferPoolSizeDisplay}}{{else}}-{{end}}</span></div>
         </div>
         <p class="muted details-note" style="margin-top:12px;">Current connections comes from <strong>Threads_connected</strong>, peak usage from <strong>Max_used_connections</strong>, and the hard limit from <strong>max_connections</strong>.</p>
+    </article>
+</div>
+
+<div class="grid">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Current connection hotspots</span>
+                <h3 style="margin-bottom:0;">Top users</h3>
+            </div>
+        </div>
+        {{if .MySQLServiceStatus.TopUsers}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Host</th>
+                        <th>Connections</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .MySQLServiceStatus.TopUsers}}
+                    <tr>
+                        <td>{{.Username}}</td>
+                        <td>{{if .Host}}{{.Host}}{{else}}-{{end}}</td>
+                        <td>{{.Connections}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted">No active MySQL user connections were detected.</p>
+        {{end}}
+    </article>
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Current connection hotspots</span>
+                <h3 style="margin-bottom:0;">Top operations</h3>
+            </div>
+        </div>
+        {{if .MySQLServiceStatus.TopOperations}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Command</th>
+                        <th>Database</th>
+                        <th>State</th>
+                        <th>Connections</th>
+                        <th>Example</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .MySQLServiceStatus.TopOperations}}
+                    <tr>
+                        <td>{{.Command}}</td>
+                        <td>{{if .DatabaseName}}{{.DatabaseName}}{{else}}-{{end}}</td>
+                        <td>{{.State}}</td>
+                        <td>{{.Connections}}</td>
+                        <td class="text-break">{{if .ExampleQuery}}{{.ExampleQuery}}{{else}}-{{end}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted">No active MySQL operations were detected.</p>
+        {{end}}
     </article>
 </div>
 

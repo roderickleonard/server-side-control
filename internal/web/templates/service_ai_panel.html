@@ -1,0 +1,56 @@
+{{define "service_ai_panel"}}
+<article class="panel">
+    <h3><i class="bi bi-stars" style="color:var(--accent);"></i>OpenAI recommendations</h3>
+    {{if .OpenAIConfigured}}
+    <p class="muted">Analyze the current {{.Title}} service state with OpenAI and get practical tuning suggestions. Model: <strong>{{.OpenAIModel}}</strong></p>
+    {{else}}
+    <p class="muted">OpenAI secret is not configured yet. Add it from <a href="/settings">Settings</a> to enable AI analysis on this page.</p>
+    {{end}}
+    <form method="post" class="stack-form compact-form">
+        <div class="form-actions">
+            <button type="submit" name="service_ai_action" value="analyze" {{if not .OpenAIConfigured}}disabled{{end}}>Analyze with OpenAI</button>
+        </div>
+    </form>
+    {{if .AIRecommendationSummary}}
+    <div class="info-grid" style="margin-top:16px;">
+        <div class="info-grid-item"><span class="info-label">Summary</span><span>{{.AIRecommendationSummary}}</span></div>
+    </div>
+    {{end}}
+    {{if .AIRecommendation}}
+    <pre class="command-output" style="white-space:pre-wrap;margin-top:12px;">{{.AIRecommendation}}</pre>
+    {{end}}
+    {{if and (eq .CurrentPath "/mysql") .MySQLAISuggestionReady}}
+    {{if .MySQLAIPreviewChanges}}
+    <div class="info-grid" style="margin-top:16px;">
+        <div class="info-grid-item" style="grid-column:1 / -1;">
+            <span class="info-label">Suggested changes</span>
+            <div>
+                {{range .MySQLAIPreviewChanges}}
+                <div>{{.}}</div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+    {{end}}
+    <form method="post" class="stack-form compact-form" style="margin-top:12px;">
+        <input type="hidden" name="service_ai_action" value="apply_mysql_ai">
+        <input type="hidden" name="ai_max_connections" value="{{.MySQLAISuggestedConfig.MaxConnections}}">
+        <input type="hidden" name="ai_max_user_connections" value="{{.MySQLAISuggestedConfig.MaxUserConnections}}">
+        <input type="hidden" name="ai_wait_timeout" value="{{.MySQLAISuggestedConfig.WaitTimeout}}">
+        <input type="hidden" name="ai_interactive_timeout" value="{{.MySQLAISuggestedConfig.InteractiveTimeout}}">
+        <input type="hidden" name="ai_max_connect_errors" value="{{.MySQLAISuggestedConfig.MaxConnectErrors}}">
+        <input type="hidden" name="ai_thread_cache_size" value="{{.MySQLAISuggestedConfig.ThreadCacheSize}}">
+        <input type="hidden" name="ai_table_open_cache" value="{{.MySQLAISuggestedConfig.TableOpenCache}}">
+        <input type="hidden" name="ai_innodb_buffer_pool_size_mb" value="{{.MySQLAISuggestedConfig.InnodbBufferPoolSizeMB}}">
+        <input type="hidden" name="ai_port" value="{{.MySQLAISuggestedConfig.Port}}">
+        <input type="hidden" name="ai_bind_address" value="{{.MySQLAISuggestedConfig.BindAddress}}">
+        <input type="hidden" name="ai_slow_query_log_enabled" value="{{if .MySQLAISuggestedConfig.SlowQueryLogEnabled}}1{{else}}0{{end}}">
+        <input type="hidden" name="ai_slow_query_log_file" value="{{.MySQLAISuggestedConfig.SlowQueryLogFile}}">
+        <input type="hidden" name="ai_long_query_time" value="{{.MySQLAISuggestedConfig.LongQueryTimeSeconds}}">
+        <div class="form-actions">
+            <button type="submit">Apply reviewed MySQL settings</button>
+        </div>
+    </form>
+    {{end}}
+</article>
+{{end}}

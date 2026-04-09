@@ -86,7 +86,7 @@ func (linuxPHPManager) ListInstallableVersions() ([]string, error) {
 	}
 	sort.Strings(versions)
 	return versions, nil
-	}
+}
 
 func (linuxPHPManager) InstallVersions(versions []string) (string, error) {
 	packages := make([]string, 0)
@@ -415,9 +415,7 @@ func phpPackageModulesForVersion(version string) []string {
 
 func moduleNameFromINI(fileName string) string {
 	fileName = strings.TrimSpace(fileName)
-	if strings.HasSuffix(fileName, ".ini") {
-		fileName = strings.TrimSuffix(fileName, ".ini")
-	}
+	fileName = strings.TrimSuffix(fileName, ".ini")
 	if index := strings.Index(fileName, "-"); index >= 0 {
 		prefix := fileName[:index]
 		if prefix != "" && isDigits(prefix) {

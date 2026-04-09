@@ -376,6 +376,8 @@ func (m mysqlDatabaseManager) InspectService() (MySQLServiceStatus, error) {
 	status.SlowQueryLogEnabled = parseMySQLBool(variablesOrStatusValue(variables, "slow_query_log"))
 	status.SlowQueryLogFile = variablesOrStatusValue(variables, "slow_query_log_file")
 	status.LongQueryTimeSeconds = variablesOrStatusValue(variables, "long_query_time")
+	status.TopUsers, _ = m.inspectTopConnectionUsers(ctx)
+	status.TopOperations, _ = m.inspectTopConnectionOperations(ctx)
 	status.InnodbBufferPoolSizeBytes = parseMySQLInt64(variablesOrStatusValue(variables, "innodb_buffer_pool_size"))
 	status.InnodbBufferPoolSizeDisplay = formatDatabaseBytes(status.InnodbBufferPoolSizeBytes)
 	if status.Port <= 0 {
@@ -1004,6 +1006,57 @@ func mysqlConfigBool(value bool) string {
 		return "ON"
 	}
 	return "OFF"
+}
+
+func (m mysqlDatabaseManager) inspectTopConnectionUsers(ctx context.Context) ([]MySQLConnectionUserSummary, error) {
+	output, err := m.runMySQL(ctx, "SELECT COALESCE(USER,'system') AS user_name, COALESCE(SUBSTRING_INDEX(HOST,':',1),'') AS host_name, COUNT(*) AS connection_count FROM information_schema.processlist GROUP BY user_name, host_name ORDER BY connection_count DESC, user_name ASC LIMIT 10")
+	if err != nil {
+		return nil, err
+	}
+	items := make([]MySQLConnectionUserSummary, 0)
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 3 {
+			continue
+		}
+		items = append(items, MySQLConnectionUserSummary{
+			Username:    strings.TrimSpace(parts[0]),
+			Host:        strings.TrimSpace(parts[1]),
+			Connections: parseMySQLInt(parts[2]),
+		})
+	}
+	return items, nil
+}
+
+func (m mysqlDatabaseManager) inspectTopConnectionOperations(ctx context.Context) ([]MySQLConnectionOperationSummary, error) {
+	query := "SELECT COALESCE(COMMAND,'unknown') AS command_name, COALESCE(DB,'') AS database_name, COALESCE(NULLIF(STATE,''),'idle') AS state_name, COUNT(*) AS connection_count, COALESCE(MAX(LEFT(INFO,160)),'') AS example_query FROM information_schema.processlist GROUP BY command_name, database_name, state_name ORDER BY connection_count DESC, command_name ASC LIMIT 10"
+	output, err := m.runMySQL(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]MySQLConnectionOperationSummary, 0)
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 5 {
+			continue
+		}
+		items = append(items, MySQLConnectionOperationSummary{
+			Command:      strings.TrimSpace(parts[0]),
+			DatabaseName: strings.TrimSpace(parts[1]),
+			State:        strings.TrimSpace(parts[2]),
+			Connections:  parseMySQLInt(parts[3]),
+			ExampleQuery: strings.TrimSpace(parts[4]),
+		})
+	}
+	return items, nil
 }
 
 func detectMySQLServiceName() string {
