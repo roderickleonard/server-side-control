@@ -20,6 +20,155 @@ type serviceAIResponse struct {
 	SuggestedMySQLConfig *system.MySQLServiceConfigSpec `json:"suggested_mysql_config,omitempty"`
 }
 
+func (r *serviceAIResponse) UnmarshalJSON(data []byte) error {
+	type rawServiceAIResponse struct {
+		Summary              string                 `json:"summary"`
+		Recommendations      string                 `json:"recommendations_markdown"`
+		SuggestedMySQLConfig *openAIMySQLConfigSpec `json:"suggested_mysql_config,omitempty"`
+	}
+
+	var raw rawServiceAIResponse
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	r.Summary = raw.Summary
+	r.Recommendations = raw.Recommendations
+	r.SuggestedMySQLConfig = nil
+	if raw.SuggestedMySQLConfig != nil {
+		spec := raw.SuggestedMySQLConfig.toSystemSpec()
+		r.SuggestedMySQLConfig = &spec
+	}
+	return nil
+}
+
+type openAIMySQLConfigSpec struct {
+	MaxConnections         flexibleJSONInt    `json:"max_connections"`
+	MaxUserConnections     flexibleJSONInt    `json:"max_user_connections"`
+	WaitTimeout            flexibleJSONInt    `json:"wait_timeout"`
+	InteractiveTimeout     flexibleJSONInt    `json:"interactive_timeout"`
+	MaxConnectErrors       flexibleJSONInt    `json:"max_connect_errors"`
+	ThreadCacheSize        flexibleJSONInt    `json:"thread_cache_size"`
+	TableOpenCache         flexibleJSONInt    `json:"table_open_cache"`
+	InnodbBufferPoolSizeMB flexibleJSONInt    `json:"innodb_buffer_pool_size_mb"`
+	Port                   flexibleJSONInt    `json:"port"`
+	BindAddress            string             `json:"bind_address"`
+	SlowQueryLogEnabled    flexibleJSONBool   `json:"slow_query_log_enabled"`
+	SlowQueryLogFile       string             `json:"slow_query_log_file"`
+	LongQueryTimeSeconds   flexibleJSONString `json:"long_query_time_seconds"`
+}
+
+func (s openAIMySQLConfigSpec) toSystemSpec() system.MySQLServiceConfigSpec {
+	return system.MySQLServiceConfigSpec{
+		MaxConnections:         int(s.MaxConnections),
+		MaxUserConnections:     int(s.MaxUserConnections),
+		WaitTimeout:            int(s.WaitTimeout),
+		InteractiveTimeout:     int(s.InteractiveTimeout),
+		MaxConnectErrors:       int(s.MaxConnectErrors),
+		ThreadCacheSize:        int(s.ThreadCacheSize),
+		TableOpenCache:         int(s.TableOpenCache),
+		InnodbBufferPoolSizeMB: int(s.InnodbBufferPoolSizeMB),
+		Port:                   int(s.Port),
+		BindAddress:            s.BindAddress,
+		SlowQueryLogEnabled:    bool(s.SlowQueryLogEnabled),
+		SlowQueryLogFile:       s.SlowQueryLogFile,
+		LongQueryTimeSeconds:   string(s.LongQueryTimeSeconds),
+	}
+}
+
+type flexibleJSONInt int
+
+func (v *flexibleJSONInt) UnmarshalJSON(data []byte) error {
+	text := strings.TrimSpace(string(data))
+	if text == "" || text == "null" {
+		return nil
+	}
+
+	var number json.Number
+	if err := json.Unmarshal(data, &number); err == nil {
+		parsed, err := strconv.Atoi(number.String())
+		if err == nil {
+			*v = flexibleJSONInt(parsed)
+			return nil
+		}
+		floatValue, floatErr := strconv.ParseFloat(number.String(), 64)
+		if floatErr != nil || floatValue != float64(int(floatValue)) {
+			return fmt.Errorf("invalid integer value %q", number.String())
+		}
+		*v = flexibleJSONInt(int(floatValue))
+		return nil
+	}
+
+	var stringValue string
+	if err := json.Unmarshal(data, &stringValue); err != nil {
+		return fmt.Errorf("decode integer value: %w", err)
+	}
+	stringValue = strings.TrimSpace(stringValue)
+	if stringValue == "" {
+		return nil
+	}
+	parsed, err := strconv.Atoi(stringValue)
+	if err == nil {
+		*v = flexibleJSONInt(parsed)
+		return nil
+	}
+	floatValue, floatErr := strconv.ParseFloat(stringValue, 64)
+	if floatErr != nil || floatValue != float64(int(floatValue)) {
+		return fmt.Errorf("invalid integer value %q", stringValue)
+	}
+	*v = flexibleJSONInt(int(floatValue))
+	return nil
+}
+
+type flexibleJSONBool bool
+
+func (v *flexibleJSONBool) UnmarshalJSON(data []byte) error {
+	text := strings.TrimSpace(string(data))
+	if text == "" || text == "null" {
+		return nil
+	}
+
+	var boolValue bool
+	if err := json.Unmarshal(data, &boolValue); err == nil {
+		*v = flexibleJSONBool(boolValue)
+		return nil
+	}
+
+	var stringValue string
+	if err := json.Unmarshal(data, &stringValue); err != nil {
+		return fmt.Errorf("decode boolean value: %w", err)
+	}
+	parsed, err := strconv.ParseBool(strings.TrimSpace(stringValue))
+	if err != nil {
+		return fmt.Errorf("invalid boolean value %q", stringValue)
+	}
+	*v = flexibleJSONBool(parsed)
+	return nil
+}
+
+type flexibleJSONString string
+
+func (v *flexibleJSONString) UnmarshalJSON(data []byte) error {
+	text := strings.TrimSpace(string(data))
+	if text == "" || text == "null" {
+		return nil
+	}
+
+	var stringValue string
+	if err := json.Unmarshal(data, &stringValue); err == nil {
+		*v = flexibleJSONString(stringValue)
+		return nil
+	}
+
+	var number json.Number
+	if err := json.Unmarshal(data, &number); err == nil {
+		*v = flexibleJSONString(number.String())
+		return nil
+	}
+
+	return fmt.Errorf("decode string value from %s", text)
+}
+
 type openAIChatRequest struct {
 	Model          string                `json:"model"`
 	Messages       []openAIChatMessage   `json:"messages"`
