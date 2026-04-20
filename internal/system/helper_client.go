@@ -104,6 +104,8 @@ type helperRedisManager struct{ client *HelperClient }
 
 type helperSupervisorManager struct{ client *HelperClient }
 
+type helperSSHAccountManager struct{ client *HelperClient }
+
 func NewHelperUserManager(client *HelperClient) UserManager {
 	return &helperUserManager{client: client}
 }
@@ -142,6 +144,31 @@ func NewHelperRedisManager(client *HelperClient) RedisManager {
 
 func NewHelperSupervisorManager(client *HelperClient) SupervisorManager {
 	return &helperSupervisorManager{client: client}
+}
+
+func NewHelperSSHAccountManager(client *HelperClient) SSHAccountManager {
+	return &helperSSHAccountManager{client: client}
+}
+
+func (m *helperSSHAccountManager) Inspect(username string) (SSHAccountStatus, error) {
+	var status SSHAccountStatus
+	_, err := m.client.Call(context.Background(), "ssh_account.inspect", map[string]any{"username": username}, &status)
+	return status, err
+}
+
+func (m *helperSSHAccountManager) AddKey(spec SSHAddKeySpec) error {
+	_, err := m.client.Call(context.Background(), "ssh_account.add_key", spec, nil)
+	return err
+}
+
+func (m *helperSSHAccountManager) RemoveKey(spec SSHRemoveKeySpec) error {
+	_, err := m.client.Call(context.Background(), "ssh_account.remove_key", spec, nil)
+	return err
+}
+
+func (m *helperSSHAccountManager) SetPassword(spec SSHPasswordSpec) error {
+	_, err := m.client.Call(context.Background(), "ssh_account.set_password", spec, nil)
+	return err
 }
 
 func (m *helperUserManager) CreateLinuxUser(username string, createHome bool, password string, grantSudo bool) error {

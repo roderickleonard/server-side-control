@@ -1387,6 +1387,40 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		err := clearDirectoryContents(strings.TrimSpace(input.Path), io.Discard)
 		writeSuccess(nil, "", err)
+	case "ssh_account.inspect":
+		var input struct {
+			Username string `json:"username"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		status, err := system.NewSSHAccountManager().Inspect(input.Username)
+		writeSuccess(status, "", err)
+	case "ssh_account.add_key":
+		var spec system.SSHAddKeySpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := system.NewSSHAccountManager().AddKey(spec)
+		writeSuccess(nil, "", err)
+	case "ssh_account.remove_key":
+		var spec system.SSHRemoveKeySpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := system.NewSSHAccountManager().RemoveKey(spec)
+		writeSuccess(nil, "", err)
+	case "ssh_account.set_password":
+		var spec system.SSHPasswordSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := system.NewSSHAccountManager().SetPassword(spec)
+		writeSuccess(nil, "", err)
 	default:
 		writeFailure(fmt.Errorf("unknown helper action: %s", request.Action), "")
 	}

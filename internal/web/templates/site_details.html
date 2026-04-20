@@ -73,6 +73,89 @@
     </article>
 </div>
 
+<div class="grid single" data-site-tab="ssh">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">SSH account</span>
+                <h3><i class="bi bi-key" style="color:var(--accent);margin-right:6px;"></i>Remote SSH access for {{.SelectedSite.OwnerLinuxUser}}</h3>
+            </div>
+            <span class="badge subtle-badge">{{if .SSHAccountStatus.LoginDisabled}}Login shell disabled{{else}}Shell {{if .SSHAccountStatus.Shell}}{{.SSHAccountStatus.Shell}}{{else}}-{{end}}{{end}}</span>
+        </div>
+        <div class="info-grid">
+            <div><strong>User</strong><span>{{if .SSHAccountStatus.Username}}{{.SSHAccountStatus.Username}}{{else}}{{.SelectedSite.OwnerLinuxUser}}{{end}}</span></div>
+            <div><strong>Home</strong><span>{{if .SSHAccountStatus.HomeDirectory}}{{.SSHAccountStatus.HomeDirectory}}{{else}}-{{end}}</span></div>
+            <div><strong>authorized_keys</strong><span>{{if .SSHAccountStatus.AuthorizedKeysPath}}{{.SSHAccountStatus.AuthorizedKeysPath}}{{else}}-{{end}}</span></div>
+            <div><strong>Password</strong><span>{{if .SSHAccountStatus.PasswordSet}}Set{{else}}Not set{{end}}</span></div>
+            <div><strong>Keys installed</strong><span>{{len .SSHAccountStatus.Keys}}</span></div>
+        </div>
+        <p class="muted details-note">Grant remote SSH access by pasting the user's public key here. Key-based login is enabled by adding an entry to <code>~/.ssh/authorized_keys</code>. Use the password form below only if you need password-based fallback access.</p>
+
+        <h4 style="margin-top:18px;">Authorized keys</h4>
+        {{if .SSHAccountStatus.Keys}}
+        <table class="data-table" style="margin-top:6px;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Type</th>
+                    <th>Fingerprint (SHA256)</th>
+                    <th>Comment</th>
+                    <th class="text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .SSHAccountStatus.Keys}}
+                <tr>
+                    <td>{{.Index}}</td>
+                    <td><code>{{.Type}}</code></td>
+                    <td><code>{{.Fingerprint}}</code></td>
+                    <td>{{if .Comment}}{{.Comment}}{{else}}<span class="muted">-</span>{{end}}</td>
+                    <td class="text-right">
+                        <form method="post" class="inline-form details-inline-form" onsubmit="return confirm('Remove this SSH key from authorized_keys?');">
+                            <input type="hidden" name="details_action" value="remove_ssh_key">
+                            <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                            <input type="hidden" name="ssh_remove_fingerprint" value="{{.Fingerprint}}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="muted details-note" style="margin-top:6px;">No SSH public keys installed yet for {{.SelectedSite.OwnerLinuxUser}}.</p>
+        {{end}}
+
+        <h4 style="margin-top:20px;">Add a public key</h4>
+        <form method="post" class="stack-form compact-form" style="margin-top:6px;">
+            <input type="hidden" name="details_action" value="add_ssh_key">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <label>
+                <span>Public key</span>
+                <textarea name="ssh_public_key" rows="4" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@host" required>{{.SSHPublicKeyInput}}</textarea>
+                <small class="muted details-note">Paste a single line starting with a supported type (<code>ssh-ed25519</code>, <code>ssh-rsa</code>, <code>ecdsa-sha2-*</code>, etc.). The fingerprint is computed server-side before saving.</small>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Add SSH key</button>
+            </div>
+        </form>
+
+        <h4 style="margin-top:20px;">Set or reset SSH password</h4>
+        <form method="post" class="stack-form compact-form" style="margin-top:6px;" onsubmit="return confirm('Update the Linux password for {{.SelectedSite.OwnerLinuxUser}}? Existing SSH sessions will remain connected.');">
+            <input type="hidden" name="details_action" value="set_ssh_password">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <label>
+                <span>New password for {{.SelectedSite.OwnerLinuxUser}}</span>
+                <input type="password" name="ssh_password" placeholder="Enter new password" autocomplete="new-password" required>
+                <small class="muted details-note">Password cannot contain newline or colon characters. Prefer key-based login when possible; use this only if the user needs password auth.</small>
+            </label>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-outline-secondary">Update password</button>
+            </div>
+        </form>
+    </article>
+</div>
+
 <div class="grid" data-site-tab="overview">
     <article class="panel">
         <div class="section-head">

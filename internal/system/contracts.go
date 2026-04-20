@@ -62,6 +62,8 @@ var ErrInvalidMySQLSlowQueryLogPath = errors.New("invalid mysql slow query log p
 var ErrInvalidMySQLLogLines = errors.New("invalid mysql log lines")
 var ErrInvalidCronSchedule = errors.New("invalid cron schedule")
 var ErrInvalidCronCommand = errors.New("invalid cron command")
+var ErrInvalidSSHPublicKey = errors.New("invalid ssh public key")
+var ErrSSHKeyNotFound = errors.New("ssh key not found")
 
 type UserManager interface {
 	CreateLinuxUser(username string, createHome bool, password string, grantSudo bool) error
@@ -609,4 +611,44 @@ type CronJobUpdateSpec struct {
 	SiteName         string `json:"site_name"`
 	WorkingDirectory string `json:"working_directory"`
 	RunInSiteRoot    bool   `json:"run_in_site_root"`
+}
+
+type SSHKeyInfo struct {
+	Index       int    `json:"index"`
+	Type        string `json:"type"`
+	Fingerprint string `json:"fingerprint"`
+	Comment     string `json:"comment"`
+	Preview     string `json:"preview"`
+}
+
+type SSHAccountStatus struct {
+	Username           string       `json:"username"`
+	HomeDirectory      string       `json:"home_directory"`
+	AuthorizedKeysPath string       `json:"authorized_keys_path"`
+	PasswordSet        bool         `json:"password_set"`
+	Shell              string       `json:"shell"`
+	LoginDisabled      bool         `json:"login_disabled"`
+	Keys               []SSHKeyInfo `json:"keys"`
+}
+
+type SSHAddKeySpec struct {
+	Username  string `json:"username"`
+	PublicKey string `json:"public_key"`
+}
+
+type SSHRemoveKeySpec struct {
+	Username    string `json:"username"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+type SSHPasswordSpec struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type SSHAccountManager interface {
+	Inspect(username string) (SSHAccountStatus, error)
+	AddKey(spec SSHAddKeySpec) error
+	RemoveKey(spec SSHRemoveKeySpec) error
+	SetPassword(spec SSHPasswordSpec) error
 }

@@ -111,6 +111,10 @@ var allowedHelperActions = map[string]struct{}{
 	"cron.delete":                   {},
 	"cron.clear_log":                {},
 	"cron.rotate_log":               {},
+	"ssh_account.inspect":           {},
+	"ssh_account.add_key":           {},
+	"ssh_account.remove_key":        {},
+	"ssh_account.set_password":      {},
 }
 
 func ValidateHelperAction(action string) error {

@@ -35,6 +35,7 @@ type App struct {
 	php                system.PHPManager
 	redis              system.RedisManager
 	supervisor         system.SupervisorManager
+	sshAccounts        system.SSHAccountManager
 	helper             *system.HelperClient
 	auth               auth.Authenticator
 	sessions           *auth.SessionManager
@@ -141,6 +142,10 @@ type TemplateData struct {
 	GitCustomCommand                  string
 	SSHWorkingDirectory               string
 	SSHCommandBody                    string
+	SSHAccountStatus                  system.SSHAccountStatus
+	SSHPublicKeyInput                 string
+	SSHPasswordInput                  string
+	SSHRemoveKeyFingerprint           string
 	AutoDeployEnabled                 bool
 	AutoDeployBranch                  string
 	AutoDeploySecret                  string
@@ -333,6 +338,7 @@ func New(cfg config.Config, logger *slog.Logger, dataStore *store.Store, metrics
 		php:                system.NewHelperPHPManager(helperClient),
 		redis:              system.NewHelperRedisManager(helperClient),
 		supervisor:         system.NewHelperSupervisorManager(helperClient),
+		sshAccounts:        system.NewHelperSSHAccountManager(helperClient),
 		helper:             helperClient,
 		auth:               authenticator,
 		sessions:           sessions,

@@ -872,7 +872,7 @@ func siteDetailTabForAction(action string) string {
 		return "domains"
 	case "run_custom_git_command":
 		return "deploy"
-	case "run_ssh_command":
+	case "run_ssh_command", "add_ssh_key", "remove_ssh_key", "set_ssh_password":
 		return "ssh"
 	case "install_nvm", "install_node", "install_pm2", "install_composer", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "run_npm_script", "npm_install", "save_runtime_command", "delete_runtime_command", "save_node_version":
 		return "runtime"
@@ -3117,6 +3117,9 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		GitCustomCommand:               r.FormValue("git_custom_command"),
 		SSHWorkingDirectory:            firstNonEmpty(strings.TrimSpace(r.FormValue("ssh_working_directory")), site.RootDirectory),
 		SSHCommandBody:                 r.FormValue("ssh_command_body"),
+		SSHPublicKeyInput:              r.FormValue("ssh_public_key"),
+		SSHPasswordInput:               r.FormValue("ssh_password"),
+		SSHRemoveKeyFingerprint:        strings.TrimSpace(r.FormValue("ssh_remove_fingerprint")),
 		AutoDeployEnabled:              r.FormValue("auto_deploy_enabled") == "1",
 		AutoDeployBranch:               strings.TrimSpace(r.FormValue("auto_deploy_branch")),
 		AutoDeploySecret:               strings.TrimSpace(r.FormValue("auto_deploy_secret")),
@@ -3954,6 +3957,72 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		data.NginxConfigNotice = "Selected Nginx config revision was restored successfully."
 		a.recordAudit(r.Context(), "site.nginx_config.rollback", targetLabel, "success", map[string]any{"config_path": configPath, "revision_id": nginxRevisionID, "target_type": nginxTargetType, "subdomain_id": subdomainID})
 		successMessage = "Nginx config rollback completed successfully."
+	case "add_ssh_key":
+		key := strings.TrimSpace(data.SSHPublicKeyInput)
+		if key == "" {
+			data.RequestError = "SSH public key cannot be empty."
+			break
+		}
+		addErr := a.sshAccounts.AddKey(system.SSHAddKeySpec{Username: site.OwnerLinuxUser, PublicKey: key})
+		if addErr != nil {
+			message := addErr.Error()
+			if errors.Is(addErr, system.ErrInvalidSSHPublicKey) {
+				message = "Provided value is not a valid SSH public key. Expected a single line like 'ssh-ed25519 AAAA... user@host'."
+			} else if errors.Is(addErr, system.ErrInvalidUsername) {
+				message = "Site owner Linux user is invalid for SSH account management."
+			} else if errors.Is(addErr, system.ErrUserNotFound) {
+				message = "Site owner Linux user does not exist on this server yet."
+			}
+			data.RequestError = message
+			a.recordAudit(r.Context(), "site.ssh_account.add_key", site.Name, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "error": addErr.Error()})
+			break
+		}
+		data.SSHPublicKeyInput = ""
+		a.recordAudit(r.Context(), "site.ssh_account.add_key", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser})
+		successMessage = "SSH public key added to " + site.OwnerLinuxUser + "'s authorized_keys."
+	case "remove_ssh_key":
+		fingerprint := strings.TrimSpace(data.SSHRemoveKeyFingerprint)
+		if fingerprint == "" {
+			data.RequestError = "Select a key to remove."
+			break
+		}
+		removeErr := a.sshAccounts.RemoveKey(system.SSHRemoveKeySpec{Username: site.OwnerLinuxUser, Fingerprint: fingerprint})
+		if removeErr != nil {
+			message := removeErr.Error()
+			if errors.Is(removeErr, system.ErrSSHKeyNotFound) {
+				message = "Selected SSH key was not found in authorized_keys."
+			} else if errors.Is(removeErr, system.ErrInvalidUsername) {
+				message = "Site owner Linux user is invalid for SSH account management."
+			}
+			data.RequestError = message
+			a.recordAudit(r.Context(), "site.ssh_account.remove_key", site.Name, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "fingerprint": fingerprint, "error": removeErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "site.ssh_account.remove_key", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser, "fingerprint": fingerprint})
+		successMessage = "SSH key removed successfully."
+	case "set_ssh_password":
+		password := data.SSHPasswordInput
+		if strings.TrimSpace(password) == "" {
+			data.RequestError = "SSH password cannot be empty."
+			break
+		}
+		pwErr := a.sshAccounts.SetPassword(system.SSHPasswordSpec{Username: site.OwnerLinuxUser, Password: password})
+		if pwErr != nil {
+			message := pwErr.Error()
+			if errors.Is(pwErr, system.ErrInvalidLinuxPassword) {
+				message = "Password cannot contain newline or colon characters and cannot be empty."
+			} else if errors.Is(pwErr, system.ErrInvalidUsername) {
+				message = "Site owner Linux user is invalid for SSH account management."
+			} else if errors.Is(pwErr, system.ErrUserNotFound) {
+				message = "Site owner Linux user does not exist on this server yet."
+			}
+			data.RequestError = message
+			a.recordAudit(r.Context(), "site.ssh_account.set_password", site.Name, "failure", map[string]any{"run_as_user": site.OwnerLinuxUser, "error": pwErr.Error()})
+			break
+		}
+		data.SSHPasswordInput = ""
+		a.recordAudit(r.Context(), "site.ssh_account.set_password", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser})
+		successMessage = "SSH password updated for " + site.OwnerLinuxUser + "."
 	default:
 		data.RequestError = "Invalid site details action."
 	}
@@ -4797,6 +4866,11 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	}
 	data.DatabaseAccess, _ = a.databases.ListDatabaseAccess()
 	data.LinuxUsers = a.listLinuxUsers()
+	if strings.TrimSpace(site.OwnerLinuxUser) != "" {
+		if status, err := a.sshAccounts.Inspect(site.OwnerLinuxUser); err == nil {
+			data.SSHAccountStatus = status
+		}
+	}
 	if commands, err := a.store.ListSiteRuntimeCommands(r.Context(), site.ID); err == nil {
 		data.SiteRuntimeCommands = commands
 	}
