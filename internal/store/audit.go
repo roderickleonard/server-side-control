@@ -188,6 +188,7 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 			&site.AWSRoute53ZoneID,
 			&site.AWSRoute53ZoneName,
 			&site.BackupS3Bucket,
+			&site.BackupS3Region,
 			&site.BackupS3Prefix,
 			&site.BackupScheduleHours,
 			&site.BackupRetentionCount,
