@@ -488,7 +488,8 @@ func (s *Store) ensureManagedSitesBackupColumns(ctx context.Context) error {
 		statement string
 	}{
 		{name: "backup_s3_bucket", statement: `ALTER TABLE managed_sites ADD COLUMN backup_s3_bucket VARCHAR(191) NOT NULL DEFAULT '' AFTER aws_route53_zone_name`},
-		{name: "backup_s3_prefix", statement: `ALTER TABLE managed_sites ADD COLUMN backup_s3_prefix VARCHAR(255) NOT NULL DEFAULT '' AFTER backup_s3_bucket`},
+		{name: "backup_s3_region", statement: `ALTER TABLE managed_sites ADD COLUMN backup_s3_region VARCHAR(64) NOT NULL DEFAULT '' AFTER backup_s3_bucket`},
+		{name: "backup_s3_prefix", statement: `ALTER TABLE managed_sites ADD COLUMN backup_s3_prefix VARCHAR(255) NOT NULL DEFAULT '' AFTER backup_s3_region`},
 		{name: "backup_schedule_hours", statement: `ALTER TABLE managed_sites ADD COLUMN backup_schedule_hours INT NOT NULL DEFAULT 0 AFTER backup_s3_prefix`},
 		{name: "backup_retention_count", statement: `ALTER TABLE managed_sites ADD COLUMN backup_retention_count INT NOT NULL DEFAULT 7 AFTER backup_schedule_hours`},
 		{name: "backup_last_run_at", statement: `ALTER TABLE managed_sites ADD COLUMN backup_last_run_at DATETIME NULL AFTER backup_retention_count`},

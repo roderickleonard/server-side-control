@@ -31,6 +31,7 @@ type ManagedSite struct {
 	AWSRoute53ZoneID          string
 	AWSRoute53ZoneName        string
 	BackupS3Bucket            string
+	BackupS3Region            string
 	BackupS3Prefix            string
 	BackupScheduleHours       int
 	BackupRetentionCount      int

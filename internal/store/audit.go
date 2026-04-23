@@ -109,7 +109,7 @@ func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.M
 	}
 
 	var site domain.ManagedSite
-	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, laravel_extra_writable_paths, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, aws_route53_zone_id, aws_route53_zone_name, backup_s3_bucket, backup_s3_prefix, backup_schedule_hours, backup_retention_count, backup_last_run_at, backup_last_status, backup_last_message, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
+	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, laravel_extra_writable_paths, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, aws_route53_zone_id, aws_route53_zone_name, backup_s3_bucket, backup_s3_region, backup_s3_prefix, backup_schedule_hours, backup_retention_count, backup_last_run_at, backup_last_status, backup_last_message, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
 	var backupLastMessage sql.NullString
 	if err := s.db.QueryRowContext(ctx, query, name).Scan(
 		&site.ID,
@@ -133,6 +133,7 @@ func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.M
 		&site.AWSRoute53ZoneID,
 		&site.AWSRoute53ZoneName,
 		&site.BackupS3Bucket,
+		&site.BackupS3Region,
 		&site.BackupS3Prefix,
 		&site.BackupScheduleHours,
 		&site.BackupRetentionCount,
@@ -155,7 +156,7 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 		return nil, errors.New("store is not configured")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, laravel_extra_writable_paths, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, aws_route53_zone_id, aws_route53_zone_name, backup_s3_bucket, backup_s3_prefix, backup_schedule_hours, backup_retention_count, backup_last_run_at, backup_last_status, backup_last_message, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, laravel_extra_writable_paths, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, aws_route53_zone_id, aws_route53_zone_name, backup_s3_bucket, backup_s3_region, backup_s3_prefix, backup_schedule_hours, backup_retention_count, backup_last_run_at, backup_last_status, backup_last_message, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list managed sites: %w", err)
 	}

@@ -362,7 +362,6 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		PanelEnvPath:         a.cfg.EnvPath,
 		AWSAccessKeyID:       a.cfg.AWSAccessKeyID,
 		AWSSecretAccessKey:   a.cfg.AWSSecretAccessKey,
-		AWSRegion:            firstNonEmpty(strings.TrimSpace(a.cfg.AWSRegion), "us-east-1"),
 		AWSConfigured:        a.dns.Configured(),
 	}
 	data.PanelDomain = panelDomainFromBaseURL(a.cfg.BaseURL)
@@ -422,7 +421,6 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	data.OpenAIConfigured = strings.TrimSpace(data.OpenAIAPIKey) != ""
 	data.AWSAccessKeyID = firstNonEmpty(strings.TrimSpace(r.FormValue("aws_access_key_id")), data.AWSAccessKeyID)
 	data.AWSSecretAccessKey = firstNonEmpty(r.FormValue("aws_secret_access_key"), data.AWSSecretAccessKey)
-	data.AWSRegion = firstNonEmpty(strings.TrimSpace(r.FormValue("aws_region")), data.AWSRegion, "us-east-1")
 	data.AWSConfigured = strings.TrimSpace(data.AWSAccessKeyID) != "" && strings.TrimSpace(data.AWSSecretAccessKey) != ""
 	data.TOTPCode = strings.TrimSpace(r.FormValue("totp_code"))
 	data.TOTPSetupSecret = firstNonEmpty(strings.TrimSpace(r.FormValue("totp_secret")), data.TOTPSetupSecret)
@@ -550,7 +548,6 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		updatedCfg.OpenAIModel = data.OpenAIModel
 		updatedCfg.AWSAccessKeyID = data.AWSAccessKeyID
 		updatedCfg.AWSSecretAccessKey = data.AWSSecretAccessKey
-		updatedCfg.AWSRegion = data.AWSRegion
 		resultPath, err := a.helper.Call(r.Context(), "panel.write_env", map[string]string{"content": updatedCfg.ToEnv()}, nil)
 		if err != nil {
 			data.RequestError = "Panel config could not be saved: " + err.Error()
@@ -3148,6 +3145,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		DNSRecordEditOldName:           strings.TrimSpace(r.FormValue("dns_record_old_name")),
 		DNSRecordEditOldType:           strings.ToUpper(strings.TrimSpace(r.FormValue("dns_record_old_type"))),
 		BackupS3Bucket:                 strings.TrimSpace(r.FormValue("backup_s3_bucket")),
+		BackupS3Region:                 strings.TrimSpace(r.FormValue("backup_s3_region")),
 		BackupS3Prefix:                 strings.TrimSpace(r.FormValue("backup_s3_prefix")),
 		AutoDeployEnabled:              r.FormValue("auto_deploy_enabled") == "1",
 		AutoDeployBranch:               strings.TrimSpace(r.FormValue("auto_deploy_branch")),
@@ -4172,11 +4170,16 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		// no-op; data is reloaded in renderSiteDetails after the switch
 	case "save_backup_config":
 		bucket := strings.TrimSpace(data.BackupS3Bucket)
+		region := strings.TrimSpace(data.BackupS3Region)
 		prefix := strings.TrimSpace(data.BackupS3Prefix)
 		scheduleHours, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("backup_schedule_hours")))
 		retentionCount, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("backup_retention_count")))
 		if scheduleHours < 0 {
 			scheduleHours = 0
+		}
+		if bucket != "" && region == "" {
+			data.RequestError = "Select the AWS region for this bucket."
+			break
 		}
 		if scheduleHours > 0 && bucket == "" {
 			data.RequestError = "S3 bucket is required when scheduling backups."
@@ -4185,15 +4188,16 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		if retentionCount < 0 {
 			retentionCount = 0
 		}
-		if err := a.store.UpdateManagedSiteBackupConfig(r.Context(), site.Name, bucket, prefix, scheduleHours, retentionCount); err != nil {
+		if err := a.store.UpdateManagedSiteBackupConfig(r.Context(), site.Name, bucket, region, prefix, scheduleHours, retentionCount); err != nil {
 			data.RequestError = "Could not save backup configuration: " + err.Error()
 			break
 		}
 		site.BackupS3Bucket = bucket
+		site.BackupS3Region = region
 		site.BackupS3Prefix = prefix
 		site.BackupScheduleHours = scheduleHours
 		site.BackupRetentionCount = retentionCount
-		a.recordAudit(r.Context(), "site.backup.config_save", site.Name, "success", map[string]any{"bucket": bucket, "schedule_hours": scheduleHours, "retention_count": retentionCount})
+		a.recordAudit(r.Context(), "site.backup.config_save", site.Name, "success", map[string]any{"bucket": bucket, "region": region, "schedule_hours": scheduleHours, "retention_count": retentionCount})
 		successMessage = "Backup configuration saved."
 	case "run_backup_now":
 		if !a.dns.Configured() {
@@ -5063,6 +5067,9 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 	if data.BackupS3Bucket == "" {
 		data.BackupS3Bucket = site.BackupS3Bucket
 	}
+	if data.BackupS3Region == "" {
+		data.BackupS3Region = site.BackupS3Region
+	}
 	if data.BackupS3Prefix == "" {
 		data.BackupS3Prefix = site.BackupS3Prefix
 	}
@@ -5081,7 +5088,6 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		}
 	}
 	data.AWSConfigured = a.dns.Configured()
-	data.AWSRegion = firstNonEmpty(strings.TrimSpace(a.cfg.AWSRegion), "us-east-1")
 	data.DNSEnabled = a.dns.Configured()
 	if data.DNSEnabled {
 		if zones, err := a.dns.ListHostedZones(); err == nil {
@@ -5597,7 +5603,7 @@ func (a *App) buildBackupSpec(site domain.ManagedSite) system.SiteBackupSpec {
 		DatabaseName:    site.DatabaseName,
 		S3Bucket:        site.BackupS3Bucket,
 		S3Prefix:        site.BackupS3Prefix,
-		Region:          firstNonEmpty(strings.TrimSpace(a.cfg.AWSRegion), "us-east-1"),
+		Region:          firstNonEmpty(strings.TrimSpace(site.BackupS3Region), "us-east-1"),
 		AccessKeyID:     a.cfg.AWSAccessKeyID,
 		SecretAccessKey: a.cfg.AWSSecretAccessKey,
 		MySQLDefaults:   a.cfg.MySQLAdminDefaultsFile,

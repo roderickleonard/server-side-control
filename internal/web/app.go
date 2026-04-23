@@ -162,9 +162,9 @@ type TemplateData struct {
 	DNSError                          string
 	AWSAccessKeyID                    string
 	AWSSecretAccessKey                string
-	AWSRegion                         string
 	AWSConfigured                     bool
 	BackupS3Bucket                    string
+	BackupS3Region                    string
 	BackupS3Prefix                    string
 	BackupScheduleHours               int
 	BackupRetentionCount              int

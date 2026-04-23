@@ -318,7 +318,7 @@
         </div>
 
         {{if not .AWSConfigured}}
-        <p class="muted details-note">AWS credentials are not configured. Add <code>PANEL_AWS_ACCESS_KEY_ID</code>, <code>PANEL_AWS_SECRET_ACCESS_KEY</code>, and <code>PANEL_AWS_REGION</code> under <a href="/settings">Settings</a> first. The same credentials are used for both Route 53 and S3.</p>
+        <p class="muted details-note">AWS credentials are not configured. Add <code>PANEL_AWS_ACCESS_KEY_ID</code> and <code>PANEL_AWS_SECRET_ACCESS_KEY</code> under <a href="/settings">Settings</a> first. The same credentials are used for both Route 53 and S3; the bucket region is selected per site below.</p>
         {{else}}
         <p class="muted details-note">The panel runs <code>tar czf</code> on <code>{{.SelectedSite.RootDirectory}}</code>{{if .SelectedSite.DatabaseName}} and <code>mysqldump | gzip</code> on database <code>{{.SelectedSite.DatabaseName}}</code>{{end}}, then uploads everything to <code>s3://{{if .SelectedSite.BackupS3Bucket}}{{.SelectedSite.BackupS3Bucket}}{{else}}&lt;bucket&gt;{{end}}/{{if .SelectedSite.BackupS3Prefix}}{{.SelectedSite.BackupS3Prefix}}{{else}}sites/{{.SelectedSite.Name}}{{end}}/&lt;timestamp&gt;/</code>.</p>
 
@@ -331,6 +331,34 @@
                     <span>S3 bucket</span>
                     <input type="text" name="backup_s3_bucket" value="{{.BackupS3Bucket}}" placeholder="my-server-side-control-backups" required>
                     <small class="muted details-note">Must already exist in your AWS account; the panel only puts/lists/deletes objects.</small>
+                </label>
+                <label>
+                    <span>Bucket region</span>
+                    <select name="backup_s3_region" required>
+                        <option value="" {{if eq .BackupS3Region ""}}selected{{end}}>— Select a region —</option>
+                        <option value="us-east-1" {{if eq .BackupS3Region "us-east-1"}}selected{{end}}>us-east-1 (N. Virginia)</option>
+                        <option value="us-east-2" {{if eq .BackupS3Region "us-east-2"}}selected{{end}}>us-east-2 (Ohio)</option>
+                        <option value="us-west-1" {{if eq .BackupS3Region "us-west-1"}}selected{{end}}>us-west-1 (N. California)</option>
+                        <option value="us-west-2" {{if eq .BackupS3Region "us-west-2"}}selected{{end}}>us-west-2 (Oregon)</option>
+                        <option value="ca-central-1" {{if eq .BackupS3Region "ca-central-1"}}selected{{end}}>ca-central-1 (Canada Central)</option>
+                        <option value="sa-east-1" {{if eq .BackupS3Region "sa-east-1"}}selected{{end}}>sa-east-1 (São Paulo)</option>
+                        <option value="eu-west-1" {{if eq .BackupS3Region "eu-west-1"}}selected{{end}}>eu-west-1 (Ireland)</option>
+                        <option value="eu-west-2" {{if eq .BackupS3Region "eu-west-2"}}selected{{end}}>eu-west-2 (London)</option>
+                        <option value="eu-west-3" {{if eq .BackupS3Region "eu-west-3"}}selected{{end}}>eu-west-3 (Paris)</option>
+                        <option value="eu-central-1" {{if eq .BackupS3Region "eu-central-1"}}selected{{end}}>eu-central-1 (Frankfurt)</option>
+                        <option value="eu-north-1" {{if eq .BackupS3Region "eu-north-1"}}selected{{end}}>eu-north-1 (Stockholm)</option>
+                        <option value="eu-south-1" {{if eq .BackupS3Region "eu-south-1"}}selected{{end}}>eu-south-1 (Milan)</option>
+                        <option value="me-south-1" {{if eq .BackupS3Region "me-south-1"}}selected{{end}}>me-south-1 (Bahrain)</option>
+                        <option value="me-central-1" {{if eq .BackupS3Region "me-central-1"}}selected{{end}}>me-central-1 (UAE)</option>
+                        <option value="af-south-1" {{if eq .BackupS3Region "af-south-1"}}selected{{end}}>af-south-1 (Cape Town)</option>
+                        <option value="ap-northeast-1" {{if eq .BackupS3Region "ap-northeast-1"}}selected{{end}}>ap-northeast-1 (Tokyo)</option>
+                        <option value="ap-northeast-2" {{if eq .BackupS3Region "ap-northeast-2"}}selected{{end}}>ap-northeast-2 (Seoul)</option>
+                        <option value="ap-northeast-3" {{if eq .BackupS3Region "ap-northeast-3"}}selected{{end}}>ap-northeast-3 (Osaka)</option>
+                        <option value="ap-southeast-1" {{if eq .BackupS3Region "ap-southeast-1"}}selected{{end}}>ap-southeast-1 (Singapore)</option>
+                        <option value="ap-southeast-2" {{if eq .BackupS3Region "ap-southeast-2"}}selected{{end}}>ap-southeast-2 (Sydney)</option>
+                        <option value="ap-south-1" {{if eq .BackupS3Region "ap-south-1"}}selected{{end}}>ap-south-1 (Mumbai)</option>
+                    </select>
+                    <small class="muted details-note">Must match the region the bucket lives in. Each site can target a different region.</small>
                 </label>
                 <label>
                     <span>Key prefix (optional)</span>
@@ -364,7 +392,7 @@
             <div><strong>Last run</strong><span>{{if .SelectedSite.BackupLastRunAt}}{{.SelectedSite.BackupLastRunAt.Format "2006-01-02 15:04:05"}}{{else}}Never{{end}}</span></div>
             <div><strong>Last status</strong><span>{{if eq .SelectedSite.BackupLastStatus "success"}}<span class="status-pill success">Success</span>{{else if eq .SelectedSite.BackupLastStatus "failure"}}<span class="status-pill danger">Failure</span>{{else}}<span class="status-pill unknown">{{if .SelectedSite.BackupLastStatus}}{{.SelectedSite.BackupLastStatus}}{{else}}-{{end}}</span>{{end}}</span></div>
             <div><strong>Bucket</strong><span>{{if .SelectedSite.BackupS3Bucket}}<code>{{.SelectedSite.BackupS3Bucket}}</code>{{else}}-{{end}}</span></div>
-            <div><strong>Region</strong><span>{{.AWSRegion}}</span></div>
+            <div><strong>Region</strong><span>{{if .SelectedSite.BackupS3Region}}{{.SelectedSite.BackupS3Region}}{{else}}-{{end}}</span></div>
         </div>
         {{if .SelectedSite.BackupLastMessage}}
         <p class="muted details-note" style="margin-top:6px;">Last message: <code>{{.SelectedSite.BackupLastMessage}}</code></p>

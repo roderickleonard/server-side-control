@@ -10,14 +10,15 @@ import (
 	"github.com/kaganyegin/server-side-control/internal/domain"
 )
 
-// UpdateManagedSiteBackupConfig persists the bucket / schedule / retention
-// settings for a site. Setting scheduleHours = 0 means "disabled".
-func (s *Store) UpdateManagedSiteBackupConfig(ctx context.Context, name string, bucket string, prefix string, scheduleHours int, retentionCount int) error {
+// UpdateManagedSiteBackupConfig persists the bucket / region / prefix /
+// schedule / retention settings for a site. Setting scheduleHours = 0
+// means "disabled".
+func (s *Store) UpdateManagedSiteBackupConfig(ctx context.Context, name string, bucket string, region string, prefix string, scheduleHours int, retentionCount int) error {
 	if s == nil {
 		return errors.New("store is not configured")
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET backup_s3_bucket = ?, backup_s3_prefix = ?, backup_schedule_hours = ?, backup_retention_count = ? WHERE name = ?`,
-		bucket, prefix, scheduleHours, retentionCount, name)
+	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET backup_s3_bucket = ?, backup_s3_region = ?, backup_s3_prefix = ?, backup_schedule_hours = ?, backup_retention_count = ? WHERE name = ?`,
+		bucket, region, prefix, scheduleHours, retentionCount, name)
 	if err != nil {
 		return fmt.Errorf("update managed site backup config: %w", err)
 	}
