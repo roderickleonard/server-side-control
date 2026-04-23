@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/kaganyegin/server-side-control/internal/config"
@@ -1347,12 +1348,14 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		writeSuccess(content, "", nil)
 	case "files.write_text":
 		var input struct {
-			Path        string `json:"path"`
-			Content     string `json:"content"`
-			Owner       string `json:"owner"`
-			SiteRoot    string `json:"site_root"`
-			MaxBytes    int    `json:"max_bytes"`
-			CreateBak   bool   `json:"create_bak"`
+			Path       string `json:"path"`
+			Content    string `json:"content"`
+			Owner      string `json:"owner"`
+			SiteRoot   string `json:"site_root"`
+			MaxBytes   int    `json:"max_bytes"`
+			CreateBak  bool   `json:"create_bak"`
+			Mode       string `json:"mode"`
+			CreateOnly bool   `json:"create_only"`
 		}
 		if err := json.Unmarshal(request.Input, &input); err != nil {
 			writeFailure(err, "")
@@ -1377,13 +1380,18 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			writeFailure(errors.New("git internals cannot be edited from the file editor"), "")
 			return
 		}
-		// Refuse if the existing target is a directory or symlink.
-		if info, statErr := os.Lstat(cleanPath); statErr == nil {
-			if info.IsDir() {
+		existingInfo, existingErr := os.Lstat(cleanPath)
+		fileExists := existingErr == nil
+		if fileExists {
+			if input.CreateOnly {
+				writeFailure(errors.New("file already exists"), "")
+				return
+			}
+			if existingInfo.IsDir() {
 				writeFailure(errors.New("path is a directory"), "")
 				return
 			}
-			if info.Mode()&os.ModeSymlink != 0 {
+			if existingInfo.Mode()&os.ModeSymlink != 0 {
 				writeFailure(errors.New("symlinks cannot be edited from the file editor"), "")
 				return
 			}
@@ -1408,8 +1416,28 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			writeFailure(fmt.Errorf("content exceeds %d byte limit", maxBytes), "")
 			return
 		}
+		// Resolve the target mode: explicit mode overrides everything,
+		// otherwise preserve the existing file's perms, otherwise
+		// default to 0o644 for new files.
+		targetMode := os.FileMode(0o644)
+		if fileExists {
+			targetMode = existingInfo.Mode().Perm()
+		}
+		modeTrimmed := strings.TrimSpace(input.Mode)
+		if modeTrimmed != "" {
+			if !regexp.MustCompile(`^0?[0-7]{3,4}$`).MatchString(modeTrimmed) {
+				writeFailure(errors.New("file mode must be a 3 or 4 digit octal value (e.g. 644, 0755)"), "")
+				return
+			}
+			parsedMode, parseErr := strconv.ParseUint(strings.TrimPrefix(modeTrimmed, "0"), 8, 32)
+			if parseErr != nil {
+				writeFailure(fmt.Errorf("invalid file mode: %w", parseErr), "")
+				return
+			}
+			targetMode = os.FileMode(parsedMode) & os.ModePerm
+		}
 		// Best-effort backup of the existing file before overwrite.
-		if input.CreateBak {
+		if input.CreateBak && fileExists {
 			if existing, readErr := os.ReadFile(cleanPath); readErr == nil {
 				bakPath := cleanPath + ".bak"
 				if writeErr := os.WriteFile(bakPath, existing, 0o600); writeErr == nil {
@@ -1417,21 +1445,26 @@ func handle(cfg config.Config, request system.HelperRequest) {
 				}
 			}
 		}
-		// Preserve existing file mode if the file exists, otherwise
-		// fall back to 0o644 for new files.
-		mode := os.FileMode(0o644)
-		if info, statErr := os.Stat(cleanPath); statErr == nil {
-			mode = info.Mode().Perm()
-		}
-		if err := os.WriteFile(cleanPath, []byte(input.Content), mode); err != nil {
+		if err := os.WriteFile(cleanPath, []byte(input.Content), targetMode); err != nil {
 			writeFailure(fmt.Errorf("write file: %w", err), "")
+			return
+		}
+		// Explicit chmod so existing files pick up the new mode even
+		// when WriteFile honoured the previous permissions.
+		if err := os.Chmod(cleanPath, targetMode); err != nil {
+			writeFailure(fmt.Errorf("chmod file: %w", err), "")
 			return
 		}
 		if err := os.Chown(cleanPath, uid, gid); err != nil {
 			writeFailure(fmt.Errorf("chown file: %w", err), "")
 			return
 		}
-		writeSuccess(nil, "", nil)
+		writeSuccess(map[string]any{
+			"path":    cleanPath,
+			"mode":    fmt.Sprintf("%04o", targetMode),
+			"size":    int64(len(input.Content)),
+			"created": !fileExists,
+		}, "", nil)
 	case "files.list_dir":
 		var input struct {
 			Path string `json:"path"`
@@ -1456,6 +1489,8 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			Size          int64  `json:"size"`
 			IsSymlink     bool   `json:"is_symlink"`
 			SymlinkTarget string `json:"symlink_target,omitempty"`
+			Mode          string `json:"mode,omitempty"`
+			Owner         string `json:"owner,omitempty"`
 		}
 		items := make([]dirEntry, 0, len(entries))
 		for _, entry := range entries {
@@ -1465,21 +1500,30 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			size := int64(0)
 			isSymlink := false
 			target := ""
+			modeStr := ""
+			ownerStr := ""
 			if lstatErr == nil {
 				size = lstatInfo.Size()
+				modeStr = fmt.Sprintf("%04o", lstatInfo.Mode().Perm())
+				if sysStat, ok := lstatInfo.Sys().(*syscall.Stat_t); ok {
+					if u, lookupErr := user.LookupId(strconv.FormatUint(uint64(sysStat.Uid), 10)); lookupErr == nil {
+						ownerStr = u.Username
+					} else {
+						ownerStr = strconv.FormatUint(uint64(sysStat.Uid), 10)
+					}
+				}
 				if lstatInfo.Mode()&os.ModeSymlink != 0 {
 					isSymlink = true
 					if resolved, readErr := os.Readlink(fullPath); readErr == nil {
 						target = resolved
 					}
-					// Follow the symlink to determine the real type and
-					// size; this is what the operator actually wants
-					// when they click on the entry.
+					// Follow the symlink to determine the real type, size,
+					// and effective permissions on the underlying object.
 					if realInfo, statErr := os.Stat(fullPath); statErr == nil {
 						isDir = realInfo.IsDir()
 						size = realInfo.Size()
+						modeStr = fmt.Sprintf("%04o", realInfo.Mode().Perm())
 					} else {
-						// Broken symlink: keep the type we had, mark zero size.
 						size = 0
 					}
 				}
@@ -1490,6 +1534,8 @@ func handle(cfg config.Config, request system.HelperRequest) {
 				Size:          size,
 				IsSymlink:     isSymlink,
 				SymlinkTarget: target,
+				Mode:          modeStr,
+				Owner:         ownerStr,
 			})
 		}
 		writeSuccess(items, "", nil)

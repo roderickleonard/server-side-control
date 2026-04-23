@@ -1336,6 +1336,34 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
             </form>
         </div>
         <p class="muted details-note" style="margin-bottom:12px;">Use this before cloning a different repository. The root directory stays in place, but all files including hidden git files are removed.</p>
+        <details class="file-new-wrap" {{if not .SiteBrowserEntries}}open{{end}}>
+            <summary class="btn btn-sm btn-outline-secondary" style="margin-bottom:10px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;"><i class="bi bi-plus-lg"></i> New file here</summary>
+            <form method="post" class="stack-form compact-form file-new-form" data-file-form="create">
+                <input type="hidden" name="details_action" value="create_site_file">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="file_dir" value="{{.SiteBrowserCurrentPath}}">
+                <div class="form-grid two-up">
+                    <label>
+                        <span>File name</span>
+                        <input type="text" name="new_file_name" placeholder="config.json" required>
+                        <small class="muted details-note">Supported extensions only (json, env, yml, js, php, ...).</small>
+                    </label>
+                    <label>
+                        <span>Permissions (octal)</span>
+                        <input type="text" name="file_mode" value="644" pattern="0?[0-7]{3,4}" maxlength="4" required>
+                        <small class="muted details-note">e.g. <code>600</code> for secrets, <code>644</code> default, <code>755</code> for scripts.</small>
+                    </label>
+                    <label class="span-2">
+                        <span>Initial content (optional)</span>
+                        <textarea name="file_content" class="file-editor" rows="6" spellcheck="false"></textarea>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit"><i class="bi bi-plus-lg"></i> Create file</button>
+                </div>
+            </form>
+        </details>
+
         {{if .SiteBrowserEntries}}
         <div class="table-card table-responsive">
             <table class="table table-theme mb-0">
@@ -1344,6 +1372,8 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
                         <th>Name</th>
                         <th>Type</th>
                         <th>Size</th>
+                        <th>Owner</th>
+                        <th>Mode</th>
                         <th>Open</th>
                     </tr>
                 </thead>
@@ -1358,11 +1388,13 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
                         </td>
                         <td>{{if .IsDir}}Directory{{else}}File{{end}}</td>
                         <td>{{if .IsDir}}-{{else}}{{formatBytes .Size}}{{end}}</td>
+                        <td>{{if .Owner}}<code class="file-owner">{{.Owner}}</code>{{else}}<span class="muted">-</span>{{end}}</td>
+                        <td>{{if .Mode}}<code class="file-mode">{{.Mode}}</code>{{else}}<span class="muted">-</span>{{end}}</td>
                         <td>
                             {{if .IsDir}}
                             <a class="table-link" href="/sites/details?name={{$.SelectedSite.Name}}&tab=files&path={{urlquery .RelativePath}}">Open</a>
                             {{else if .Editable}}
-                            <a class="table-link" href="/sites/details?name={{$.SelectedSite.Name}}&tab=files&path={{urlquery $.SiteBrowserCurrentPath}}&file={{urlquery .RelativePath}}#dns-record-form" style="font-weight:600;color:var(--accent);">Edit</a>
+                            <a class="table-link" href="/sites/details?name={{$.SelectedSite.Name}}&tab=files&path={{urlquery $.SiteBrowserCurrentPath}}&file={{urlquery .RelativePath}}" style="font-weight:600;color:var(--accent);">Edit</a>
                             {{else}}
                             <a class="table-link" href="/sites/details?name={{$.SelectedSite.Name}}&tab=files&path={{urlquery $.SiteBrowserCurrentPath}}&file={{urlquery .RelativePath}}">Read</a>
                             {{end}}
@@ -1393,15 +1425,23 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
         {{end}}
         {{if .SiteBrowserSelectedFile}}
             {{if .SiteBrowserFileEditable}}
-            <form method="post" class="stack-form compact-form" style="margin-top:6px;">
+            <form method="post" class="stack-form compact-form file-editor-form" style="margin-top:6px;" data-file-form="save" data-site-name="{{.SelectedSite.Name}}">
                 <input type="hidden" name="details_action" value="save_site_file">
                 <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
                 <input type="hidden" name="file_path" value="{{.SiteBrowserSelectedFile}}">
+                <div class="file-editor-toolbar">
+                    <label class="file-mode-field">
+                        <span>Permissions</span>
+                        <input type="text" name="file_mode" value="" placeholder="preserve" pattern="0?[0-7]{3,4}" maxlength="4" title="3 or 4 digit octal, e.g. 644 or 0755">
+                    </label>
+                    <span class="file-editor-hint muted">Leave blank to keep current permissions. JSON files are validated before save.</span>
+                </div>
                 <textarea name="file_content" class="file-editor" rows="22" spellcheck="false" autocomplete="off">{{.SiteBrowserFileContent}}</textarea>
                 <div class="form-actions" style="justify-content:space-between;align-items:center;gap:12px;">
-                    <small class="muted details-note" style="margin:0;">Saving keeps a <code>.bak</code> copy next to the file. JSON files are validated before writing. Max 2 MB.</small>
-                    <div style="display:flex;gap:8px;">
-                        <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.SelectedSite.Name}}&tab=files&path={{urlquery .SiteBrowserCurrentPath}}">Discard</a>
+                    <small class="muted details-note" style="margin:0;">Saving keeps a <code>.bak</code> copy next to the file. Max 2 MB.</small>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <span class="file-save-status" data-file-status></span>
+                        <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.SelectedSite.Name}}&tab=files&path={{urlquery .SiteBrowserCurrentPath}}">Close</a>
                         <button type="submit"><i class="bi bi-save"></i> Save file</button>
                     </div>
                 </div>
@@ -1776,6 +1816,94 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     if (commandId.value && commandId.value !== '0') {
         commandSelect.value = commandId.value;
         applySavedCommand(commandSelect.options[commandSelect.selectedIndex]);
+    }
+})();
+
+// ── Files tab: AJAX save, create, and inline chmod ─────────────────
+(function () {
+    const saveForm = document.querySelector('form[data-file-form="save"]');
+    const createForm = document.querySelector('form[data-file-form="create"]');
+
+    function showToast(message, level) {
+        const host = document.createElement('div');
+        host.className = 'file-toast file-toast-' + (level || 'info');
+        host.textContent = message;
+        document.body.appendChild(host);
+        requestAnimationFrame(() => host.classList.add('file-toast-visible'));
+        setTimeout(() => {
+            host.classList.remove('file-toast-visible');
+            setTimeout(() => host.remove(), 220);
+        }, 3200);
+    }
+
+    async function postJSON(body) {
+        const response = await fetch('/sites/details/file-action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        let data = null;
+        try { data = await response.json(); } catch (err) { /* ignore */ }
+        return { ok: response.ok && data && data.ok, data };
+    }
+
+    if (saveForm) {
+        const statusLabel = saveForm.querySelector('[data-file-status]');
+        const siteName = saveForm.dataset.siteName;
+        saveForm.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const submitBtn = saveForm.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
+            if (statusLabel) { statusLabel.textContent = 'Saving…'; statusLabel.className = 'file-save-status pending'; }
+            const payload = {
+                site_name: siteName,
+                action: 'save',
+                path: saveForm.querySelector('input[name="file_path"]').value,
+                content: saveForm.querySelector('textarea[name="file_content"]').value,
+                mode: (saveForm.querySelector('input[name="file_mode"]') || {}).value || '',
+            };
+            const { ok, data } = await postJSON(payload);
+            if (submitBtn) submitBtn.disabled = false;
+            if (ok) {
+                if (statusLabel) { statusLabel.textContent = 'Saved · ' + new Date().toLocaleTimeString(); statusLabel.className = 'file-save-status success'; }
+                showToast((data && data.message) || 'Saved', 'success');
+            } else {
+                const msg = (data && data.error) || 'Save failed';
+                if (statusLabel) { statusLabel.textContent = 'Error: ' + msg; statusLabel.className = 'file-save-status error'; }
+                showToast(msg, 'error');
+            }
+        });
+    }
+
+    if (createForm) {
+        createForm.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const submitBtn = createForm.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
+            const siteName = createForm.querySelector('input[name="site_name"]').value;
+            const payload = {
+                site_name: siteName,
+                action: 'create',
+                dir: createForm.querySelector('input[name="file_dir"]').value || '',
+                name: createForm.querySelector('input[name="new_file_name"]').value,
+                content: createForm.querySelector('textarea[name="file_content"]').value,
+                mode: createForm.querySelector('input[name="file_mode"]').value,
+            };
+            const { ok, data } = await postJSON(payload);
+            if (submitBtn) submitBtn.disabled = false;
+            if (ok) {
+                showToast((data && data.message) || 'File created', 'success');
+                const path = data && data.file && data.file.path;
+                if (path) {
+                    const parent = path.includes('/') ? path.split('/').slice(0, -1).join('/') : '';
+                    window.location.href = '/sites/details?name=' + encodeURIComponent(siteName) + '&tab=files&path=' + encodeURIComponent(parent) + '&file=' + encodeURIComponent(path);
+                    return;
+                }
+                window.location.reload();
+            } else {
+                showToast((data && data.error) || 'Create failed', 'error');
+            }
+        });
     }
 })();
 </script>

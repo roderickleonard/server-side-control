@@ -61,6 +61,8 @@ type SiteFileEntry struct {
 	IsSymlink     bool
 	SymlinkTarget string
 	Editable      bool
+	Mode          string
+	Owner         string
 }
 
 type SiteNginxConfigEditor struct {
@@ -456,6 +458,7 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/sites/details/runtime-stream", a.handleSiteRuntimeStream)
 	a.router.HandleFunc("/sites/details/action-stream", a.handleSiteActionStream)
 	a.router.HandleFunc("/sites/details/terminal-ws", a.handleSiteTerminalWS)
+	a.router.HandleFunc("/sites/details/file-action", a.handleSiteFileAction)
 	a.router.HandleFunc("/webhooks/site-deploy", a.handleSiteDeployWebhook)
 	a.router.HandleFunc("/settings", a.handleSettings)
 	a.router.HandleFunc("/settings/stream", a.handleSettingsStream)

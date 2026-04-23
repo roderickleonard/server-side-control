@@ -894,7 +894,7 @@ func siteDetailTabForAction(action string) string {
 		return "backups"
 	case "assign_database", "assign_linux_user", "save_laravel_extra_writable_paths", "edit_env", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "create_cron_job", "update_cron_job", "delete_cron_job", "clear_cron_log", "rotate_cron_log":
 		return "settings"
-	case "save_site_file":
+	case "save_site_file", "create_site_file", "chmod_site_file":
 		return "files"
 	default:
 		return "overview"
@@ -1278,6 +1278,8 @@ type helperSiteFileEntry struct {
 	Size          int64  `json:"size"`
 	IsSymlink     bool   `json:"is_symlink"`
 	SymlinkTarget string `json:"symlink_target,omitempty"`
+	Mode          string `json:"mode"`
+	Owner         string `json:"owner"`
 }
 
 func (a *App) detectProjectMarkers(ctx context.Context, rootDirectory string) (bool, bool) {
@@ -4173,6 +4175,11 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 	case "refresh_dns_records":
 		// no-op; data is reloaded in renderSiteDetails after the switch
 	case "save_site_file":
+		mode := strings.TrimSpace(r.FormValue("file_mode"))
+		if err := validateFileMode(mode); err != nil {
+			data.RequestError = err.Error()
+			break
+		}
 		relPath := strings.TrimSpace(r.FormValue("file_path"))
 		if relPath == "" {
 			data.RequestError = "Select a file from the Files tab to edit."
@@ -4215,6 +4222,7 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			"site_root":  site.RootDirectory,
 			"max_bytes":  2 * 1024 * 1024,
 			"create_bak": true,
+			"mode":       mode,
 		}, nil)
 		if actionErr != nil {
 			data.RequestError = "Could not save the file: " + actionErr.Error()
@@ -4233,7 +4241,102 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		data.SiteBrowserCurrentPath = parentRelativePath(normalisedRel)
 		data.SiteBrowserParentPath = parentRelativePath(data.SiteBrowserCurrentPath)
 		data.SiteBrowserFileEditable = true
-		a.recordAudit(r.Context(), "site.file.save", site.Name, "success", map[string]any{"path": normalisedRel, "bytes": len(content)})
+		a.recordAudit(r.Context(), "site.file.save", site.Name, "success", map[string]any{"path": normalisedRel, "bytes": len(content), "mode": mode})
+	case "create_site_file":
+		mode := strings.TrimSpace(r.FormValue("file_mode"))
+		if mode == "" {
+			mode = "644"
+		}
+		if err := validateFileMode(mode); err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		name := strings.TrimSpace(r.FormValue("new_file_name"))
+		if name == "" {
+			data.RequestError = "File name is required."
+			break
+		}
+		if strings.ContainsAny(name, `/\:*?"<>|`) || strings.HasPrefix(name, ".") && !isEditableSiteFile(name) {
+			data.RequestError = "File name contains invalid characters or uses a disallowed hidden extension."
+			break
+		}
+		dir := strings.TrimSpace(r.FormValue("file_dir"))
+		rel := name
+		if dir != "" {
+			rel = filepath.Join(dir, name)
+		}
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(site.RootDirectory, rel)
+		if resolveErr != nil {
+			data.RequestError = "File path is invalid: " + resolveErr.Error()
+			break
+		}
+		if !isEditableSiteFile(normalisedRel) {
+			data.RequestError = "New files must use a supported text extension (json, env, yml, php, js, ...)."
+			break
+		}
+		initial := r.FormValue("file_content")
+		if len(initial) > 2*1024*1024 {
+			data.RequestError = "Initial content exceeds the 2 MB editor limit."
+			break
+		}
+		_, actionErr = a.helper.Call(r.Context(), "files.write_text", map[string]any{
+			"path":        absPath,
+			"content":     initial,
+			"owner":       site.OwnerLinuxUser,
+			"site_root":   site.RootDirectory,
+			"max_bytes":   2 * 1024 * 1024,
+			"mode":        mode,
+			"create_only": true,
+		}, nil)
+		if actionErr != nil {
+			data.RequestError = "Could not create the file: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.file.create", site.Name, "failure", map[string]any{"path": normalisedRel, "error": actionErr.Error()})
+			break
+		}
+		data.SiteBrowserSelectedFile = normalisedRel
+		data.SiteBrowserCurrentPath = parentRelativePath(normalisedRel)
+		data.SiteBrowserParentPath = parentRelativePath(data.SiteBrowserCurrentPath)
+		data.SiteBrowserFileContent = initial
+		data.SiteBrowserFileEditable = true
+		a.recordAudit(r.Context(), "site.file.create", site.Name, "success", map[string]any{"path": normalisedRel, "mode": mode})
+		successMessage = normalisedRel + " created successfully."
+	case "chmod_site_file":
+		mode := strings.TrimSpace(r.FormValue("file_mode"))
+		if err := validateFileMode(mode); err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		if mode == "" {
+			data.RequestError = "File mode is required for chmod."
+			break
+		}
+		relPath := strings.TrimSpace(r.FormValue("file_path"))
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(site.RootDirectory, relPath)
+		if resolveErr != nil || normalisedRel == "" {
+			data.RequestError = "File path is invalid."
+			break
+		}
+		// Read existing content, then write it back with the new mode.
+		var current string
+		if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": absPath, "max_bytes": 2 * 1024 * 1024}, &current); err != nil {
+			data.RequestError = "Could not read the file to chmod: " + err.Error()
+			break
+		}
+		_, actionErr = a.helper.Call(r.Context(), "files.write_text", map[string]any{
+			"path":      absPath,
+			"content":   current,
+			"owner":     site.OwnerLinuxUser,
+			"site_root": site.RootDirectory,
+			"max_bytes": 2 * 1024 * 1024,
+			"mode":      mode,
+		}, nil)
+		if actionErr != nil {
+			data.RequestError = "Could not chmod the file: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.file.chmod", site.Name, "failure", map[string]any{"path": normalisedRel, "mode": mode, "error": actionErr.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "site.file.chmod", site.Name, "success", map[string]any{"path": normalisedRel, "mode": mode})
+		successMessage = normalisedRel + " permissions set to " + mode + "."
 		successMessage = normalisedRel + " saved successfully (a .bak copy was kept next to it)."
 	case "save_backup_config":
 		bucket := strings.TrimSpace(data.BackupS3Bucket)
@@ -5345,6 +5448,8 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 				IsSymlink:     entry.IsSymlink,
 				SymlinkTarget: entry.SymlinkTarget,
 				Editable:      !entry.IsDir && isEditableSiteFile(rel),
+				Mode:          entry.Mode,
+				Owner:         entry.Owner,
 			})
 			}
 			sort.Slice(entries, func(i int, j int) bool {
@@ -5571,6 +5676,8 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 				IsSymlink:     entry.IsSymlink,
 				SymlinkTarget: entry.SymlinkTarget,
 				Editable:      !entry.IsDir && isEditableSiteFile(rel),
+				Mode:          entry.Mode,
+				Owner:         entry.Owner,
 			})
 			}
 			sort.Slice(entries, func(i int, j int) bool {
@@ -5694,6 +5801,22 @@ func runtimeErrorMessage(err error) string {
 		message = "Linux user is invalid for this runtime action."
 	}
 	return message
+}
+
+// fileModePattern matches 3 or 4 digit octal values like "644", "0755",
+// "700" etc. Used to validate file_mode form input before passing it
+// through the helper.
+var fileModePattern = regexp.MustCompile(`^0?[0-7]{3,4}$`)
+
+func validateFileMode(mode string) error {
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		return nil
+	}
+	if !fileModePattern.MatchString(mode) {
+		return errors.New("file mode must be a 3 or 4 digit octal value like 644 or 0755")
+	}
+	return nil
 }
 
 // editableSiteFileExtensions are file extensions the panel allows
@@ -7106,4 +7229,209 @@ func randomPassword(length int) (string, error) {
 		return encoded[:length], nil
 	}
 	return encoded, nil
+}
+
+// siteFileActionRequest is the body accepted by the AJAX file endpoint.
+type siteFileActionRequest struct {
+	SiteName string `json:"site_name"`
+	Action   string `json:"action"`
+	Path     string `json:"path"`
+	Dir      string `json:"dir"`
+	Name     string `json:"name"`
+	Content  string `json:"content"`
+	Mode     string `json:"mode"`
+}
+
+// handleSiteFileAction backs the Files tab's AJAX calls. It accepts
+// JSON, performs one of save / create / chmod / read, and returns a
+// JSON payload. Keeping it on a dedicated endpoint lets the browser
+// edit a file without reloading the full site details page.
+func (a *App) handleSiteFileAction(w http.ResponseWriter, r *http.Request) {
+	if a.store == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "error": "managed site storage is not configured"})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "method not allowed"})
+		return
+	}
+	defer r.Body.Close()
+	var req siteFileActionRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4*1024*1024)).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid json payload"})
+		return
+	}
+	siteName := strings.TrimSpace(req.SiteName)
+	if siteName == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "site_name is required"})
+		return
+	}
+	site, err := a.store.GetManagedSiteByName(r.Context(), siteName)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "managed site could not be found"})
+		return
+	}
+
+	switch strings.ToLower(strings.TrimSpace(req.Action)) {
+	case "save":
+		mode := strings.TrimSpace(req.Mode)
+		if err := validateFileMode(mode); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(site.RootDirectory, req.Path)
+		if resolveErr != nil || normalisedRel == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file path is invalid"})
+			return
+		}
+		if !isEditableSiteFile(normalisedRel) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "this file extension is not editable"})
+			return
+		}
+		if strings.HasSuffix(strings.ToLower(normalisedRel), ".json") {
+			trimmed := strings.TrimSpace(req.Content)
+			if trimmed != "" && !json.Valid([]byte(trimmed)) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "JSON syntax is invalid"})
+				return
+			}
+		}
+		_, callErr := a.helper.Call(r.Context(), "files.write_text", map[string]any{
+			"path":       absPath,
+			"content":    req.Content,
+			"owner":      site.OwnerLinuxUser,
+			"site_root":  site.RootDirectory,
+			"max_bytes":  2 * 1024 * 1024,
+			"create_bak": true,
+			"mode":       mode,
+		}, nil)
+		if callErr != nil {
+			a.recordAudit(r.Context(), "site.file.save", site.Name, "failure", map[string]any{"path": normalisedRel, "error": callErr.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": callErr.Error()})
+			return
+		}
+		a.recordAudit(r.Context(), "site.file.save", site.Name, "success", map[string]any{"path": normalisedRel, "bytes": len(req.Content), "mode": mode, "transport": "ajax"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":      true,
+			"message": normalisedRel + " saved",
+			"file": map[string]any{
+				"path": normalisedRel,
+				"mode": mode,
+				"size": len(req.Content),
+			},
+		})
+	case "create":
+		mode := strings.TrimSpace(req.Mode)
+		if mode == "" {
+			mode = "644"
+		}
+		if err := validateFileMode(mode); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		name := strings.TrimSpace(req.Name)
+		if name == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file name is required"})
+			return
+		}
+		if strings.ContainsAny(name, `/\:*?"<>|`) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file name contains invalid characters"})
+			return
+		}
+		rel := name
+		if strings.TrimSpace(req.Dir) != "" {
+			rel = filepath.Join(strings.TrimSpace(req.Dir), name)
+		}
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(site.RootDirectory, rel)
+		if resolveErr != nil || normalisedRel == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file path is invalid"})
+			return
+		}
+		if !isEditableSiteFile(normalisedRel) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "new files must use a supported text extension"})
+			return
+		}
+		_, callErr := a.helper.Call(r.Context(), "files.write_text", map[string]any{
+			"path":        absPath,
+			"content":     req.Content,
+			"owner":       site.OwnerLinuxUser,
+			"site_root":   site.RootDirectory,
+			"max_bytes":   2 * 1024 * 1024,
+			"mode":        mode,
+			"create_only": true,
+		}, nil)
+		if callErr != nil {
+			a.recordAudit(r.Context(), "site.file.create", site.Name, "failure", map[string]any{"path": normalisedRel, "error": callErr.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": callErr.Error()})
+			return
+		}
+		a.recordAudit(r.Context(), "site.file.create", site.Name, "success", map[string]any{"path": normalisedRel, "mode": mode, "transport": "ajax"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":      true,
+			"message": normalisedRel + " created",
+			"file": map[string]any{
+				"path": normalisedRel,
+				"mode": mode,
+				"size": len(req.Content),
+			},
+		})
+	case "chmod":
+		mode := strings.TrimSpace(req.Mode)
+		if err := validateFileMode(mode); err != nil || mode == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file mode is required for chmod"})
+			return
+		}
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(site.RootDirectory, req.Path)
+		if resolveErr != nil || normalisedRel == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file path is invalid"})
+			return
+		}
+		var current string
+		if _, readErr := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": absPath, "max_bytes": 2 * 1024 * 1024}, &current); readErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "could not read file to chmod: " + readErr.Error()})
+			return
+		}
+		_, callErr := a.helper.Call(r.Context(), "files.write_text", map[string]any{
+			"path":      absPath,
+			"content":   current,
+			"owner":     site.OwnerLinuxUser,
+			"site_root": site.RootDirectory,
+			"max_bytes": 2 * 1024 * 1024,
+			"mode":      mode,
+		}, nil)
+		if callErr != nil {
+			a.recordAudit(r.Context(), "site.file.chmod", site.Name, "failure", map[string]any{"path": normalisedRel, "mode": mode, "error": callErr.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": callErr.Error()})
+			return
+		}
+		a.recordAudit(r.Context(), "site.file.chmod", site.Name, "success", map[string]any{"path": normalisedRel, "mode": mode, "transport": "ajax"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":      true,
+			"message": normalisedRel + " permissions set to " + mode,
+			"file": map[string]any{
+				"path": normalisedRel,
+				"mode": mode,
+			},
+		})
+	case "read":
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(site.RootDirectory, req.Path)
+		if resolveErr != nil || normalisedRel == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file path is invalid"})
+			return
+		}
+		var content string
+		if _, readErr := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": absPath, "max_bytes": 262144}, &content); readErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": readErr.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true,
+			"file": map[string]any{
+				"path":     normalisedRel,
+				"content":  content,
+				"editable": isEditableSiteFile(normalisedRel),
+			},
+		})
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "unknown action"})
+	}
 }
