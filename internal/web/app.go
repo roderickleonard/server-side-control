@@ -54,10 +54,13 @@ type NavItem struct {
 }
 
 type SiteFileEntry struct {
-	Name         string
-	RelativePath string
-	IsDir        bool
-	Size         int64
+	Name          string
+	RelativePath  string
+	IsDir         bool
+	Size          int64
+	IsSymlink     bool
+	SymlinkTarget string
+	Editable      bool
 }
 
 type SiteNginxConfigEditor struct {

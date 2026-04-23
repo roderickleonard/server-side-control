@@ -1273,9 +1273,11 @@ func parentRelativePath(relPath string) string {
 }
 
 type helperSiteFileEntry struct {
-	Name  string `json:"name"`
-	IsDir bool   `json:"is_dir"`
-	Size  int64  `json:"size"`
+	Name          string `json:"name"`
+	IsDir         bool   `json:"is_dir"`
+	Size          int64  `json:"size"`
+	IsSymlink     bool   `json:"is_symlink"`
+	SymlinkTarget string `json:"symlink_target,omitempty"`
 }
 
 func (a *App) detectProjectMarkers(ctx context.Context, rootDirectory string) (bool, bool) {
@@ -5334,7 +5336,16 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		if _, err := a.helper.Call(r.Context(), "files.list_dir", map[string]string{"path": absPath}, &helperEntries); err == nil {
 			entries := make([]SiteFileEntry, 0, len(helperEntries))
 			for _, entry := range helperEntries {
-				entries = append(entries, SiteFileEntry{Name: entry.Name, RelativePath: filepath.Join(relPath, entry.Name), IsDir: entry.IsDir, Size: entry.Size})
+				rel := filepath.Join(relPath, entry.Name)
+			entries = append(entries, SiteFileEntry{
+				Name:          entry.Name,
+				RelativePath:  rel,
+				IsDir:         entry.IsDir,
+				Size:          entry.Size,
+				IsSymlink:     entry.IsSymlink,
+				SymlinkTarget: entry.SymlinkTarget,
+				Editable:      !entry.IsDir && isEditableSiteFile(rel),
+			})
 			}
 			sort.Slice(entries, func(i int, j int) bool {
 				if entries[i].IsDir != entries[j].IsDir {
@@ -5551,7 +5562,16 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 		if _, err := a.helper.Call(r.Context(), "files.list_dir", map[string]string{"path": absPath}, &helperEntries); err == nil {
 			entries := make([]SiteFileEntry, 0, len(helperEntries))
 			for _, entry := range helperEntries {
-				entries = append(entries, SiteFileEntry{Name: entry.Name, RelativePath: filepath.Join(relPath, entry.Name), IsDir: entry.IsDir, Size: entry.Size})
+				rel := filepath.Join(relPath, entry.Name)
+			entries = append(entries, SiteFileEntry{
+				Name:          entry.Name,
+				RelativePath:  rel,
+				IsDir:         entry.IsDir,
+				Size:          entry.Size,
+				IsSymlink:     entry.IsSymlink,
+				SymlinkTarget: entry.SymlinkTarget,
+				Editable:      !entry.IsDir && isEditableSiteFile(rel),
+			})
 			}
 			sort.Slice(entries, func(i int, j int) bool {
 				if entries[i].IsDir != entries[j].IsDir {

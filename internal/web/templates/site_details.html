@@ -1350,12 +1350,19 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
                 <tbody>
                     {{range .SiteBrowserEntries}}
                     <tr>
-                        <td>{{.Name}}</td>
+                        <td>
+                            {{if .IsDir}}<i class="bi bi-folder-fill" style="color:#f59e0b;margin-right:6px;"></i>{{else}}<i class="bi bi-file-earmark-text" style="color:var(--muted);margin-right:6px;"></i>{{end}}
+                            {{.Name}}
+                            {{if .IsSymlink}}<span class="badge subtle-badge" style="margin-left:6px;" title="Symlink → {{.SymlinkTarget}}">link</span>{{end}}
+                            {{if .Editable}}<span class="badge subtle-badge" style="margin-left:6px;background:rgba(29,111,232,0.10);color:var(--accent-strong);border-color:var(--accent-border);">editable</span>{{end}}
+                        </td>
                         <td>{{if .IsDir}}Directory{{else}}File{{end}}</td>
-                        <td>{{if .IsDir}}-{{else}}{{.Size}} bytes{{end}}</td>
+                        <td>{{if .IsDir}}-{{else}}{{formatBytes .Size}}{{end}}</td>
                         <td>
                             {{if .IsDir}}
                             <a class="table-link" href="/sites/details?name={{$.SelectedSite.Name}}&tab=files&path={{urlquery .RelativePath}}">Open</a>
+                            {{else if .Editable}}
+                            <a class="table-link" href="/sites/details?name={{$.SelectedSite.Name}}&tab=files&path={{urlquery $.SiteBrowserCurrentPath}}&file={{urlquery .RelativePath}}#dns-record-form" style="font-weight:600;color:var(--accent);">Edit</a>
                             {{else}}
                             <a class="table-link" href="/sites/details?name={{$.SelectedSite.Name}}&tab=files&path={{urlquery $.SiteBrowserCurrentPath}}&file={{urlquery .RelativePath}}">Read</a>
                             {{end}}

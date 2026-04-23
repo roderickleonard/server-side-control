@@ -1451,18 +1451,46 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			return
 		}
 		type dirEntry struct {
-			Name  string `json:"name"`
-			IsDir bool   `json:"is_dir"`
-			Size  int64  `json:"size"`
+			Name          string `json:"name"`
+			IsDir         bool   `json:"is_dir"`
+			Size          int64  `json:"size"`
+			IsSymlink     bool   `json:"is_symlink"`
+			SymlinkTarget string `json:"symlink_target,omitempty"`
 		}
 		items := make([]dirEntry, 0, len(entries))
 		for _, entry := range entries {
-			info, infoErr := entry.Info()
+			fullPath := filepath.Join(cleanPath, entry.Name())
+			lstatInfo, lstatErr := entry.Info()
+			isDir := entry.IsDir()
 			size := int64(0)
-			if infoErr == nil {
-				size = info.Size()
+			isSymlink := false
+			target := ""
+			if lstatErr == nil {
+				size = lstatInfo.Size()
+				if lstatInfo.Mode()&os.ModeSymlink != 0 {
+					isSymlink = true
+					if resolved, readErr := os.Readlink(fullPath); readErr == nil {
+						target = resolved
+					}
+					// Follow the symlink to determine the real type and
+					// size; this is what the operator actually wants
+					// when they click on the entry.
+					if realInfo, statErr := os.Stat(fullPath); statErr == nil {
+						isDir = realInfo.IsDir()
+						size = realInfo.Size()
+					} else {
+						// Broken symlink: keep the type we had, mark zero size.
+						size = 0
+					}
+				}
 			}
-			items = append(items, dirEntry{Name: entry.Name(), IsDir: entry.IsDir(), Size: size})
+			items = append(items, dirEntry{
+				Name:          entry.Name(),
+				IsDir:         isDir,
+				Size:          size,
+				IsSymlink:     isSymlink,
+				SymlinkTarget: target,
+			})
 		}
 		writeSuccess(items, "", nil)
 	case "files.clear_directory":
