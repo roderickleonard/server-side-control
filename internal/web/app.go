@@ -158,6 +158,7 @@ type TemplateData struct {
 	DNSRecordValues                   string
 	DNSRecordEditOldName              string
 	DNSRecordEditOldType              string
+	DNSEditing                        bool
 	DNSError                          string
 	AWSAccessKeyID                    string
 	AWSSecretAccessKey                string

@@ -3100,10 +3100,12 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodGet {
 		data := TemplateData{
-			SiteDetailTab: firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("tab")), "overview"),
-			CronFilter:    firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("cron_filter")), "site"),
-			CronEditID:    strings.TrimSpace(r.URL.Query().Get("cron_edit")),
-			CronLogID:     strings.TrimSpace(r.URL.Query().Get("cron_log")),
+			SiteDetailTab:        firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("tab")), "overview"),
+			CronFilter:           firstNonEmpty(strings.TrimSpace(r.URL.Query().Get("cron_filter")), "site"),
+			CronEditID:           strings.TrimSpace(r.URL.Query().Get("cron_edit")),
+			CronLogID:            strings.TrimSpace(r.URL.Query().Get("cron_log")),
+			DNSRecordEditOldName: strings.TrimSpace(r.URL.Query().Get("dns_edit_name")),
+			DNSRecordEditOldType: strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("dns_edit_type"))),
 		}
 		if statusErr != nil {
 			data.RequestError = "Repository status could not be inspected: " + statusErr.Error()
@@ -5035,6 +5037,26 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 				data.DNSRecords = records
 			} else if data.DNSError == "" {
 				data.DNSError = "Could not load DNS records: " + err.Error()
+			}
+			if data.DNSRecordEditOldName != "" && data.DNSRecordEditOldType != "" {
+				for _, record := range data.DNSRecords {
+					if strings.EqualFold(record.Name, data.DNSRecordEditOldName) && strings.EqualFold(record.Type, data.DNSRecordEditOldType) {
+						data.DNSEditing = true
+						if data.DNSRecordName == "" {
+							data.DNSRecordName = record.Name
+						}
+						if data.DNSRecordType == "" {
+							data.DNSRecordType = record.Type
+						}
+						if data.DNSRecordTTL == "" {
+							data.DNSRecordTTL = strconv.FormatInt(record.TTL, 10)
+						}
+						if data.DNSRecordValues == "" {
+							data.DNSRecordValues = strings.Join(record.Values, "\n")
+						}
+						break
+					}
+				}
 			}
 		}
 	}

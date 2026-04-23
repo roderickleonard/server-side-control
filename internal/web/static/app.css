@@ -2489,3 +2489,120 @@ body.login-page {
     display: block;
 }
 
+
+
+/* DNS records list */
+.dns-record-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.dns-record-row {
+    display: grid;
+    grid-template-columns: 80px minmax(180px, 1.2fr) minmax(220px, 2fr) 90px auto;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.dns-record-row:hover {
+    border-color: var(--accent-border);
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+}
+
+.dns-record-row.is-editing {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.dns-record-type {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-align: center;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--surface-alt);
+    color: var(--ink-soft);
+    border: 1px solid var(--border-light);
+}
+
+.dns-record-type-A,
+.dns-record-type-AAAA { background: rgba(29, 111, 232, 0.10); color: var(--accent-strong); border-color: var(--accent-border); }
+.dns-record-type-CNAME { background: rgba(168, 85, 247, 0.10); color: #6b21a8; border-color: rgba(168, 85, 247, 0.25); }
+.dns-record-type-MX { background: rgba(234, 88, 12, 0.10); color: #9a3412; border-color: rgba(234, 88, 12, 0.25); }
+.dns-record-type-TXT { background: rgba(16, 185, 129, 0.10); color: #047857; border-color: rgba(16, 185, 129, 0.25); }
+.dns-record-type-NS { background: rgba(100, 116, 139, 0.12); color: #334155; border-color: rgba(100, 116, 139, 0.25); }
+.dns-record-type-SRV,
+.dns-record-type-PTR,
+.dns-record-type-CAA { background: rgba(245, 158, 11, 0.10); color: #92400e; border-color: rgba(245, 158, 11, 0.25); }
+
+.dns-record-name {
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dns-record-name code {
+    background: transparent;
+    padding: 0;
+    font-size: 13px;
+    color: var(--ink);
+}
+
+.dns-record-values {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    font-size: 12px;
+}
+
+.dns-record-value code {
+    background: var(--surface-alt);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dns-record-ttl {
+    font-size: 11px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.dns-record-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+    .dns-record-row {
+        grid-template-columns: 70px 1fr;
+        grid-template-areas:
+            "type name"
+            "type values"
+            "ttl actions";
+        gap: 6px 12px;
+    }
+    .dns-record-type { grid-area: type; align-self: start; }
+    .dns-record-name { grid-area: name; }
+    .dns-record-values { grid-area: values; }
+    .dns-record-ttl { grid-area: ttl; text-align: left; }
+    .dns-record-actions { grid-area: actions; }
+}
