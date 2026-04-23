@@ -324,6 +324,8 @@ type TemplateData struct {
 	SiteBrowserSelectedFile           string
 	SiteBrowserFileContent            string
 	SiteBrowserFileNotice             string
+	SiteBrowserFileEditable           bool
+	SiteBrowserFileEdited             string
 	SiteBrowserEntries                []SiteFileEntry
 	LaravelExtraWritablePaths         string
 	LaravelPermissionCommand          string

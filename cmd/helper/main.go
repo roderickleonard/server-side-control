@@ -1345,6 +1345,93 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			return
 		}
 		writeSuccess(content, "", nil)
+	case "files.write_text":
+		var input struct {
+			Path        string `json:"path"`
+			Content     string `json:"content"`
+			Owner       string `json:"owner"`
+			SiteRoot    string `json:"site_root"`
+			MaxBytes    int    `json:"max_bytes"`
+			CreateBak   bool   `json:"create_bak"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		cleanPath := filepath.Clean(strings.TrimSpace(input.Path))
+		siteRoot := filepath.Clean(strings.TrimSpace(input.SiteRoot))
+		if !filepath.IsAbs(cleanPath) || !filepath.IsAbs(siteRoot) {
+			writeFailure(errors.New("path and site_root must be absolute"), "")
+			return
+		}
+		// Sandbox: cleanPath must live under siteRoot. Reject paths
+		// that climb out via .. or symlinks.
+		rel, err := filepath.Rel(siteRoot, cleanPath)
+		if err != nil || strings.HasPrefix(rel, "..") || rel == "." {
+			writeFailure(errors.New("path must live inside the site root"), "")
+			return
+		}
+		// Reject hidden/sensitive sub-paths that should not be
+		// edited by the panel as a generic file editor.
+		if strings.Contains(rel, ".git/") || strings.HasPrefix(rel, ".git") {
+			writeFailure(errors.New("git internals cannot be edited from the file editor"), "")
+			return
+		}
+		// Refuse if the existing target is a directory or symlink.
+		if info, statErr := os.Lstat(cleanPath); statErr == nil {
+			if info.IsDir() {
+				writeFailure(errors.New("path is a directory"), "")
+				return
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				writeFailure(errors.New("symlinks cannot be edited from the file editor"), "")
+				return
+			}
+		}
+		ownerPat := regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+		if !ownerPat.MatchString(input.Owner) {
+			writeFailure(errors.New("invalid owner username"), "")
+			return
+		}
+		u, err := user.Lookup(input.Owner)
+		if err != nil {
+			writeFailure(fmt.Errorf("user not found: %w", err), "")
+			return
+		}
+		uid, _ := strconv.Atoi(u.Uid)
+		gid, _ := strconv.Atoi(u.Gid)
+		maxBytes := input.MaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2 * 1024 * 1024 // 2 MB hard cap
+		}
+		if len(input.Content) > maxBytes {
+			writeFailure(fmt.Errorf("content exceeds %d byte limit", maxBytes), "")
+			return
+		}
+		// Best-effort backup of the existing file before overwrite.
+		if input.CreateBak {
+			if existing, readErr := os.ReadFile(cleanPath); readErr == nil {
+				bakPath := cleanPath + ".bak"
+				if writeErr := os.WriteFile(bakPath, existing, 0o600); writeErr == nil {
+					_ = os.Chown(bakPath, uid, gid)
+				}
+			}
+		}
+		// Preserve existing file mode if the file exists, otherwise
+		// fall back to 0o644 for new files.
+		mode := os.FileMode(0o644)
+		if info, statErr := os.Stat(cleanPath); statErr == nil {
+			mode = info.Mode().Perm()
+		}
+		if err := os.WriteFile(cleanPath, []byte(input.Content), mode); err != nil {
+			writeFailure(fmt.Errorf("write file: %w", err), "")
+			return
+		}
+		if err := os.Chown(cleanPath, uid, gid); err != nil {
+			writeFailure(fmt.Errorf("chown file: %w", err), "")
+			return
+		}
+		writeSuccess(nil, "", nil)
 	case "files.list_dir":
 		var input struct {
 			Path string `json:"path"`

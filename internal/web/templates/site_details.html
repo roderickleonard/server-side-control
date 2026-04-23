@@ -1372,17 +1372,38 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
     <article class="panel">
         <div class="section-head">
             <div>
-                <span class="eyebrow">File preview</span>
+                <span class="eyebrow">{{if .SiteBrowserFileEditable}}File editor{{else}}File preview{{end}}</span>
                 <h3>{{if .SiteBrowserSelectedFile}}{{.SiteBrowserSelectedFile}}{{else}}Select a file{{end}}</h3>
             </div>
+            {{if .SiteBrowserFileEditable}}
+            <span class="badge subtle-badge">Editable</span>
+            {{else if .SiteBrowserSelectedFile}}
+            <span class="badge subtle-badge">Read-only</span>
+            {{end}}
         </div>
         {{if .SiteBrowserFileNotice}}
         <p class="muted details-note">{{.SiteBrowserFileNotice}}</p>
         {{end}}
         {{if .SiteBrowserSelectedFile}}
-        <pre class="command-output">{{.SiteBrowserFileContent}}</pre>
+            {{if .SiteBrowserFileEditable}}
+            <form method="post" class="stack-form compact-form" style="margin-top:6px;">
+                <input type="hidden" name="details_action" value="save_site_file">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <input type="hidden" name="file_path" value="{{.SiteBrowserSelectedFile}}">
+                <textarea name="file_content" class="file-editor" rows="22" spellcheck="false" autocomplete="off">{{.SiteBrowserFileContent}}</textarea>
+                <div class="form-actions" style="justify-content:space-between;align-items:center;gap:12px;">
+                    <small class="muted details-note" style="margin:0;">Saving keeps a <code>.bak</code> copy next to the file. JSON files are validated before writing. Max 2 MB.</small>
+                    <div style="display:flex;gap:8px;">
+                        <a class="btn btn-sm btn-outline-secondary" href="/sites/details?name={{.SelectedSite.Name}}&tab=files&path={{urlquery .SiteBrowserCurrentPath}}">Discard</a>
+                        <button type="submit"><i class="bi bi-save"></i> Save file</button>
+                    </div>
+                </div>
+            </form>
+            {{else}}
+            <pre class="command-output">{{.SiteBrowserFileContent}}</pre>
+            {{end}}
         {{else}}
-        <p class="muted details-note">Choose a file from the left side to read its contents.</p>
+        <p class="muted details-note">Choose a file from the left side to read or edit its contents.</p>
         {{end}}
     </article>
 </div>

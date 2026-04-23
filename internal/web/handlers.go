@@ -894,6 +894,8 @@ func siteDetailTabForAction(action string) string {
 		return "backups"
 	case "assign_database", "assign_linux_user", "save_laravel_extra_writable_paths", "edit_env", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "create_cron_job", "update_cron_job", "delete_cron_job", "clear_cron_log", "rotate_cron_log":
 		return "settings"
+	case "save_site_file":
+		return "files"
 	default:
 		return "overview"
 	}
@@ -4168,6 +4170,69 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		successMessage = "DNS record deleted."
 	case "refresh_dns_records":
 		// no-op; data is reloaded in renderSiteDetails after the switch
+	case "save_site_file":
+		relPath := strings.TrimSpace(r.FormValue("file_path"))
+		if relPath == "" {
+			data.RequestError = "Select a file from the Files tab to edit."
+			break
+		}
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(site.RootDirectory, relPath)
+		if resolveErr != nil {
+			data.RequestError = "File path is invalid: " + resolveErr.Error()
+			break
+		}
+		if !isEditableSiteFile(normalisedRel) {
+			data.RequestError = "This file extension is not allowed in the panel editor."
+			break
+		}
+		content := r.FormValue("file_content")
+		if len(content) > 2*1024*1024 {
+			data.RequestError = "File content exceeds the 2 MB editor limit."
+			break
+		}
+		// Optional JSON validation: if the file looks like JSON,
+		// reject obviously broken payloads so the operator gets a
+		// fast feedback loop instead of waiting for the app to
+		// blow up later.
+		if strings.HasSuffix(strings.ToLower(normalisedRel), ".json") {
+			trimmed := strings.TrimSpace(content)
+			if trimmed != "" {
+				if !json.Valid([]byte(trimmed)) {
+					data.RequestError = "JSON file is not valid; fix the syntax before saving."
+					data.SiteBrowserSelectedFile = normalisedRel
+					data.SiteBrowserFileContent = content
+					data.SiteBrowserFileEditable = true
+					break
+				}
+			}
+		}
+		_, actionErr = a.helper.Call(r.Context(), "files.write_text", map[string]any{
+			"path":       absPath,
+			"content":    content,
+			"owner":      site.OwnerLinuxUser,
+			"site_root":  site.RootDirectory,
+			"max_bytes":  2 * 1024 * 1024,
+			"create_bak": true,
+		}, nil)
+		if actionErr != nil {
+			data.RequestError = "Could not save the file: " + actionErr.Error()
+			a.recordAudit(r.Context(), "site.file.save", site.Name, "failure", map[string]any{"path": normalisedRel, "error": actionErr.Error()})
+			break
+		}
+		// Re-read so the textarea matches what's now on disk and
+		// the preview tab stays in sync.
+		var saved string
+		if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": absPath, "max_bytes": 262144}, &saved); err == nil {
+			data.SiteBrowserFileContent = saved
+		} else {
+			data.SiteBrowserFileContent = content
+		}
+		data.SiteBrowserSelectedFile = normalisedRel
+		data.SiteBrowserCurrentPath = parentRelativePath(normalisedRel)
+		data.SiteBrowserParentPath = parentRelativePath(data.SiteBrowserCurrentPath)
+		data.SiteBrowserFileEditable = true
+		a.recordAudit(r.Context(), "site.file.save", site.Name, "success", map[string]any{"path": normalisedRel, "bytes": len(content)})
+		successMessage = normalisedRel + " saved successfully (a .bak copy was kept next to it)."
 	case "save_backup_config":
 		bucket := strings.TrimSpace(data.BackupS3Bucket)
 		region := strings.TrimSpace(data.BackupS3Region)
@@ -5281,14 +5346,25 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 		}
 	}
 	selectedFile := strings.TrimSpace(r.URL.Query().Get("file"))
+	if data.SiteBrowserSelectedFile != "" && selectedFile == "" {
+		// keep the file pre-filled by the action handler (e.g. after
+		// save_site_file) so the editor stays open on the same file.
+		selectedFile = data.SiteBrowserSelectedFile
+	}
 	if absFile, relFile, err := resolveSiteBrowserPath(site.RootDirectory, selectedFile); err == nil && relFile != "" {
 		data.SiteBrowserSelectedFile = relFile
-		var content string
-		if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": absFile, "max_bytes": 262144}, &content); err == nil {
-			data.SiteBrowserFileContent = content
-			if strings.Contains(content, "[truncated after ") {
-				data.SiteBrowserFileNotice = "Only the first 256 KB is shown."
+		if data.SiteBrowserFileContent == "" {
+			var content string
+			if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": absFile, "max_bytes": 262144}, &content); err == nil {
+				data.SiteBrowserFileContent = content
+				if strings.Contains(content, "[truncated after ") {
+					data.SiteBrowserFileNotice = "Only the first 256 KB is shown."
+				}
 			}
+		}
+		data.SiteBrowserFileEditable = isEditableSiteFile(relFile)
+		if !data.SiteBrowserFileEditable && data.SiteBrowserFileNotice == "" {
+			data.SiteBrowserFileNotice = "This file type is read-only in the panel editor."
 		}
 	}
 	if data.ProjectHasArtisan {
@@ -5598,6 +5674,85 @@ func runtimeErrorMessage(err error) string {
 		message = "Linux user is invalid for this runtime action."
 	}
 	return message
+}
+
+// editableSiteFileExtensions are file extensions the panel allows
+// editing through the Files tab. The list is intentionally narrow
+// to text-like formats so we never let an operator overwrite a
+// binary asset with a text payload by accident. Extensions are
+// matched case-insensitively.
+var editableSiteFileExtensions = map[string]struct{}{
+	".json":       {},
+	".js":         {},
+	".mjs":        {},
+	".cjs":        {},
+	".ts":         {},
+	".tsx":        {},
+	".jsx":        {},
+	".css":        {},
+	".scss":       {},
+	".sass":       {},
+	".html":       {},
+	".htm":        {},
+	".vue":        {},
+	".svelte":     {},
+	".php":        {},
+	".blade.php":  {},
+	".twig":       {},
+	".py":         {},
+	".rb":         {},
+	".go":         {},
+	".sh":         {},
+	".bash":       {},
+	".zsh":        {},
+	".env":        {},
+	".env.local":  {},
+	".env.example": {},
+	".env.dist":   {},
+	".yml":        {},
+	".yaml":       {},
+	".toml":       {},
+	".ini":        {},
+	".conf":       {},
+	".cnf":        {},
+	".xml":        {},
+	".md":         {},
+	".markdown":   {},
+	".txt":        {},
+	".log":        {},
+	".gitignore":  {},
+	".dockerignore": {},
+	".editorconfig": {},
+	".lock":       {},
+	".sql":        {},
+	".csv":        {},
+	".tsv":        {},
+}
+
+// isEditableSiteFile returns true if the panel should expose the
+// file as editable in the Files tab. Hidden git internals and
+// non-text extensions are rejected.
+func isEditableSiteFile(relPath string) bool {
+	if relPath == "" {
+		return false
+	}
+	clean := strings.ToLower(strings.TrimSpace(relPath))
+	if strings.HasPrefix(clean, ".git/") || clean == ".git" {
+		return false
+	}
+	base := strings.ToLower(filepath.Base(clean))
+	if _, ok := editableSiteFileExtensions["."+base]; ok {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(base))
+	if ext == "" {
+		// dotfiles without extension (.env, .gitignore) handled above
+		return false
+	}
+	if _, ok := editableSiteFileExtensions[ext]; ok {
+		return true
+	}
+	return false
 }
 
 func (a *App) buildBackupSpec(site domain.ManagedSite) system.SiteBackupSpec {

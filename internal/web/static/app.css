@@ -2815,3 +2815,28 @@ body.login-page {
         gap: 8px;
     }
 }
+
+/* Site files editor */
+.file-editor {
+    width: 100%;
+    min-height: 320px;
+    padding: 12px 14px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #e2e8f4;
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+    resize: vertical;
+    tab-size: 2;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
+}
+
+.file-editor:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
