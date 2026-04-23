@@ -3,7 +3,6 @@ package system
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
@@ -333,17 +332,25 @@ func (m *route53DNSManager) do(ctx context.Context, method string, path string, 
 	}
 	requestURL := "https://" + route53Host + path
 	if len(query) > 0 {
-		requestURL = requestURL + "?" + canonicalQueryString(query)
+		requestURL = requestURL + "?" + CanonicalAWSQueryString(query)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, requestURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	req.Host = route53Host
-	now := time.Now().UTC()
-	if err := signRoute53Request(req, m.accessKeyID, m.secretAccessKey, body, now); err != nil {
-		return nil, err
+	if method == http.MethodPost || method == http.MethodPut {
+		req.Header.Set("Content-Type", "application/xml")
 	}
+	bodyHashBytes := sha256.Sum256(body)
+	SignAWSV4(req, AWSV4SignSpec{
+		AccessKeyID:     m.accessKeyID,
+		SecretAccessKey: m.secretAccessKey,
+		Region:          route53Region,
+		Service:         route53Service,
+		Now:             time.Now().UTC(),
+		BodyHashHex:     hex.EncodeToString(bodyHashBytes[:]),
+	})
 	resp, err := m.httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -391,95 +398,3 @@ func parseRoute53Error(status int, body []byte) error {
 	return fmt.Errorf("route53 request failed with HTTP %d: %s", status, trimmed)
 }
 
-func canonicalQueryString(query url.Values) string {
-	keys := make([]string, 0, len(query))
-	for key := range query {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		values := append([]string(nil), query[key]...)
-		sort.Strings(values)
-		for _, value := range values {
-			parts = append(parts, encodeAWSV4(key)+"="+encodeAWSV4(value))
-		}
-	}
-	return strings.Join(parts, "&")
-}
-
-func encodeAWSV4(value string) string {
-	var buffer bytes.Buffer
-	for _, b := range []byte(value) {
-		switch {
-		case (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-' || b == '_' || b == '.' || b == '~':
-			buffer.WriteByte(b)
-		default:
-			fmt.Fprintf(&buffer, "%%%02X", b)
-		}
-	}
-	return buffer.String()
-}
-
-func signRoute53Request(req *http.Request, accessKeyID string, secretAccessKey string, body []byte, now time.Time) error {
-	const algorithm = "AWS4-HMAC-SHA256"
-	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
-
-	req.Header.Set("Host", route53Host)
-	req.Header.Set("X-Amz-Date", amzDate)
-	if req.Method == http.MethodPost || req.Method == http.MethodPut {
-		req.Header.Set("Content-Type", "application/xml")
-	}
-
-	bodyHashBytes := sha256.Sum256(body)
-	bodyHash := hex.EncodeToString(bodyHashBytes[:])
-	req.Header.Set("X-Amz-Content-Sha256", bodyHash)
-
-	signedHeaders := []string{"host", "x-amz-content-sha256", "x-amz-date"}
-	headerLines := []string{
-		"host:" + route53Host,
-		"x-amz-content-sha256:" + bodyHash,
-		"x-amz-date:" + amzDate,
-	}
-	canonicalHeaders := strings.Join(headerLines, "\n") + "\n"
-	signedHeadersJoined := strings.Join(signedHeaders, ";")
-
-	canonicalQuery := req.URL.RawQuery
-	canonicalRequest := strings.Join([]string{
-		req.Method,
-		req.URL.Path,
-		canonicalQuery,
-		canonicalHeaders,
-		signedHeadersJoined,
-		bodyHash,
-	}, "\n")
-
-	hashedCanonicalBytes := sha256.Sum256([]byte(canonicalRequest))
-	hashedCanonical := hex.EncodeToString(hashedCanonicalBytes[:])
-
-	credentialScope := strings.Join([]string{dateStamp, route53Region, route53Service, "aws4_request"}, "/")
-	stringToSign := strings.Join([]string{algorithm, amzDate, credentialScope, hashedCanonical}, "\n")
-
-	kDate := hmacSHA256([]byte("AWS4"+secretAccessKey), dateStamp)
-	kRegion := hmacSHA256(kDate, route53Region)
-	kService := hmacSHA256(kRegion, route53Service)
-	kSigning := hmacSHA256(kService, "aws4_request")
-	signature := hex.EncodeToString(hmacSHA256(kSigning, stringToSign))
-
-	authorization := fmt.Sprintf("%s Credential=%s/%s, SignedHeaders=%s, Signature=%s",
-		algorithm,
-		accessKeyID,
-		credentialScope,
-		signedHeadersJoined,
-		signature,
-	)
-	req.Header.Set("Authorization", authorization)
-	return nil
-}
-
-func hmacSHA256(key []byte, data string) []byte {
-	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte(data))
-	return mac.Sum(nil)
-}

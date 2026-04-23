@@ -52,6 +52,7 @@
             <button type="button" class="site-tab-btn" data-tab="files">Files</button>
             <button type="button" class="site-tab-btn" data-tab="domains">Domains</button>
             <button type="button" class="site-tab-btn" data-tab="dns">DNS</button>
+            <button type="button" class="site-tab-btn" data-tab="backups">Backups</button>
             <button type="button" class="site-tab-btn" data-tab="settings">Settings</button>
         </div>
     </article>
@@ -298,6 +299,116 @@
         {{else}}
         <div class="empty-state" style="padding:24px;text-align:center;border:1px dashed var(--border);border-radius:8px;margin-top:16px;">
             <p class="muted" style="margin:0;">Pick a Route 53 hosted zone above to start managing DNS records for this site from here.</p>
+        </div>
+        {{end}}
+        {{end}}
+    </article>
+</div>
+
+<div class="grid single" data-site-tab="backups">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Amazon S3</span>
+                <h3><i class="bi bi-archive" style="color:var(--accent);margin-right:6px;"></i>Site backups</h3>
+            </div>
+            <span class="badge subtle-badge">
+                {{if eq .SelectedSite.BackupScheduleHours 0}}Disabled{{else if eq .SelectedSite.BackupScheduleHours 1}}Hourly{{else if eq .SelectedSite.BackupScheduleHours 6}}Every 6 hours{{else if eq .SelectedSite.BackupScheduleHours 24}}Daily{{else if eq .SelectedSite.BackupScheduleHours 168}}Weekly{{else}}Every {{.SelectedSite.BackupScheduleHours}}h{{end}}
+            </span>
+        </div>
+
+        {{if not .AWSConfigured}}
+        <p class="muted details-note">AWS credentials are not configured. Add <code>PANEL_AWS_ACCESS_KEY_ID</code>, <code>PANEL_AWS_SECRET_ACCESS_KEY</code>, and <code>PANEL_AWS_REGION</code> under <a href="/settings">Settings</a> first. The same credentials are used for both Route 53 and S3.</p>
+        {{else}}
+        <p class="muted details-note">The panel runs <code>tar czf</code> on <code>{{.SelectedSite.RootDirectory}}</code>{{if .SelectedSite.DatabaseName}} and <code>mysqldump | gzip</code> on database <code>{{.SelectedSite.DatabaseName}}</code>{{end}}, then uploads everything to <code>s3://{{if .SelectedSite.BackupS3Bucket}}{{.SelectedSite.BackupS3Bucket}}{{else}}&lt;bucket&gt;{{end}}/{{if .SelectedSite.BackupS3Prefix}}{{.SelectedSite.BackupS3Prefix}}{{else}}sites/{{.SelectedSite.Name}}{{end}}/&lt;timestamp&gt;/</code>.</p>
+
+        <h4 style="margin-top:18px;">Configuration</h4>
+        <form method="post" class="stack-form compact-form" style="margin-top:6px;">
+            <input type="hidden" name="details_action" value="save_backup_config">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>S3 bucket</span>
+                    <input type="text" name="backup_s3_bucket" value="{{.BackupS3Bucket}}" placeholder="my-server-side-control-backups" required>
+                    <small class="muted details-note">Must already exist in your AWS account; the panel only puts/lists/deletes objects.</small>
+                </label>
+                <label>
+                    <span>Key prefix (optional)</span>
+                    <input type="text" name="backup_s3_prefix" value="{{.BackupS3Prefix}}" placeholder="sites/{{.SelectedSite.Name}}">
+                    <small class="muted details-note">Defaults to <code>sites/{{.SelectedSite.Name}}/</code>.</small>
+                </label>
+                <label>
+                    <span>Schedule</span>
+                    <select name="backup_schedule_hours">
+                        <option value="0" {{if eq .BackupScheduleHours 0}}selected{{end}}>Disabled (manual only)</option>
+                        <option value="1" {{if eq .BackupScheduleHours 1}}selected{{end}}>Hourly</option>
+                        <option value="6" {{if eq .BackupScheduleHours 6}}selected{{end}}>Every 6 hours</option>
+                        <option value="12" {{if eq .BackupScheduleHours 12}}selected{{end}}>Every 12 hours</option>
+                        <option value="24" {{if eq .BackupScheduleHours 24}}selected{{end}}>Daily</option>
+                        <option value="168" {{if eq .BackupScheduleHours 168}}selected{{end}}>Weekly</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Retention (number of backups to keep)</span>
+                    <input type="number" name="backup_retention_count" value="{{.BackupRetentionCount}}" min="0" max="365">
+                    <small class="muted details-note">Older S3 timestamp folders are pruned after each successful backup. Set to 0 to keep everything.</small>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Save backup configuration</button>
+            </div>
+        </form>
+
+        <h4 style="margin-top:24px;">Status</h4>
+        <div class="info-grid" style="margin-top:6px;">
+            <div><strong>Last run</strong><span>{{if .SelectedSite.BackupLastRunAt}}{{.SelectedSite.BackupLastRunAt.Format "2006-01-02 15:04:05"}}{{else}}Never{{end}}</span></div>
+            <div><strong>Last status</strong><span>{{if eq .SelectedSite.BackupLastStatus "success"}}<span class="status-pill success">Success</span>{{else if eq .SelectedSite.BackupLastStatus "failure"}}<span class="status-pill danger">Failure</span>{{else}}<span class="status-pill unknown">{{if .SelectedSite.BackupLastStatus}}{{.SelectedSite.BackupLastStatus}}{{else}}-{{end}}</span>{{end}}</span></div>
+            <div><strong>Bucket</strong><span>{{if .SelectedSite.BackupS3Bucket}}<code>{{.SelectedSite.BackupS3Bucket}}</code>{{else}}-{{end}}</span></div>
+            <div><strong>Region</strong><span>{{.AWSRegion}}</span></div>
+        </div>
+        {{if .SelectedSite.BackupLastMessage}}
+        <p class="muted details-note" style="margin-top:6px;">Last message: <code>{{.SelectedSite.BackupLastMessage}}</code></p>
+        {{end}}
+
+        <div class="form-actions" style="margin-top:14px;justify-content:flex-start;gap:8px;">
+            <form method="post" class="inline-form" onsubmit="return confirm('Run a backup now? Large sites may take several minutes.');">
+                <input type="hidden" name="details_action" value="run_backup_now">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <button type="submit"><i class="bi bi-cloud-arrow-up"></i> Run backup now</button>
+            </form>
+        </div>
+
+        <h4 style="margin-top:24px;">Recent backups</h4>
+        {{if .BackupHistory}}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Started</th>
+                    <th>Trigger</th>
+                    <th>Files</th>
+                    <th>Database</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .BackupHistory}}
+                <tr>
+                    <td>{{.StartedAt.Format "2006-01-02 15:04:05"}}</td>
+                    <td><span class="badge subtle-badge">{{.TriggeredBy}}</span></td>
+                    <td>{{if .FilesKey}}<code>{{.FilesKey}}</code><br><small class="muted">{{.FilesSizeBytes}} B</small>{{else}}<span class="muted">-</span>{{end}}</td>
+                    <td>{{if .DatabaseKey}}<code>{{.DatabaseKey}}</code><br><small class="muted">{{.DatabaseSizeBytes}} B</small>{{else}}<span class="muted">-</span>{{end}}</td>
+                    <td>
+                        {{if eq .Status "success"}}<span class="status-pill success">Success</span>
+                        {{else if eq .Status "failure"}}<span class="status-pill danger" title="{{.Message}}">Failure</span>
+                        {{else}}<span class="status-pill unknown">{{.Status}}</span>{{end}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <div class="empty-state" style="padding:18px;text-align:center;border:1px dashed var(--border);border-radius:8px;margin-top:6px;">
+            <p class="muted" style="margin:0;">No backups recorded yet. Run one now or wait for the schedule to fire.</p>
         </div>
         {{end}}
         {{end}}

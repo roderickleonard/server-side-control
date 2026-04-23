@@ -164,6 +164,12 @@ type TemplateData struct {
 	AWSSecretAccessKey                string
 	AWSRegion                         string
 	AWSConfigured                     bool
+	BackupS3Bucket                    string
+	BackupS3Prefix                    string
+	BackupScheduleHours               int
+	BackupRetentionCount              int
+	BackupHistory                     []domain.SiteBackup
+	BackupRunning                     bool
 	AutoDeployEnabled                 bool
 	AutoDeployBranch                  string
 	AutoDeploySecret                  string
@@ -380,6 +386,44 @@ func (a *App) Handler() http.Handler {
 func (a *App) StartBackgroundTasks(ctx context.Context) {
 	a.loginRateLimiter.StartCleanup(ctx, 5*time.Minute)
 	a.startDatabaseBackupCleanup(ctx)
+	a.startSiteBackupScheduler(ctx)
+}
+
+// startSiteBackupScheduler runs an interval ticker that asks the store
+// which sites are due for a backup and triggers each one in sequence.
+// Failures are logged and recorded; we never let one site's failure
+// stop the loop.
+func (a *App) startSiteBackupScheduler(ctx context.Context) {
+	if a.store == nil {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		// initial delay to let the rest of the app warm up
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Minute):
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			due, err := a.store.ListSitesDueForBackup(ctx)
+			if err != nil {
+				a.logger.Warn("backup scheduler: list due sites", "error", err)
+				continue
+			}
+			for _, site := range due {
+				if _, runErr := a.runSiteBackup(ctx, site, "schedule"); runErr != nil {
+					a.logger.Warn("scheduled backup failed", "site", site.Name, "error", runErr)
+				}
+			}
+		}
+	}()
 }
 
 func (a *App) registerRoutes() {

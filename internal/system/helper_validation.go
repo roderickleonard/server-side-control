@@ -115,6 +115,8 @@ var allowedHelperActions = map[string]struct{}{
 	"ssh_account.add_key":           {},
 	"ssh_account.remove_key":        {},
 	"ssh_account.set_password":      {},
+	"backup.run_site":               {},
+	"backup.prune_site":             {},
 }
 
 func ValidateHelperAction(action string) error {

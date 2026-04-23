@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -1421,6 +1422,25 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		err := system.NewSSHAccountManager().SetPassword(spec)
 		writeSuccess(nil, "", err)
+	case "backup.run_site":
+		var spec system.SiteBackupSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		result, err := system.RunSiteBackup(context.Background(), spec, io.Discard)
+		writeSuccess(result, "", err)
+	case "backup.prune_site":
+		var input struct {
+			Spec system.SiteBackupSpec `json:"spec"`
+			Keep int                   `json:"keep"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		deleted, err := system.PruneSiteBackups(context.Background(), input.Spec, input.Keep)
+		writeSuccess(deleted, "", err)
 	default:
 		writeFailure(fmt.Errorf("unknown helper action: %s", request.Action), "")
 	}

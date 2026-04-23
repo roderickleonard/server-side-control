@@ -102,6 +102,14 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("ensure managed_sites route53 columns: %w", err)
 	}
 
+	if err := s.ensureManagedSitesBackupColumns(ctx); err != nil {
+		return fmt.Errorf("ensure managed_sites backup columns: %w", err)
+	}
+
+	if err := s.ensureSiteBackupsTable(ctx); err != nil {
+		return fmt.Errorf("ensure site_backups table: %w", err)
+	}
+
 	if err := s.ensureSiteRuntimeCommandsTable(ctx); err != nil {
 		return fmt.Errorf("ensure site_runtime_commands table: %w", err)
 	}
@@ -469,6 +477,73 @@ func (s *Store) ensureManagedSitesRoute53Columns(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (s *Store) ensureManagedSitesBackupColumns(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	columns := []struct {
+		name      string
+		statement string
+	}{
+		{name: "backup_s3_bucket", statement: `ALTER TABLE managed_sites ADD COLUMN backup_s3_bucket VARCHAR(191) NOT NULL DEFAULT '' AFTER aws_route53_zone_name`},
+		{name: "backup_s3_prefix", statement: `ALTER TABLE managed_sites ADD COLUMN backup_s3_prefix VARCHAR(255) NOT NULL DEFAULT '' AFTER backup_s3_bucket`},
+		{name: "backup_schedule_hours", statement: `ALTER TABLE managed_sites ADD COLUMN backup_schedule_hours INT NOT NULL DEFAULT 0 AFTER backup_s3_prefix`},
+		{name: "backup_retention_count", statement: `ALTER TABLE managed_sites ADD COLUMN backup_retention_count INT NOT NULL DEFAULT 7 AFTER backup_schedule_hours`},
+		{name: "backup_last_run_at", statement: `ALTER TABLE managed_sites ADD COLUMN backup_last_run_at DATETIME NULL AFTER backup_retention_count`},
+		{name: "backup_last_status", statement: `ALTER TABLE managed_sites ADD COLUMN backup_last_status VARCHAR(64) NOT NULL DEFAULT '' AFTER backup_last_run_at`},
+		{name: "backup_last_message", statement: `ALTER TABLE managed_sites ADD COLUMN backup_last_message TEXT NULL AFTER backup_last_status`},
+	}
+	for _, column := range columns {
+		var count int
+		err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM information_schema.columns
+			WHERE table_schema = DATABASE()
+			  AND table_name = 'managed_sites'
+			  AND column_name = ?
+		`, column.name).Scan(&count)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.statement); err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureSiteBackupsTable(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS site_backups (
+			id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			site_id BIGINT NOT NULL,
+			site_name VARCHAR(191) NOT NULL,
+			s3_bucket VARCHAR(191) NOT NULL,
+			s3_prefix VARCHAR(255) NOT NULL,
+			files_key VARCHAR(512) NOT NULL DEFAULT '',
+			files_size_bytes BIGINT NOT NULL DEFAULT 0,
+			database_key VARCHAR(512) NOT NULL DEFAULT '',
+			database_size_bytes BIGINT NOT NULL DEFAULT 0,
+			status VARCHAR(64) NOT NULL,
+			message TEXT NULL,
+			triggered_by VARCHAR(64) NOT NULL DEFAULT 'manual',
+			started_at DATETIME NOT NULL,
+			finished_at DATETIME NULL,
+			INDEX idx_site_backups_site_id (site_id, started_at DESC),
+			CONSTRAINT fk_site_backups_site FOREIGN KEY (site_id) REFERENCES managed_sites(id) ON DELETE CASCADE
+		)`)
+	return err
 }
 
 func (s *Store) ensureSiteSubdomainsTable(ctx context.Context) error {

@@ -30,6 +30,13 @@ type ManagedSite struct {
 	NginxConfigPath           string
 	AWSRoute53ZoneID          string
 	AWSRoute53ZoneName        string
+	BackupS3Bucket            string
+	BackupS3Prefix            string
+	BackupScheduleHours       int
+	BackupRetentionCount      int
+	BackupLastRunAt           *time.Time
+	BackupLastStatus          string
+	BackupLastMessage         string
 	DatabaseName              string
 	AutoDeployEnabled         bool
 	AutoDeployBranch          string
@@ -73,6 +80,23 @@ type DatabaseBackupToken struct {
 	CreatedAt      time.Time
 	ExpiresAt      time.Time
 	DownloadedAt   *time.Time
+}
+
+type SiteBackup struct {
+	ID                int64
+	SiteID            int64
+	SiteName          string
+	S3Bucket          string
+	S3Prefix          string
+	FilesKey          string
+	FilesSizeBytes    int64
+	DatabaseKey       string
+	DatabaseSizeBytes int64
+	Status            string
+	Message           string
+	TriggeredBy       string
+	StartedAt         time.Time
+	FinishedAt        *time.Time
 }
 
 type SiteRuntimeCommand struct {

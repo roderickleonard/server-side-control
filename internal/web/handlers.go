@@ -893,6 +893,8 @@ func siteDetailTabForAction(action string) string {
 		return "domains"
 	case "select_dns_zone", "create_dns_record", "update_dns_record", "delete_dns_record", "refresh_dns_records":
 		return "dns"
+	case "save_backup_config", "run_backup_now":
+		return "backups"
 	case "assign_database", "assign_linux_user", "save_laravel_extra_writable_paths", "edit_env", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "create_cron_job", "update_cron_job", "delete_cron_job", "clear_cron_log", "rotate_cron_log":
 		return "settings"
 	default:
@@ -3145,6 +3147,8 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		DNSRecordValues:                r.FormValue("dns_record_values"),
 		DNSRecordEditOldName:           strings.TrimSpace(r.FormValue("dns_record_old_name")),
 		DNSRecordEditOldType:           strings.ToUpper(strings.TrimSpace(r.FormValue("dns_record_old_type"))),
+		BackupS3Bucket:                 strings.TrimSpace(r.FormValue("backup_s3_bucket")),
+		BackupS3Prefix:                 strings.TrimSpace(r.FormValue("backup_s3_prefix")),
 		AutoDeployEnabled:              r.FormValue("auto_deploy_enabled") == "1",
 		AutoDeployBranch:               strings.TrimSpace(r.FormValue("auto_deploy_branch")),
 		AutoDeploySecret:               strings.TrimSpace(r.FormValue("auto_deploy_secret")),
@@ -4166,6 +4170,48 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		successMessage = "DNS record deleted."
 	case "refresh_dns_records":
 		// no-op; data is reloaded in renderSiteDetails after the switch
+	case "save_backup_config":
+		bucket := strings.TrimSpace(data.BackupS3Bucket)
+		prefix := strings.TrimSpace(data.BackupS3Prefix)
+		scheduleHours, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("backup_schedule_hours")))
+		retentionCount, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("backup_retention_count")))
+		if scheduleHours < 0 {
+			scheduleHours = 0
+		}
+		if scheduleHours > 0 && bucket == "" {
+			data.RequestError = "S3 bucket is required when scheduling backups."
+			break
+		}
+		if retentionCount < 0 {
+			retentionCount = 0
+		}
+		if err := a.store.UpdateManagedSiteBackupConfig(r.Context(), site.Name, bucket, prefix, scheduleHours, retentionCount); err != nil {
+			data.RequestError = "Could not save backup configuration: " + err.Error()
+			break
+		}
+		site.BackupS3Bucket = bucket
+		site.BackupS3Prefix = prefix
+		site.BackupScheduleHours = scheduleHours
+		site.BackupRetentionCount = retentionCount
+		a.recordAudit(r.Context(), "site.backup.config_save", site.Name, "success", map[string]any{"bucket": bucket, "schedule_hours": scheduleHours, "retention_count": retentionCount})
+		successMessage = "Backup configuration saved."
+	case "run_backup_now":
+		if !a.dns.Configured() {
+			data.RequestError = "AWS credentials are not configured. Add them under Settings first."
+			break
+		}
+		if strings.TrimSpace(site.BackupS3Bucket) == "" {
+			data.RequestError = "Save an S3 bucket for this site before running a backup."
+			break
+		}
+		backupOutput, runErr := a.runSiteBackup(r.Context(), site, "manual")
+		if runErr != nil {
+			data.RequestError = "Backup failed: " + runErr.Error()
+			data.CommandOutput = backupOutput
+			break
+		}
+		data.CommandOutput = backupOutput
+		successMessage = "Backup uploaded to S3 successfully."
 	default:
 		data.RequestError = "Invalid site details action."
 	}
@@ -5014,6 +5060,26 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 			data.SSHAccountStatus = status
 		}
 	}
+	if data.BackupS3Bucket == "" {
+		data.BackupS3Bucket = site.BackupS3Bucket
+	}
+	if data.BackupS3Prefix == "" {
+		data.BackupS3Prefix = site.BackupS3Prefix
+	}
+	if data.BackupScheduleHours == 0 {
+		data.BackupScheduleHours = site.BackupScheduleHours
+	}
+	if data.BackupRetentionCount == 0 {
+		data.BackupRetentionCount = site.BackupRetentionCount
+		if data.BackupRetentionCount == 0 {
+			data.BackupRetentionCount = 7
+		}
+	}
+	if a.store != nil {
+		if backups, err := a.store.ListSiteBackups(r.Context(), site.ID, 25); err == nil {
+			data.BackupHistory = backups
+		}
+	}
 	data.DNSEnabled = a.dns.Configured()
 	if data.DNSEnabled {
 		if zones, err := a.dns.ListHostedZones(); err == nil {
@@ -5519,6 +5585,89 @@ func runtimeErrorMessage(err error) string {
 		message = "Linux user is invalid for this runtime action."
 	}
 	return message
+}
+
+func (a *App) buildBackupSpec(site domain.ManagedSite) system.SiteBackupSpec {
+	return system.SiteBackupSpec{
+		SiteName:        site.Name,
+		RootDirectory:   site.RootDirectory,
+		OwnerLinuxUser:  site.OwnerLinuxUser,
+		DatabaseName:    site.DatabaseName,
+		S3Bucket:        site.BackupS3Bucket,
+		S3Prefix:        site.BackupS3Prefix,
+		Region:          firstNonEmpty(strings.TrimSpace(a.cfg.AWSRegion), "us-east-1"),
+		AccessKeyID:     a.cfg.AWSAccessKeyID,
+		SecretAccessKey: a.cfg.AWSSecretAccessKey,
+		MySQLDefaults:   a.cfg.MySQLAdminDefaultsFile,
+	}
+}
+
+// runSiteBackup invokes the helper to perform a backup for the given
+// site, records a row in site_backups, and updates the site's
+// last-run status. It returns the helper output (already trimmed).
+func (a *App) runSiteBackup(ctx context.Context, site domain.ManagedSite, triggeredBy string) (string, error) {
+	spec := a.buildBackupSpec(site)
+	if strings.TrimSpace(spec.AccessKeyID) == "" || strings.TrimSpace(spec.SecretAccessKey) == "" {
+		return "", system.ErrAWSCredentialsMissing
+	}
+	if strings.TrimSpace(spec.S3Bucket) == "" {
+		return "", fmt.Errorf("backup s3 bucket is not configured for this site")
+	}
+	startedAt := time.Now()
+	historyID, _ := a.store.CreateSiteBackup(ctx, domain.SiteBackup{
+		SiteID:      site.ID,
+		SiteName:    site.Name,
+		S3Bucket:    spec.S3Bucket,
+		S3Prefix:    spec.S3Prefix,
+		Status:      "running",
+		TriggeredBy: triggeredBy,
+		StartedAt:   startedAt,
+	})
+
+	var result system.SiteBackupResult
+	output, err := a.helper.Call(ctx, "backup.run_site", spec, &result)
+	finished := domain.SiteBackup{
+		ID:                historyID,
+		SiteID:            site.ID,
+		SiteName:          site.Name,
+		S3Bucket:          result.S3Bucket,
+		S3Prefix:          result.S3Prefix,
+		FilesKey:          result.FilesKey,
+		FilesSizeBytes:    result.FilesSizeBytes,
+		DatabaseKey:       result.DatabaseKey,
+		DatabaseSizeBytes: result.DatabaseSizeBytes,
+		Status:            "success",
+		Message:           "Backup completed",
+		TriggeredBy:       triggeredBy,
+		StartedAt:         startedAt,
+	}
+	finishStatus := "success"
+	finishMessage := "Backup completed"
+	if err != nil {
+		finished.Status = "failure"
+		finished.Message = err.Error()
+		finishStatus = "failure"
+		finishMessage = err.Error()
+	}
+	if historyID > 0 {
+		_ = a.store.FinishSiteBackup(ctx, finished)
+	}
+	_ = a.store.UpdateManagedSiteBackupStatus(ctx, site.Name, finishStatus, finishMessage, time.Now().Unix())
+	if err == nil {
+		a.recordAudit(ctx, "site.backup.run", site.Name, "success", map[string]any{"bucket": result.S3Bucket, "files_key": result.FilesKey, "database_key": result.DatabaseKey, "trigger": triggeredBy})
+		// fire-and-forget prune
+		retention := site.BackupRetentionCount
+		if retention > 0 {
+			pruneSpec := struct {
+				Spec system.SiteBackupSpec `json:"spec"`
+				Keep int                   `json:"keep"`
+			}{Spec: spec, Keep: retention}
+			_, _ = a.helper.Call(ctx, "backup.prune_site", pruneSpec, nil)
+		}
+	} else {
+		a.recordAudit(ctx, "site.backup.run", site.Name, "failure", map[string]any{"bucket": spec.S3Bucket, "error": err.Error(), "trigger": triggeredBy})
+	}
+	return output, err
 }
 
 func dnsErrorMessage(err error) string {
