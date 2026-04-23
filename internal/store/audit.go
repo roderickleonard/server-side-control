@@ -108,7 +108,7 @@ func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.M
 	}
 
 	var site domain.ManagedSite
-	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, laravel_extra_writable_paths, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
+	query := `SELECT id, name, owner_linux_user, domain_name, root_directory, laravel_extra_writable_paths, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, aws_route53_zone_id, aws_route53_zone_name, created_at, updated_at FROM managed_sites WHERE name = ? LIMIT 1`
 	if err := s.db.QueryRowContext(ctx, query, name).Scan(
 		&site.ID,
 		&site.Name,
@@ -128,6 +128,8 @@ func (s *Store) GetManagedSiteByName(ctx context.Context, name string) (domain.M
 		&site.AutoDeployNodeVersion,
 		&site.AutoDeployNotifyEmail,
 		&site.NginxConfigPath,
+		&site.AWSRoute53ZoneID,
+		&site.AWSRoute53ZoneName,
 		&site.CreatedAt,
 		&site.UpdatedAt,
 	); err != nil {
@@ -141,7 +143,7 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 		return nil, errors.New("store is not configured")
 	}
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, laravel_extra_writable_paths, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, owner_linux_user, domain_name, root_directory, laravel_extra_writable_paths, runtime, upstream_url, php_version, node_version, database_name, auto_deploy_enabled, auto_deploy_branch, auto_deploy_secret, auto_deploy_command, auto_deploy_node_version, auto_deploy_notify_email, nginx_config_path, aws_route53_zone_id, aws_route53_zone_name, created_at, updated_at FROM managed_sites ORDER BY name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("list managed sites: %w", err)
 	}
@@ -169,6 +171,8 @@ func (s *Store) ListManagedSites(ctx context.Context) ([]domain.ManagedSite, err
 			&site.AutoDeployNodeVersion,
 			&site.AutoDeployNotifyEmail,
 			&site.NginxConfigPath,
+			&site.AWSRoute53ZoneID,
+			&site.AWSRoute53ZoneName,
 			&site.CreatedAt,
 			&site.UpdatedAt,
 		); err != nil {
@@ -253,6 +257,17 @@ func (s *Store) UpdateManagedSiteLaravelExtraWritablePaths(ctx context.Context, 
 	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET laravel_extra_writable_paths = ? WHERE name = ?`, paths, name)
 	if err != nil {
 		return fmt.Errorf("update managed site laravel extra writable paths: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) UpdateManagedSiteRoute53Zone(ctx context.Context, name string, zoneID string, zoneName string) error {
+	if s == nil {
+		return errors.New("store is not configured")
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE managed_sites SET aws_route53_zone_id = ?, aws_route53_zone_name = ? WHERE name = ?`, zoneID, zoneName, name)
+	if err != nil {
+		return fmt.Errorf("update managed site route53 zone: %w", err)
 	}
 	return nil
 }

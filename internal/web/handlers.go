@@ -360,6 +360,10 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		OpenAIModel:          firstNonEmpty(strings.TrimSpace(a.cfg.OpenAIModel), "gpt-4.1-mini"),
 		OpenAIConfigured:     a.openAIConfigured(),
 		PanelEnvPath:         a.cfg.EnvPath,
+		AWSAccessKeyID:       a.cfg.AWSAccessKeyID,
+		AWSSecretAccessKey:   a.cfg.AWSSecretAccessKey,
+		AWSRegion:            firstNonEmpty(strings.TrimSpace(a.cfg.AWSRegion), "us-east-1"),
+		AWSConfigured:        a.dns.Configured(),
 	}
 	data.PanelDomain = panelDomainFromBaseURL(a.cfg.BaseURL)
 	data.PanelProxyConfigPath = filepath.Join(a.cfg.NginxAvailableDir, "server-side-control-panel.conf")
@@ -416,6 +420,10 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	data.OpenAIAPIKey = firstNonEmpty(r.FormValue("openai_api_key"), data.OpenAIAPIKey)
 	data.OpenAIModel = firstNonEmpty(strings.TrimSpace(r.FormValue("openai_model")), data.OpenAIModel, "gpt-4.1-mini")
 	data.OpenAIConfigured = strings.TrimSpace(data.OpenAIAPIKey) != ""
+	data.AWSAccessKeyID = firstNonEmpty(strings.TrimSpace(r.FormValue("aws_access_key_id")), data.AWSAccessKeyID)
+	data.AWSSecretAccessKey = firstNonEmpty(r.FormValue("aws_secret_access_key"), data.AWSSecretAccessKey)
+	data.AWSRegion = firstNonEmpty(strings.TrimSpace(r.FormValue("aws_region")), data.AWSRegion, "us-east-1")
+	data.AWSConfigured = strings.TrimSpace(data.AWSAccessKeyID) != "" && strings.TrimSpace(data.AWSSecretAccessKey) != ""
 	data.TOTPCode = strings.TrimSpace(r.FormValue("totp_code"))
 	data.TOTPSetupSecret = firstNonEmpty(strings.TrimSpace(r.FormValue("totp_secret")), data.TOTPSetupSecret)
 	data.PasskeyLabel = strings.TrimSpace(r.FormValue("passkey_label"))
@@ -540,12 +548,17 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		updatedCfg.SMTPTo = data.SMTPTo
 		updatedCfg.OpenAIAPIKey = data.OpenAIAPIKey
 		updatedCfg.OpenAIModel = data.OpenAIModel
+		updatedCfg.AWSAccessKeyID = data.AWSAccessKeyID
+		updatedCfg.AWSSecretAccessKey = data.AWSSecretAccessKey
+		updatedCfg.AWSRegion = data.AWSRegion
 		resultPath, err := a.helper.Call(r.Context(), "panel.write_env", map[string]string{"content": updatedCfg.ToEnv()}, nil)
 		if err != nil {
 			data.RequestError = "Panel config could not be saved: " + err.Error()
 			break
 		}
 		a.cfg = updatedCfg
+		a.dns = system.NewRoute53DNSManager(updatedCfg.AWSAccessKeyID, updatedCfg.AWSSecretAccessKey)
+		data.AWSConfigured = a.dns.Configured()
 		data.ResultPath = resultPath
 		data.SuccessMessage = "Panel settings saved. Restart the service if listen address changed."
 		a.recordAudit(r.Context(), "panel.settings.save", "panel", "success", map[string]any{"base_url": updatedCfg.BaseURL, "listen_addr": updatedCfg.ListenAddr})
@@ -878,6 +891,8 @@ func siteDetailTabForAction(action string) string {
 		return "runtime"
 	case "enable_tls", "add_subdomain", "delete_subdomain", "enable_subdomain_tls":
 		return "domains"
+	case "select_dns_zone", "create_dns_record", "update_dns_record", "delete_dns_record", "refresh_dns_records":
+		return "dns"
 	case "assign_database", "assign_linux_user", "save_laravel_extra_writable_paths", "edit_env", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "create_cron_job", "update_cron_job", "delete_cron_job", "clear_cron_log", "rotate_cron_log":
 		return "settings"
 	default:
@@ -3120,6 +3135,14 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		SSHPublicKeyInput:              r.FormValue("ssh_public_key"),
 		SSHPasswordInput:               r.FormValue("ssh_password"),
 		SSHRemoveKeyFingerprint:        strings.TrimSpace(r.FormValue("ssh_remove_fingerprint")),
+		DNSSelectedZoneID:              strings.TrimSpace(r.FormValue("dns_zone_id")),
+		DNSSelectedZoneName:            strings.TrimSpace(r.FormValue("dns_zone_name")),
+		DNSRecordName:                  strings.TrimSpace(r.FormValue("dns_record_name")),
+		DNSRecordType:                  strings.ToUpper(strings.TrimSpace(r.FormValue("dns_record_type"))),
+		DNSRecordTTL:                   strings.TrimSpace(r.FormValue("dns_record_ttl")),
+		DNSRecordValues:                r.FormValue("dns_record_values"),
+		DNSRecordEditOldName:           strings.TrimSpace(r.FormValue("dns_record_old_name")),
+		DNSRecordEditOldType:           strings.ToUpper(strings.TrimSpace(r.FormValue("dns_record_old_type"))),
 		AutoDeployEnabled:              r.FormValue("auto_deploy_enabled") == "1",
 		AutoDeployBranch:               strings.TrimSpace(r.FormValue("auto_deploy_branch")),
 		AutoDeploySecret:               strings.TrimSpace(r.FormValue("auto_deploy_secret")),
@@ -4023,6 +4046,124 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		data.SSHPasswordInput = ""
 		a.recordAudit(r.Context(), "site.ssh_account.set_password", site.Name, "success", map[string]any{"run_as_user": site.OwnerLinuxUser})
 		successMessage = "SSH password updated for " + site.OwnerLinuxUser + "."
+	case "select_dns_zone":
+		if !a.dns.Configured() {
+			data.RequestError = "AWS Route 53 credentials are not configured. Add them under Settings first."
+			break
+		}
+		zoneID := strings.TrimSpace(data.DNSSelectedZoneID)
+		zoneName := strings.TrimSpace(data.DNSSelectedZoneName)
+		if zoneID == "" {
+			if err := a.store.UpdateManagedSiteRoute53Zone(r.Context(), site.Name, "", ""); err != nil {
+				data.RequestError = "Could not clear hosted zone: " + err.Error()
+				break
+			}
+			site.AWSRoute53ZoneID = ""
+			site.AWSRoute53ZoneName = ""
+			successMessage = "Route 53 hosted zone cleared for this site."
+			a.recordAudit(r.Context(), "site.dns.select_zone", site.Name, "success", map[string]any{"zone_id": ""})
+			break
+		}
+		if zoneName == "" {
+			zones, listErr := a.dns.ListHostedZones()
+			if listErr != nil {
+				data.RequestError = "Could not list Route 53 hosted zones: " + listErr.Error()
+				break
+			}
+			for _, zone := range zones {
+				if zone.ID == zoneID {
+					zoneName = zone.Name
+					break
+				}
+			}
+		}
+		if err := a.store.UpdateManagedSiteRoute53Zone(r.Context(), site.Name, zoneID, zoneName); err != nil {
+			data.RequestError = "Could not save hosted zone: " + err.Error()
+			break
+		}
+		site.AWSRoute53ZoneID = zoneID
+		site.AWSRoute53ZoneName = zoneName
+		a.recordAudit(r.Context(), "site.dns.select_zone", site.Name, "success", map[string]any{"zone_id": zoneID, "zone_name": zoneName})
+		successMessage = "Route 53 hosted zone \"" + zoneName + "\" linked to this site."
+	case "create_dns_record", "update_dns_record":
+		if !a.dns.Configured() {
+			data.RequestError = "AWS Route 53 credentials are not configured. Add them under Settings first."
+			break
+		}
+		zoneID := firstNonEmpty(strings.TrimSpace(data.DNSSelectedZoneID), strings.TrimSpace(site.AWSRoute53ZoneID))
+		if zoneID == "" {
+			data.RequestError = "Select a Route 53 hosted zone for this site first."
+			break
+		}
+		ttl, ttlErr := strconv.ParseInt(strings.TrimSpace(data.DNSRecordTTL), 10, 64)
+		if ttlErr != nil {
+			data.RequestError = "TTL must be a positive integer (seconds)."
+			break
+		}
+		values := splitDNSRecordValues(data.DNSRecordValues)
+		if len(values) == 0 {
+			data.RequestError = "At least one DNS record value is required."
+			break
+		}
+		spec := system.DNSChangeSpec{
+			ZoneID: zoneID,
+			Action: "UPSERT",
+			Record: system.DNSRecord{
+				Name:   data.DNSRecordName,
+				Type:   data.DNSRecordType,
+				TTL:    ttl,
+				Values: values,
+			},
+		}
+		if action == "update_dns_record" {
+			spec.OldName = data.DNSRecordEditOldName
+			spec.OldType = data.DNSRecordEditOldType
+		}
+		if err := a.dns.ApplyChange(spec); err != nil {
+			message := dnsErrorMessage(err)
+			data.RequestError = message
+			a.recordAudit(r.Context(), "site.dns."+action, site.Name, "failure", map[string]any{"zone_id": zoneID, "name": data.DNSRecordName, "type": data.DNSRecordType, "error": err.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "site.dns."+action, site.Name, "success", map[string]any{"zone_id": zoneID, "name": data.DNSRecordName, "type": data.DNSRecordType, "ttl": ttl, "value_count": len(values)})
+		data.DNSRecordName = ""
+		data.DNSRecordValues = ""
+		data.DNSRecordEditOldName = ""
+		data.DNSRecordEditOldType = ""
+		if action == "update_dns_record" {
+			successMessage = "DNS record updated successfully."
+		} else {
+			successMessage = "DNS record saved successfully."
+		}
+	case "delete_dns_record":
+		if !a.dns.Configured() {
+			data.RequestError = "AWS Route 53 credentials are not configured. Add them under Settings first."
+			break
+		}
+		zoneID := firstNonEmpty(strings.TrimSpace(data.DNSSelectedZoneID), strings.TrimSpace(site.AWSRoute53ZoneID))
+		if zoneID == "" {
+			data.RequestError = "Select a Route 53 hosted zone for this site first."
+			break
+		}
+		spec := system.DNSChangeSpec{
+			ZoneID: zoneID,
+			Action: "DELETE",
+			Record: system.DNSRecord{
+				Name:   firstNonEmpty(data.DNSRecordEditOldName, data.DNSRecordName),
+				Type:   firstNonEmpty(data.DNSRecordEditOldType, data.DNSRecordType),
+				TTL:    300,
+				Values: []string{"placeholder"},
+			},
+		}
+		if err := a.dns.ApplyChange(spec); err != nil {
+			data.RequestError = dnsErrorMessage(err)
+			a.recordAudit(r.Context(), "site.dns.delete_record", site.Name, "failure", map[string]any{"zone_id": zoneID, "name": spec.Record.Name, "type": spec.Record.Type, "error": err.Error()})
+			break
+		}
+		a.recordAudit(r.Context(), "site.dns.delete_record", site.Name, "success", map[string]any{"zone_id": zoneID, "name": spec.Record.Name, "type": spec.Record.Type})
+		successMessage = "DNS record deleted."
+	case "refresh_dns_records":
+		// no-op; data is reloaded in renderSiteDetails after the switch
 	default:
 		data.RequestError = "Invalid site details action."
 	}
@@ -4871,6 +5012,32 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 			data.SSHAccountStatus = status
 		}
 	}
+	data.DNSEnabled = a.dns.Configured()
+	if data.DNSEnabled {
+		if zones, err := a.dns.ListHostedZones(); err == nil {
+			data.DNSZones = zones
+		} else {
+			data.DNSError = "Could not load Route 53 hosted zones: " + err.Error()
+		}
+		selectedZoneID := firstNonEmpty(strings.TrimSpace(data.DNSSelectedZoneID), strings.TrimSpace(site.AWSRoute53ZoneID))
+		if selectedZoneID != "" {
+			data.DNSSelectedZoneID = selectedZoneID
+			if data.DNSSelectedZoneName == "" {
+				data.DNSSelectedZoneName = site.AWSRoute53ZoneName
+				for _, zone := range data.DNSZones {
+					if zone.ID == selectedZoneID {
+						data.DNSSelectedZoneName = zone.Name
+						break
+					}
+				}
+			}
+			if records, err := a.dns.ListRecords(selectedZoneID); err == nil {
+				data.DNSRecords = records
+			} else if data.DNSError == "" {
+				data.DNSError = "Could not load DNS records: " + err.Error()
+			}
+		}
+	}
 	if commands, err := a.store.ListSiteRuntimeCommands(r.Context(), site.ID); err == nil {
 		data.SiteRuntimeCommands = commands
 	}
@@ -5330,6 +5497,38 @@ func runtimeErrorMessage(err error) string {
 		message = "Linux user is invalid for this runtime action."
 	}
 	return message
+}
+
+func dnsErrorMessage(err error) string {
+	message := err.Error()
+	switch {
+	case errors.Is(err, system.ErrAWSCredentialsMissing):
+		message = "AWS Route 53 credentials are not configured. Add them under Settings first."
+	case errors.Is(err, system.ErrInvalidDNSRecordName):
+		message = "DNS record name is invalid. Example: api.example.com or @ for the apex."
+	case errors.Is(err, system.ErrInvalidDNSRecordType):
+		message = "DNS record type is not supported. Allowed: A, AAAA, CAA, CNAME, MX, NS, PTR, SRV, TXT."
+	case errors.Is(err, system.ErrInvalidDNSRecordTTL):
+		message = "TTL must be between 30 and 604800 seconds."
+	case errors.Is(err, system.ErrInvalidDNSRecordValue):
+		message = "DNS record values are invalid. Provide one value per line, no carriage returns."
+	case errors.Is(err, system.ErrInvalidDNSZone):
+		message = "Selected hosted zone is invalid. Pick a zone from the dropdown."
+	}
+	return message
+}
+
+func splitDNSRecordValues(raw string) []string {
+	parts := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		values = append(values, trimmed)
+	}
+	return values
 }
 
 func gitAuthErrorMessage(err error) string {

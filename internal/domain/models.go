@@ -28,6 +28,8 @@ type ManagedSite struct {
 	PHPVersion                string
 	NodeVersion               string
 	NginxConfigPath           string
+	AWSRoute53ZoneID          string
+	AWSRoute53ZoneName        string
 	DatabaseName              string
 	AutoDeployEnabled         bool
 	AutoDeployBranch          string

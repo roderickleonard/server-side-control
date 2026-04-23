@@ -36,6 +36,9 @@ type Config struct {
 	SubdomainRootBaseDir    string
 	CertbotBinary           string
 	HelperBinary            string
+	AWSAccessKeyID          string
+	AWSSecretAccessKey      string
+	AWSRegion               string
 }
 
 func Load() (Config, error) {
@@ -71,6 +74,9 @@ func Load() (Config, error) {
 		SubdomainRootBaseDir:    getenv("PANEL_SUBDOMAIN_ROOT_BASE", ""),
 		CertbotBinary:           getenv("PANEL_CERTBOT_BINARY", "certbot"),
 		HelperBinary:            getenv("PANEL_HELPER_BINARY", "/usr/local/bin/server-side-control-helper"),
+		AWSAccessKeyID:          os.Getenv("PANEL_AWS_ACCESS_KEY_ID"),
+		AWSSecretAccessKey:      os.Getenv("PANEL_AWS_SECRET_ACCESS_KEY"),
+		AWSRegion:               getenv("PANEL_AWS_REGION", "us-east-1"),
 	}
 
 	return cfg, nil
@@ -117,6 +123,9 @@ func (c Config) ToEnv() string {
 		fmt.Sprintf("PANEL_SUBDOMAIN_ROOT_BASE=%s", c.SubdomainRootBaseDir),
 		fmt.Sprintf("PANEL_CERTBOT_BINARY=%s", c.CertbotBinary),
 		fmt.Sprintf("PANEL_HELPER_BINARY=%s", c.HelperBinary),
+		fmt.Sprintf("PANEL_AWS_ACCESS_KEY_ID=%s", c.AWSAccessKeyID),
+		fmt.Sprintf("PANEL_AWS_SECRET_ACCESS_KEY=%s", c.AWSSecretAccessKey),
+		fmt.Sprintf("PANEL_AWS_REGION=%s", c.AWSRegion),
 	}, "\n") + "\n"
 }
 

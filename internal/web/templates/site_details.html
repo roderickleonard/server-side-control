@@ -51,6 +51,7 @@
             <button type="button" class="site-tab-btn" data-tab="runtime">Runtime</button>
             <button type="button" class="site-tab-btn" data-tab="files">Files</button>
             <button type="button" class="site-tab-btn" data-tab="domains">Domains</button>
+            <button type="button" class="site-tab-btn" data-tab="dns">DNS</button>
             <button type="button" class="site-tab-btn" data-tab="settings">Settings</button>
         </div>
     </article>
@@ -153,6 +154,179 @@
                 <button type="submit" class="btn btn-outline-secondary">Update password</button>
             </div>
         </form>
+    </article>
+</div>
+
+<div class="grid single" data-site-tab="dns">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Amazon Route 53</span>
+                <h3><i class="bi bi-cloud" style="color:var(--accent);margin-right:6px;"></i>DNS for {{.SelectedSite.DomainName}}</h3>
+            </div>
+            <span class="badge subtle-badge">{{if .DNSEnabled}}{{if .SelectedSite.AWSRoute53ZoneName}}Zone: {{.SelectedSite.AWSRoute53ZoneName}}{{else}}No zone selected{{end}}{{else}}Credentials missing{{end}}</span>
+        </div>
+
+        {{if not .DNSEnabled}}
+        <p class="muted details-note">AWS Route 53 credentials are not configured. Add <code>PANEL_AWS_ACCESS_KEY_ID</code> and <code>PANEL_AWS_SECRET_ACCESS_KEY</code> under <a href="/settings">Settings</a> to enable DNS management for this site.</p>
+        {{else}}
+        {{if .DNSError}}
+        <div class="alert" style="margin-bottom:10px;">{{.DNSError}}</div>
+        {{end}}
+
+        <h4 style="margin-top:8px;">Hosted zone</h4>
+        <form method="post" class="stack-form compact-form" style="margin-top:6px;">
+            <input type="hidden" name="details_action" value="select_dns_zone">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <div class="form-grid two-up">
+                <label class="span-2">
+                    <span>Choose a Route 53 hosted zone</span>
+                    <select name="dns_zone_id" onchange="this.form.dns_zone_name.value = this.options[this.selectedIndex].dataset.name || '';">
+                        <option value="">— No zone (clear) —</option>
+                        {{range .DNSZones}}
+                        <option value="{{.ID}}" data-name="{{.Name}}" {{if eq .ID $.SelectedSite.AWSRoute53ZoneID}}selected{{end}}>{{.Name}} ({{.ID}}) · {{.RecordCount}} records{{if .PrivateZone}} · private{{end}}</option>
+                        {{end}}
+                    </select>
+                </label>
+                <input type="hidden" name="dns_zone_name" value="{{.SelectedSite.AWSRoute53ZoneName}}">
+            </div>
+            <div class="form-actions">
+                <button type="submit">Save hosted zone link</button>
+            </div>
+        </form>
+
+        {{if .SelectedSite.AWSRoute53ZoneID}}
+        <h4 style="margin-top:24px;">Existing records</h4>
+        <div class="form-actions" style="justify-content:flex-end;margin-bottom:6px;">
+            <form method="post" class="inline-form details-inline-form">
+                <input type="hidden" name="details_action" value="refresh_dns_records">
+                <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Refresh records</button>
+            </form>
+        </div>
+        {{if .DNSRecords}}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>TTL</th>
+                    <th>Values</th>
+                    <th class="text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .DNSRecords}}
+                <tr>
+                    <td><code>{{.Name}}</code></td>
+                    <td><strong>{{.Type}}</strong></td>
+                    <td>{{.TTL}}</td>
+                    <td>
+                        {{range .Values}}
+                        <div><code>{{.}}</code></div>
+                        {{end}}
+                    </td>
+                    <td class="text-right">
+                        <details>
+                            <summary class="btn btn-sm btn-outline-secondary" style="cursor:pointer;">Edit</summary>
+                            <form method="post" class="stack-form compact-form" style="margin-top:8px;text-align:left;">
+                                <input type="hidden" name="details_action" value="update_dns_record">
+                                <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                <input type="hidden" name="dns_zone_id" value="{{$.SelectedSite.AWSRoute53ZoneID}}">
+                                <input type="hidden" name="dns_record_old_name" value="{{.Name}}">
+                                <input type="hidden" name="dns_record_old_type" value="{{.Type}}">
+                                <label>
+                                    <span>Name</span>
+                                    <input type="text" name="dns_record_name" value="{{.Name}}" required>
+                                </label>
+                                <label>
+                                    <span>Type</span>
+                                    <select name="dns_record_type">
+                                        <option value="A" {{if eq .Type "A"}}selected{{end}}>A</option>
+                                        <option value="AAAA" {{if eq .Type "AAAA"}}selected{{end}}>AAAA</option>
+                                        <option value="CAA" {{if eq .Type "CAA"}}selected{{end}}>CAA</option>
+                                        <option value="CNAME" {{if eq .Type "CNAME"}}selected{{end}}>CNAME</option>
+                                        <option value="MX" {{if eq .Type "MX"}}selected{{end}}>MX</option>
+                                        <option value="NS" {{if eq .Type "NS"}}selected{{end}}>NS</option>
+                                        <option value="PTR" {{if eq .Type "PTR"}}selected{{end}}>PTR</option>
+                                        <option value="SRV" {{if eq .Type "SRV"}}selected{{end}}>SRV</option>
+                                        <option value="TXT" {{if eq .Type "TXT"}}selected{{end}}>TXT</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>TTL (seconds)</span>
+                                    <input type="number" name="dns_record_ttl" value="{{.TTL}}" min="30" max="604800" required>
+                                </label>
+                                <label>
+                                    <span>Values (one per line)</span>
+                                    <textarea name="dns_record_values" rows="3" required>{{range .Values}}{{.}}
+{{end}}</textarea>
+                                </label>
+                                <div class="form-actions" style="gap:8px;">
+                                    <button type="submit">Save changes</button>
+                                </div>
+                            </form>
+                            <form method="post" class="inline-form details-inline-form" style="margin-top:6px;" onsubmit="return confirm('Delete this DNS record permanently?');">
+                                <input type="hidden" name="details_action" value="delete_dns_record">
+                                <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                                <input type="hidden" name="dns_zone_id" value="{{$.SelectedSite.AWSRoute53ZoneID}}">
+                                <input type="hidden" name="dns_record_old_name" value="{{.Name}}">
+                                <input type="hidden" name="dns_record_old_type" value="{{.Type}}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                            </form>
+                        </details>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="muted details-note">No DNS records loaded yet.</p>
+        {{end}}
+
+        <h4 style="margin-top:24px;">Add a new record</h4>
+        <form method="post" class="stack-form compact-form" style="margin-top:6px;">
+            <input type="hidden" name="details_action" value="create_dns_record">
+            <input type="hidden" name="site_name" value="{{.SelectedSite.Name}}">
+            <input type="hidden" name="dns_zone_id" value="{{.SelectedSite.AWSRoute53ZoneID}}">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Name</span>
+                    <input type="text" name="dns_record_name" value="{{.DNSRecordName}}" placeholder="api.{{.SelectedSite.AWSRoute53ZoneName}}" required>
+                    <small class="muted details-note">Use the full DNS name, e.g. <code>www.example.com</code>. Trailing dot is optional.</small>
+                </label>
+                <label>
+                    <span>Type</span>
+                    <select name="dns_record_type">
+                        <option value="A" {{if eq .DNSRecordType "A"}}selected{{end}}>A</option>
+                        <option value="AAAA" {{if eq .DNSRecordType "AAAA"}}selected{{end}}>AAAA</option>
+                        <option value="CAA" {{if eq .DNSRecordType "CAA"}}selected{{end}}>CAA</option>
+                        <option value="CNAME" {{if eq .DNSRecordType "CNAME"}}selected{{end}}>CNAME</option>
+                        <option value="MX" {{if eq .DNSRecordType "MX"}}selected{{end}}>MX</option>
+                        <option value="NS" {{if eq .DNSRecordType "NS"}}selected{{end}}>NS</option>
+                        <option value="PTR" {{if eq .DNSRecordType "PTR"}}selected{{end}}>PTR</option>
+                        <option value="SRV" {{if eq .DNSRecordType "SRV"}}selected{{end}}>SRV</option>
+                        <option value="TXT" {{if eq .DNSRecordType "TXT"}}selected{{end}}>TXT</option>
+                    </select>
+                </label>
+                <label>
+                    <span>TTL (seconds)</span>
+                    <input type="number" name="dns_record_ttl" value="{{if .DNSRecordTTL}}{{.DNSRecordTTL}}{{else}}300{{end}}" min="30" max="604800" required>
+                </label>
+                <label class="span-2">
+                    <span>Values (one per line)</span>
+                    <textarea name="dns_record_values" rows="3" placeholder="1.2.3.4&#10;5.6.7.8" required>{{.DNSRecordValues}}</textarea>
+                    <small class="muted details-note">For TXT records, the value is automatically wrapped in quotes if missing. For MX, prefix with priority, e.g. <code>10 mx.example.com</code>.</small>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Create record</button>
+            </div>
+        </form>
+        {{else}}
+        <p class="muted details-note">Pick a Route 53 hosted zone above to start managing DNS records for this site from here.</p>
+        {{end}}
+        {{end}}
     </article>
 </div>
 

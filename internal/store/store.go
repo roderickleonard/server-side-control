@@ -98,6 +98,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return fmt.Errorf("ensure managed_sites laravel extra writable paths column: %w", err)
 	}
 
+	if err := s.ensureManagedSitesRoute53Columns(ctx); err != nil {
+		return fmt.Errorf("ensure managed_sites route53 columns: %w", err)
+	}
+
 	if err := s.ensureSiteRuntimeCommandsTable(ctx); err != nil {
 		return fmt.Errorf("ensure site_runtime_commands table: %w", err)
 	}
@@ -427,6 +431,42 @@ func (s *Store) ensureManagedSitesLaravelPathsColumn(ctx context.Context) error 
 			return nil
 		}
 		return err
+	}
+	return nil
+}
+
+func (s *Store) ensureManagedSitesRoute53Columns(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	columns := []struct {
+		name      string
+		statement string
+	}{
+		{name: "aws_route53_zone_id", statement: `ALTER TABLE managed_sites ADD COLUMN aws_route53_zone_id VARCHAR(64) NOT NULL DEFAULT '' AFTER nginx_config_path`},
+		{name: "aws_route53_zone_name", statement: `ALTER TABLE managed_sites ADD COLUMN aws_route53_zone_name VARCHAR(255) NOT NULL DEFAULT '' AFTER aws_route53_zone_id`},
+	}
+	for _, column := range columns {
+		var count int
+		err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM information_schema.columns
+			WHERE table_schema = DATABASE()
+			  AND table_name = 'managed_sites'
+			  AND column_name = ?
+		`, column.name).Scan(&count)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.statement); err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate column") || errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return err
+		}
 	}
 	return nil
 }

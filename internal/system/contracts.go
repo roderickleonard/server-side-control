@@ -64,6 +64,12 @@ var ErrInvalidCronSchedule = errors.New("invalid cron schedule")
 var ErrInvalidCronCommand = errors.New("invalid cron command")
 var ErrInvalidSSHPublicKey = errors.New("invalid ssh public key")
 var ErrSSHKeyNotFound = errors.New("ssh key not found")
+var ErrAWSCredentialsMissing = errors.New("aws credentials are not configured")
+var ErrInvalidDNSRecordType = errors.New("invalid dns record type")
+var ErrInvalidDNSRecordName = errors.New("invalid dns record name")
+var ErrInvalidDNSRecordValue = errors.New("invalid dns record value")
+var ErrInvalidDNSRecordTTL = errors.New("invalid dns record ttl")
+var ErrInvalidDNSZone = errors.New("invalid dns hosted zone")
 
 type UserManager interface {
 	CreateLinuxUser(username string, createHome bool, password string, grantSudo bool) error
@@ -651,4 +657,34 @@ type SSHAccountManager interface {
 	AddKey(spec SSHAddKeySpec) error
 	RemoveKey(spec SSHRemoveKeySpec) error
 	SetPassword(spec SSHPasswordSpec) error
+}
+
+type DNSHostedZone struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Comment     string `json:"comment"`
+	RecordCount int64  `json:"record_count"`
+	PrivateZone bool   `json:"private_zone"`
+}
+
+type DNSRecord struct {
+	Name   string   `json:"name"`
+	Type   string   `json:"type"`
+	TTL    int64    `json:"ttl"`
+	Values []string `json:"values"`
+}
+
+type DNSChangeSpec struct {
+	ZoneID  string    `json:"zone_id"`
+	Action  string    `json:"action"`
+	Record  DNSRecord `json:"record"`
+	OldName string    `json:"old_name,omitempty"`
+	OldType string    `json:"old_type,omitempty"`
+}
+
+type DNSManager interface {
+	Configured() bool
+	ListHostedZones() ([]DNSHostedZone, error)
+	ListRecords(zoneID string) ([]DNSRecord, error)
+	ApplyChange(spec DNSChangeSpec) error
 }

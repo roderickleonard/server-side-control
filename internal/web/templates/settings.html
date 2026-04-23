@@ -52,6 +52,18 @@
                     <span>OpenAI model</span>
                     <input type="text" name="openai_model" value="{{.OpenAIModel}}" placeholder="gpt-4.1-mini">
                 </label>
+                <label>
+                    <span>AWS access key ID {{if .AWSConfigured}}<span class="badge subtle-badge" style="margin-left:6px;">Configured</span>{{end}}</span>
+                    <input type="text" name="aws_access_key_id" value="{{.AWSAccessKeyID}}" placeholder="AKIA...">
+                </label>
+                <label>
+                    <span>AWS secret access key</span>
+                    <input type="password" name="aws_secret_access_key" value="{{.AWSSecretAccessKey}}" placeholder="Leave unchanged to keep current value">
+                </label>
+                <label>
+                    <span>AWS region (Route 53 sign region)</span>
+                    <input type="text" name="aws_region" value="{{.AWSRegion}}" placeholder="us-east-1">
+                </label>
             </div>
             <div class="form-actions">
                 <button type="submit">Save panel settings</button>

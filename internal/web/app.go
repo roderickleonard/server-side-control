@@ -36,6 +36,7 @@ type App struct {
 	redis              system.RedisManager
 	supervisor         system.SupervisorManager
 	sshAccounts        system.SSHAccountManager
+	dns                system.DNSManager
 	helper             *system.HelperClient
 	auth               auth.Authenticator
 	sessions           *auth.SessionManager
@@ -146,6 +147,22 @@ type TemplateData struct {
 	SSHPublicKeyInput                 string
 	SSHPasswordInput                  string
 	SSHRemoveKeyFingerprint           string
+	DNSEnabled                        bool
+	DNSZones                          []system.DNSHostedZone
+	DNSRecords                        []system.DNSRecord
+	DNSSelectedZoneID                 string
+	DNSSelectedZoneName               string
+	DNSRecordName                     string
+	DNSRecordType                     string
+	DNSRecordTTL                      string
+	DNSRecordValues                   string
+	DNSRecordEditOldName              string
+	DNSRecordEditOldType              string
+	DNSError                          string
+	AWSAccessKeyID                    string
+	AWSSecretAccessKey                string
+	AWSRegion                         string
+	AWSConfigured                     bool
 	AutoDeployEnabled                 bool
 	AutoDeployBranch                  string
 	AutoDeploySecret                  string
@@ -339,6 +356,7 @@ func New(cfg config.Config, logger *slog.Logger, dataStore *store.Store, metrics
 		redis:              system.NewHelperRedisManager(helperClient),
 		supervisor:         system.NewHelperSupervisorManager(helperClient),
 		sshAccounts:        system.NewHelperSSHAccountManager(helperClient),
+		dns:                system.NewRoute53DNSManager(cfg.AWSAccessKeyID, cfg.AWSSecretAccessKey),
 		helper:             helperClient,
 		auth:               authenticator,
 		sessions:           sessions,
