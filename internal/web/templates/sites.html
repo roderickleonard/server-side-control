@@ -123,7 +123,14 @@
                         <td class="fw-semibold">
                             <a class="table-link" href="/sites/details?name={{.Name}}">{{.Name}}</a>
                         </td>
-                        <td>{{.DomainName}}</td>
+                        <td>
+                            <span>{{.DomainName}}</span>
+                            {{if .AWSRoute53ZoneID}}
+                            <span class="dns-zone-pill" title="Connected to Route 53 hosted zone {{if .AWSRoute53ZoneName}}{{.AWSRoute53ZoneName}}{{else}}{{.AWSRoute53ZoneID}}{{end}}">
+                                <i class="bi bi-cloud-check"></i> Route 53
+                            </span>
+                            {{end}}
+                        </td>
                         <td>{{if .OwnerLinuxUser}}<span class="badge subtle-badge">{{.OwnerLinuxUser}}</span>{{else}}-{{end}}</td>
                         <td>
                             {{if eq .Runtime "reverse_proxy"}}<span class="mode-badge proxy"><i class="bi bi-arrow-left-right"></i>Proxy</span>

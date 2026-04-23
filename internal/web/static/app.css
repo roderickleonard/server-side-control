@@ -2606,3 +2606,25 @@ body.login-page {
     .dns-record-ttl { grid-area: ttl; text-align: left; }
     .dns-record-actions { grid-area: actions; }
 }
+
+/* Route 53 connection pill (sites list) */
+.dns-zone-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: #b45309;
+    background: rgba(245, 158, 11, 0.10);
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 999px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.dns-zone-pill i {
+    font-size: 11px;
+}
