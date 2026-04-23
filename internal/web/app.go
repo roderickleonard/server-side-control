@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -504,7 +505,7 @@ func (a *App) render(ctx context.Context, w http.ResponseWriter, currentPath str
 		}
 	}
 
-	tmpl, err := template.ParseFS(assets, templateFilesForPage(page)...)
+	tmpl, err := parseTemplatesWithFuncs(templateFilesForPage(page))
 	if err != nil {
 		a.logger.Error("parse template", "page", page, "error", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
@@ -527,13 +528,36 @@ func (a *App) render(ctx context.Context, w http.ResponseWriter, currentPath str
 	}
 }
 
+// parseTemplatesWithFuncs is a thin wrapper around template.ParseFS
+// that registers shared template helpers (formatBytes etc).
+func parseTemplatesWithFuncs(files []string) (*template.Template, error) {
+	tmpl := template.New("layout").Funcs(template.FuncMap{
+		"formatBytes": func(bytes int64) string {
+			if bytes <= 0 {
+				return "0 B"
+			}
+			switch {
+			case bytes >= 1<<30:
+				return fmt.Sprintf("%.2f GB", float64(bytes)/float64(1<<30))
+			case bytes >= 1<<20:
+				return fmt.Sprintf("%.2f MB", float64(bytes)/float64(1<<20))
+			case bytes >= 1<<10:
+				return fmt.Sprintf("%.2f KB", float64(bytes)/float64(1<<10))
+			default:
+				return fmt.Sprintf("%d B", bytes)
+			}
+		},
+	})
+	return tmpl.ParseFS(assets, files...)
+}
+
 func (a *App) renderNamedTemplate(ctx context.Context, w http.ResponseWriter, page string, name string, data TemplateData) {
 	if _, ok := auth.IdentityFromContext(ctx); !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	tmpl, err := template.ParseFS(assets, templateFilesForPage(page)...)
+	tmpl, err := parseTemplatesWithFuncs(templateFilesForPage(page))
 	if err != nil {
 		a.logger.Error("parse named template", "page", page, "name", name, "error", err)
 		http.Error(w, "template error", http.StatusInternalServerError)

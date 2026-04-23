@@ -4208,14 +4208,19 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			data.RequestError = "Save an S3 bucket for this site before running a backup."
 			break
 		}
-		backupOutput, runErr := a.runSiteBackup(r.Context(), site, "manual")
-		if runErr != nil {
-			data.RequestError = "Backup failed: " + runErr.Error()
-			data.CommandOutput = backupOutput
-			break
-		}
-		data.CommandOutput = backupOutput
-		successMessage = "Backup uploaded to S3 successfully."
+		// Spawn the backup in the background so the request returns
+		// immediately. A "running" row is inserted right away so the
+		// Recent backups list shows the in-progress state. Email is
+		// sent from runSiteBackup once it completes.
+		siteCopy := site
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+			defer cancel()
+			if _, runErr := a.runSiteBackup(ctx, siteCopy, "manual"); runErr != nil {
+				a.logger.Warn("manual backup failed", "site", siteCopy.Name, "error", runErr)
+			}
+		}()
+		successMessage = "Backup started in the background. You'll get an email when it finishes; the Recent backups list refreshes on reload."
 	default:
 		data.RequestError = "Invalid site details action."
 	}
@@ -5674,6 +5679,16 @@ func (a *App) runSiteBackup(ctx context.Context, site domain.ManagedSite, trigge
 		}
 	} else {
 		a.recordAudit(ctx, "site.backup.run", site.Name, "failure", map[string]any{"bucket": spec.S3Bucket, "error": err.Error(), "trigger": triggeredBy})
+	}
+	// Notify by email if SMTP is configured. Pulls the site row back so
+	// the email reflects the just-stored "last status" / message rather
+	// than the in-memory snapshot we started with.
+	if mailSite, mailErr := a.store.GetManagedSiteByName(ctx, site.Name); mailErr == nil {
+		now := time.Now()
+		finished.FinishedAt = &now
+		if emailErr := sendSiteBackupResultEmail(a.cfg, mailSite, finished, triggeredBy); emailErr != nil {
+			a.logger.Warn("backup email send failed", "site", site.Name, "error", emailErr)
+		}
 	}
 	return output, err
 }

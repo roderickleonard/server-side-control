@@ -406,37 +406,69 @@
             </form>
         </div>
 
-        <h4 style="margin-top:24px;">Recent backups</h4>
+        <div class="section-head" style="margin-top:24px;">
+            <div>
+                <span class="eyebrow">{{if .BackupHistory}}{{len .BackupHistory}} runs{{else}}No runs yet{{end}}</span>
+                <h4 style="margin:0;">Recent backups</h4>
+            </div>
+        </div>
         {{if .BackupHistory}}
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Started</th>
-                    <th>Trigger</th>
-                    <th>Files</th>
-                    <th>Database</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .BackupHistory}}
-                <tr>
-                    <td>{{.StartedAt.Format "2006-01-02 15:04:05"}}</td>
-                    <td><span class="badge subtle-badge">{{.TriggeredBy}}</span></td>
-                    <td>{{if .FilesKey}}<code>{{.FilesKey}}</code><br><small class="muted">{{.FilesSizeBytes}} B</small>{{else}}<span class="muted">-</span>{{end}}</td>
-                    <td>{{if .DatabaseKey}}<code>{{.DatabaseKey}}</code><br><small class="muted">{{.DatabaseSizeBytes}} B</small>{{else}}<span class="muted">-</span>{{end}}</td>
-                    <td>
-                        {{if eq .Status "success"}}<span class="status-pill success">Success</span>
-                        {{else if eq .Status "failure"}}<span class="status-pill danger" title="{{.Message}}">Failure</span>
-                        {{else}}<span class="status-pill unknown">{{.Status}}</span>{{end}}
-                    </td>
-                </tr>
+        <div class="backup-history-list">
+            {{range .BackupHistory}}
+            <div class="backup-history-row backup-history-status-{{.Status}}">
+                <div class="backup-history-status-cell">
+                    {{if eq .Status "success"}}
+                    <span class="backup-history-status-pill success"><i class="bi bi-check-circle-fill"></i> Success</span>
+                    {{else if eq .Status "failure"}}
+                    <span class="backup-history-status-pill danger" title="{{.Message}}"><i class="bi bi-x-circle-fill"></i> Failure</span>
+                    {{else if eq .Status "running"}}
+                    <span class="backup-history-status-pill running"><i class="bi bi-arrow-repeat"></i> Running</span>
+                    {{else}}
+                    <span class="backup-history-status-pill unknown">{{.Status}}</span>
+                    {{end}}
+                </div>
+                <div class="backup-history-meta">
+                    <div class="backup-history-time">
+                        <strong>{{.StartedAt.Format "Jan 02, 15:04:05"}}</strong>
+                        <span class="muted">{{if .FinishedAt}}· finished {{.FinishedAt.Format "15:04:05"}}{{else if eq .Status "running"}}· still running…{{end}}</span>
+                    </div>
+                    <div class="backup-history-trigger">
+                        <span class="backup-history-trigger-pill backup-history-trigger-{{.TriggeredBy}}">{{.TriggeredBy}}</span>
+                    </div>
+                </div>
+                <div class="backup-history-artefacts">
+                    <div class="backup-history-artefact">
+                        <span class="backup-history-artefact-label"><i class="bi bi-folder-zip"></i> Files</span>
+                        {{if .FilesKey}}
+                        <code class="backup-history-artefact-key">{{.FilesKey}}</code>
+                        <span class="backup-history-artefact-size">{{formatBytes .FilesSizeBytes}}</span>
+                        {{else}}
+                        <span class="muted">—</span>
+                        {{end}}
+                    </div>
+                    <div class="backup-history-artefact">
+                        <span class="backup-history-artefact-label"><i class="bi bi-database"></i> Database</span>
+                        {{if .DatabaseKey}}
+                        <code class="backup-history-artefact-key">{{.DatabaseKey}}</code>
+                        <span class="backup-history-artefact-size">{{formatBytes .DatabaseSizeBytes}}</span>
+                        {{else}}
+                        <span class="muted">—</span>
+                        {{end}}
+                    </div>
+                </div>
+                {{if and (eq .Status "failure") .Message}}
+                <div class="backup-history-error">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <span>{{.Message}}</span>
+                </div>
                 {{end}}
-            </tbody>
-        </table>
+            </div>
+            {{end}}
+        </div>
         {{else}}
-        <div class="empty-state" style="padding:18px;text-align:center;border:1px dashed var(--border);border-radius:8px;margin-top:6px;">
-            <p class="muted" style="margin:0;">No backups recorded yet. Run one now or wait for the schedule to fire.</p>
+        <div class="empty-state" style="padding:24px;text-align:center;border:1px dashed var(--border);border-radius:8px;margin-top:6px;">
+            <p class="muted" style="margin:0 0 6px;">No backups recorded yet.</p>
+            <p class="muted details-note" style="margin:0;">Run one now or wait for the schedule to fire.</p>
         </div>
         {{end}}
         {{end}}

@@ -62,6 +62,109 @@ func sendSMTPTestEmail(cfg config.Config) error {
 	return sendSMTPMail(cfg, []string{recipient}, message)
 }
 
+// sendSiteBackupResultEmail notifies the configured recipient when a
+// site backup finishes (success or failure). The recipient defaults
+// to the site's AutoDeployNotifyEmail if set, otherwise the global
+// SMTPTo. If neither is configured, no email is sent and nil is
+// returned.
+func sendSiteBackupResultEmail(cfg config.Config, site domain.ManagedSite, backup domain.SiteBackup, trigger string) error {
+	recipient := strings.TrimSpace(site.AutoDeployNotifyEmail)
+	if recipient == "" {
+		recipient = strings.TrimSpace(cfg.SMTPTo)
+	}
+	if strings.TrimSpace(cfg.SMTPHost) == "" || strings.TrimSpace(cfg.SMTPFrom) == "" || recipient == "" {
+		return nil
+	}
+	status := strings.ToLower(strings.TrimSpace(backup.Status))
+	if status == "" {
+		status = "unknown"
+	}
+	subject := fmt.Sprintf("[Server Side Control] Backup %s: %s", status, site.Name)
+	startedAt := backup.StartedAt.Format("2006-01-02 15:04:05")
+	finishedAt := "-"
+	duration := "-"
+	if backup.FinishedAt != nil {
+		finishedAt = backup.FinishedAt.Format("2006-01-02 15:04:05")
+		duration = backup.FinishedAt.Sub(backup.StartedAt).Round(time.Second).String()
+	}
+	plainBody := strings.Join([]string{
+		fmt.Sprintf("Site: %s", site.Name),
+		fmt.Sprintf("Domain: %s", site.DomainName),
+		fmt.Sprintf("Status: %s", status),
+		fmt.Sprintf("Trigger: %s", trigger),
+		fmt.Sprintf("Started at: %s", startedAt),
+		fmt.Sprintf("Finished at: %s", finishedAt),
+		fmt.Sprintf("Duration: %s", duration),
+		fmt.Sprintf("Bucket: s3://%s", backup.S3Bucket),
+		fmt.Sprintf("Files key: %s (%s)", firstNonEmpty(backup.FilesKey, "-"), formatBackupSize(backup.FilesSizeBytes)),
+		fmt.Sprintf("Database key: %s (%s)", firstNonEmpty(backup.DatabaseKey, "-"), formatBackupSize(backup.DatabaseSizeBytes)),
+		"",
+		"Message:",
+		firstNonEmpty(strings.TrimSpace(backup.Message), "(no message)"),
+	}, "\n")
+	htmlBody := buildSiteBackupHTMLBody(site, backup, trigger, status, startedAt, finishedAt, duration)
+	message := buildMultipartEmail(cfg.SMTPFrom, recipient, subject, plainBody, htmlBody)
+	return sendSMTPMail(cfg, []string{recipient}, message)
+}
+
+func buildSiteBackupHTMLBody(site domain.ManagedSite, backup domain.SiteBackup, trigger string, status string, startedAt string, finishedAt string, duration string) string {
+	statusBg := "#166534"
+	if status == "failure" {
+		statusBg = "#991b1b"
+	} else if status != "success" {
+		statusBg = "#374151"
+	}
+	rows := []struct {
+		label string
+		value string
+	}{
+		{"Site", site.Name},
+		{"Domain", site.DomainName},
+		{"Trigger", trigger},
+		{"Started at", startedAt},
+		{"Finished at", finishedAt},
+		{"Duration", duration},
+		{"Bucket", "s3://" + backup.S3Bucket},
+		{"Files key", firstNonEmpty(backup.FilesKey, "-") + " (" + formatBackupSize(backup.FilesSizeBytes) + ")"},
+		{"Database key", firstNonEmpty(backup.DatabaseKey, "-") + " (" + formatBackupSize(backup.DatabaseSizeBytes) + ")"},
+	}
+	tableRows := strings.Builder{}
+	for _, row := range rows {
+		tableRows.WriteString(fmt.Sprintf(`<tr><td style="padding:6px 10px;border:1px solid #d1d5db;"><strong>%s</strong></td><td style="padding:6px 10px;border:1px solid #d1d5db;">%s</td></tr>`,
+			html.EscapeString(row.label), html.EscapeString(row.value)))
+	}
+	message := firstNonEmpty(strings.TrimSpace(backup.Message), "(no message)")
+	return fmt.Sprintf(`<html><body style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.5;">
+<h2 style="margin:0 0 12px;">Site Backup %s</h2>
+<p><span style="display:inline-block;padding:4px 10px;background:%s;color:#fff;border-radius:999px;font-size:12px;font-weight:700;text-transform:uppercase;">%s</span></p>
+<table style="border-collapse:collapse;width:100%%;max-width:760px;margin-top:12px;">%s</table>
+<h3 style="margin:18px 0 8px;">Message</h3>
+<pre style="background:#111827;color:#dbeafe;padding:14px;border-radius:8px;white-space:pre-wrap;">%s</pre>
+</body></html>`,
+		html.EscapeString(strings.Title(status)),
+		statusBg,
+		html.EscapeString(strings.ToUpper(status)),
+		tableRows.String(),
+		html.EscapeString(message),
+	)
+}
+
+func formatBackupSize(bytes int64) string {
+	if bytes <= 0 {
+		return "0 B"
+	}
+	switch {
+	case bytes >= 1<<30:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(1<<30))
+	case bytes >= 1<<20:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(1<<20))
+	case bytes >= 1<<10:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(1<<10))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
 func sendDatabaseBackupReadyEmail(cfg config.Config, databaseName string, recipient string, downloadURL string, expiresAt time.Time) error {
 	if strings.TrimSpace(cfg.SMTPHost) == "" || strings.TrimSpace(cfg.SMTPFrom) == "" || strings.TrimSpace(recipient) == "" {
 		return fmt.Errorf("smtp host, from email and recipient are required")
