@@ -45,6 +45,32 @@ type SiteBackupResult struct {
 var ErrBackupBucketRequired = errors.New("backup s3 bucket is required")
 var ErrBackupRootMissing = errors.New("site root directory is missing")
 
+// niceWrap prepends `nice -n 19 ionice -c 3 ...` to the given argv so
+// the command runs at the lowest CPU priority (only scheduled when
+// nothing else needs the CPU) and the idle I/O class (only issues
+// disk I/O when no other process is doing I/O). Falls back to the
+// raw argv if nice/ionice are unavailable on PATH so the backup
+// still runs on minimal systems.
+func niceWrap(argv ...string) []string {
+	if len(argv) == 0 {
+		return argv
+	}
+	wrapped := make([]string, 0, len(argv)+5)
+	if _, err := exec.LookPath("nice"); err == nil {
+		wrapped = append(wrapped, "nice", "-n", "19")
+	}
+	if _, err := exec.LookPath("ionice"); err == nil {
+		wrapped = append(wrapped, "ionice", "-c", "3")
+	}
+	wrapped = append(wrapped, argv...)
+	if len(wrapped) == len(argv) {
+		return argv
+	}
+	// argv[0] is now the wrapper binary; ensure it's the first arg
+	// of exec.CommandContext callers expect.
+	return wrapped
+}
+
 // RunSiteBackup performs the actual backup: tar+gzip the site root,
 // optionally mysqldump+gzip the database, then upload both to S3.
 // It writes progress lines to stdout so the helper streamer can tail
@@ -87,11 +113,15 @@ func RunSiteBackup(ctx context.Context, spec SiteBackupSpec, stdout io.Writer) (
 		return result, ErrAWSCredentialsMissing
 	}
 
-	// 1) Tar+gzip the site root.
+	// 1) Tar+gzip the site root. Wrap with nice (CPU priority 19,
+	//    lowest) + ionice (idle I/O class) so the backup yields to
+	//    real traffic when the server is busy. nice/ionice are part
+	//    of coreutils/util-linux and ship by default on Ubuntu.
 	filesArchive := filepath.Join(tempDir, "files.tar.gz")
-	_, _ = fmt.Fprintf(stdout, "Archiving %s -> %s\n", root, filesArchive)
-	tarCtx, cancelTar := context.WithTimeout(ctx, 30*time.Minute)
-	tarCmd := exec.CommandContext(tarCtx, "tar", "--warning=no-file-changed", "--warning=no-file-removed", "-czf", filesArchive, "-C", root, ".")
+	_, _ = fmt.Fprintf(stdout, "Archiving %s -> %s (nice 19, ionice idle)\n", root, filesArchive)
+	tarCtx, cancelTar := context.WithTimeout(ctx, 60*time.Minute)
+	tarArgs := niceWrap("tar", "--warning=no-file-changed", "--warning=no-file-removed", "-czf", filesArchive, "-C", root, ".")
+	tarCmd := exec.CommandContext(tarCtx, tarArgs[0], tarArgs[1:]...)
 	tarOutput, tarErr := tarCmd.CombinedOutput()
 	cancelTar()
 	if tarErr != nil {
@@ -126,12 +156,19 @@ func RunSiteBackup(ctx context.Context, spec SiteBackupSpec, stdout io.Writer) (
 		if defaultsFile == "" {
 			defaultsFile = "/etc/server-side-control/mysql-admin.cnf"
 		}
-		dumpCtx, cancelDump := context.WithTimeout(ctx, 30*time.Minute)
-		dumpCmd := exec.CommandContext(dumpCtx, "bash", "-lc", fmt.Sprintf("mysqldump --defaults-file=%s --single-transaction --quick --routines --triggers --events %s | gzip > %s",
+		// mysqldump with --single-transaction uses MVCC instead of
+		// LOCK TABLES on InnoDB, so reads on the live database keep
+		// working. --quick streams row-by-row to avoid spiking
+		// memory on large tables. nice + ionice keep the process
+		// out of the way of real traffic.
+		dumpCtx, cancelDump := context.WithTimeout(ctx, 60*time.Minute)
+		dumpScript := fmt.Sprintf("mysqldump --defaults-file=%s --single-transaction --quick --routines --triggers --events %s | gzip > %s",
 			shellQuote(defaultsFile),
 			shellQuote(databaseName),
 			shellQuote(dbArchive),
-		))
+		)
+		dumpArgs := niceWrap("bash", "-lc", dumpScript)
+		dumpCmd := exec.CommandContext(dumpCtx, dumpArgs[0], dumpArgs[1:]...)
 		dumpOutput, dumpErr := dumpCmd.CombinedOutput()
 		cancelDump()
 		if dumpErr != nil {
