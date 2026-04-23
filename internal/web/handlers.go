@@ -5080,6 +5080,8 @@ func (a *App) renderSiteDetails(w http.ResponseWriter, r *http.Request, site dom
 			data.BackupHistory = backups
 		}
 	}
+	data.AWSConfigured = a.dns.Configured()
+	data.AWSRegion = firstNonEmpty(strings.TrimSpace(a.cfg.AWSRegion), "us-east-1")
 	data.DNSEnabled = a.dns.Configured()
 	if data.DNSEnabled {
 		if zones, err := a.dns.ListHostedZones(); err == nil {
