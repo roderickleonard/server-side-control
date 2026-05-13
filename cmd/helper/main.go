@@ -1602,6 +1602,33 @@ func handle(cfg config.Config, request system.HelperRequest) {
 		}
 		deleted, err := system.PruneSiteBackups(context.Background(), input.Spec, input.Keep)
 		writeSuccess(deleted, "", err)
+	case "firewall.status":
+		status, err := system.NewLinuxFirewallManager().Status()
+		writeSuccess(status, "", err)
+	case "firewall.enable":
+		output, err := system.NewLinuxFirewallManager().Enable()
+		writeSuccess(nil, output, err)
+	case "firewall.disable":
+		output, err := system.NewLinuxFirewallManager().Disable()
+		writeSuccess(nil, output, err)
+	case "firewall.add_rule":
+		var spec system.FirewallRuleSpec
+		if err := json.Unmarshal(request.Input, &spec); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewLinuxFirewallManager().AddRule(spec)
+		writeSuccess(nil, output, err)
+	case "firewall.delete_rule":
+		var input struct {
+			Number int `json:"number"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		output, err := system.NewLinuxFirewallManager().DeleteRule(input.Number)
+		writeSuccess(nil, output, err)
 	default:
 		writeFailure(fmt.Errorf("unknown helper action: %s", request.Action), "")
 	}

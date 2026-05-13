@@ -118,6 +118,11 @@ var allowedHelperActions = map[string]struct{}{
 	"ssh_account.set_password":      {},
 	"backup.run_site":               {},
 	"backup.prune_site":             {},
+	"firewall.status":               {},
+	"firewall.enable":               {},
+	"firewall.disable":              {},
+	"firewall.add_rule":             {},
+	"firewall.delete_rule":          {},
 }
 
 func ValidateHelperAction(action string) error {

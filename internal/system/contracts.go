@@ -688,3 +688,30 @@ type DNSManager interface {
 	ListRecords(zoneID string) ([]DNSRecord, error)
 	ApplyChange(spec DNSChangeSpec) error
 }
+
+type FirewallRule struct {
+	Number int    `json:"number"`
+	To     string `json:"to"`
+	Action string `json:"action"`
+	From   string `json:"from"`
+}
+
+type FirewallStatus struct {
+	Active bool           `json:"active"`
+	Rules  []FirewallRule `json:"rules"`
+}
+
+type FirewallRuleSpec struct {
+	Port     string `json:"port"`
+	Protocol string `json:"protocol"`
+	Source   string `json:"source"`
+	Action   string `json:"action"`
+}
+
+type FirewallManager interface {
+	Status() (FirewallStatus, error)
+	Enable() (string, error)
+	Disable() (string, error)
+	AddRule(spec FirewallRuleSpec) (string, error)
+	DeleteRule(number int) (string, error)
+}

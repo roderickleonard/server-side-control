@@ -106,6 +106,8 @@ type helperSupervisorManager struct{ client *HelperClient }
 
 type helperSSHAccountManager struct{ client *HelperClient }
 
+type helperFirewallManager struct{ client *HelperClient }
+
 func NewHelperUserManager(client *HelperClient) UserManager {
 	return &helperUserManager{client: client}
 }
@@ -148,6 +150,32 @@ func NewHelperSupervisorManager(client *HelperClient) SupervisorManager {
 
 func NewHelperSSHAccountManager(client *HelperClient) SSHAccountManager {
 	return &helperSSHAccountManager{client: client}
+}
+
+func NewHelperFirewallManager(client *HelperClient) FirewallManager {
+	return &helperFirewallManager{client: client}
+}
+
+func (m *helperFirewallManager) Status() (FirewallStatus, error) {
+	var status FirewallStatus
+	_, err := m.client.Call(context.Background(), "firewall.status", map[string]any{}, &status)
+	return status, err
+}
+
+func (m *helperFirewallManager) Enable() (string, error) {
+	return m.client.Call(context.Background(), "firewall.enable", map[string]any{}, nil)
+}
+
+func (m *helperFirewallManager) Disable() (string, error) {
+	return m.client.Call(context.Background(), "firewall.disable", map[string]any{}, nil)
+}
+
+func (m *helperFirewallManager) AddRule(spec FirewallRuleSpec) (string, error) {
+	return m.client.Call(context.Background(), "firewall.add_rule", spec, nil)
+}
+
+func (m *helperFirewallManager) DeleteRule(number int) (string, error) {
+	return m.client.Call(context.Background(), "firewall.delete_rule", map[string]any{"number": number}, nil)
 }
 
 func (m *helperSSHAccountManager) Inspect(username string) (SSHAccountStatus, error) {

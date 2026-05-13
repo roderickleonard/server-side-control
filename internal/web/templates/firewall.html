@@ -1,0 +1,142 @@
+{{define "content"}}
+<div class="page-banner pb-dark">
+    <div class="pb-icon"><i class="bi bi-shield-lock"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Network Security</span>
+        <h2>Firewall</h2>
+        <p class="pb-lead">Manage UFW firewall rules to control inbound traffic.</p>
+    </div>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            {{if .FirewallStatus.Active}}<strong style="color:#4ade80;">Active</strong>{{else}}<strong style="color:#f87171;">Inactive</strong>{{end}}
+            <span>Status</span>
+        </div>
+        <div class="pb-stat">
+            <strong>{{len .FirewallStatus.Rules}}</strong>
+            <span>Rules</span>
+        </div>
+    </div>
+</div>
+
+{{if .RequestError}}
+<div class="alert mb-3">{{.RequestError}}</div>
+{{end}}
+{{if .SuccessMessage}}
+<div class="alert success mb-3">{{.SuccessMessage}}</div>
+{{end}}
+{{if .CommandOutput}}
+<pre class="code-block mb-3">{{.CommandOutput}}</pre>
+{{end}}
+
+<div class="grid">
+    <article class="panel">
+        <h3><i class="bi bi-activity" style="color:var(--accent);"></i>Firewall status</h3>
+        <div class="info-grid">
+            <div class="info-grid-item">
+                <span class="info-label">Status</span>
+                <span>{{if .FirewallStatus.Active}}<span class="status-pill running">Active</span>{{else}}<span class="status-pill stopped">Inactive</span>{{end}}</span>
+            </div>
+            <div class="info-grid-item">
+                <span class="info-label">Rules</span>
+                <span>{{len .FirewallStatus.Rules}} IPv4 rule(s)</span>
+            </div>
+        </div>
+        <div class="form-actions" style="margin-top:16px;">
+            {{if .FirewallStatus.Active}}
+            <form method="post" style="display:inline;">
+                <input type="hidden" name="firewall_action" value="disable">
+                <button type="submit" class="btn-danger">Disable Firewall</button>
+            </form>
+            {{else}}
+            <form method="post" style="display:inline;">
+                <input type="hidden" name="firewall_action" value="enable">
+                <button type="submit">Enable Firewall</button>
+            </form>
+            {{end}}
+        </div>
+        {{if not .FirewallStatus.Active}}
+        <p class="muted" style="margin-top:12px;font-size:0.85em;">Warning: enabling UFW without first allowing SSH (port 22) may lock you out of the server.</p>
+        {{end}}
+    </article>
+
+    <article class="panel">
+        <h3><i class="bi bi-plus-circle" style="color:var(--accent);"></i>Add rule</h3>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="firewall_action" value="add_rule">
+            <div class="form-grid two-up">
+                <label>
+                    <span>Port</span>
+                    <input type="text" name="fw_port" value="{{.FirewallNewPort}}" placeholder="80 or 8000:8100" required>
+                </label>
+                <label>
+                    <span>Protocol</span>
+                    <select name="fw_protocol">
+                        <option value="any" {{if eq .FirewallNewProtocol "any"}}selected{{end}}>any</option>
+                        <option value="tcp" {{if eq .FirewallNewProtocol "tcp"}}selected{{end}}>tcp</option>
+                        <option value="udp" {{if eq .FirewallNewProtocol "udp"}}selected{{end}}>udp</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Source IP / CIDR</span>
+                    <input type="text" name="fw_source" value="{{if .FirewallNewSource}}{{.FirewallNewSource}}{{else}}any{{end}}" placeholder="any or 1.2.3.4/24">
+                </label>
+                <label>
+                    <span>Action</span>
+                    <select name="fw_action">
+                        <option value="allow" {{if eq .FirewallNewAction "allow"}}selected{{end}}>allow</option>
+                        <option value="deny" {{if eq .FirewallNewAction "deny"}}selected{{end}}>deny</option>
+                    </select>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Add Rule</button>
+            </div>
+        </form>
+    </article>
+</div>
+
+{{if .FirewallStatus.Rules}}
+<div class="grid single">
+    <article class="panel">
+        <h3><i class="bi bi-list-ul" style="color:var(--accent);"></i>Active rules</h3>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>To</th>
+                    <th>Action</th>
+                    <th>From</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .FirewallStatus.Rules}}
+                <tr>
+                    <td>{{.Number}}</td>
+                    <td>{{.To}}</td>
+                    <td>
+                        {{if eq .Action "ALLOW"}}<span class="status-pill running">ALLOW</span>{{else}}<span class="status-pill stopped">DENY</span>{{end}}
+                    </td>
+                    <td>{{.From}}</td>
+                    <td>
+                        <form method="post" style="display:inline;">
+                            <input type="hidden" name="firewall_action" value="delete_rule">
+                            <input type="hidden" name="fw_rule_number" value="{{.Number}}">
+                            <button type="submit" class="btn-small btn-danger" onclick="return confirm('Delete rule #{{.Number}}?')">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        <p class="muted" style="margin-top:8px;font-size:0.8em;">IPv6 rules are managed automatically by UFW alongside their IPv4 counterparts and are not shown here.</p>
+    </article>
+</div>
+{{else if .FirewallStatus.Active}}
+<div class="grid single">
+    <article class="panel">
+        <p class="muted">No rules configured. All inbound traffic is currently blocked by default.</p>
+    </article>
+</div>
+{{end}}
+{{end}}

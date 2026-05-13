@@ -37,6 +37,7 @@ type App struct {
 	redis              system.RedisManager
 	supervisor         system.SupervisorManager
 	sshAccounts        system.SSHAccountManager
+	firewall           system.FirewallManager
 	dns                system.DNSManager
 	helper             *system.HelperClient
 	auth               auth.Authenticator
@@ -260,6 +261,11 @@ type TemplateData struct {
 	SupervisorLogLines                string
 	SupervisorLogProgram              string
 	SupervisorLogOutput               string
+	FirewallStatus                    system.FirewallStatus
+	FirewallNewPort                   string
+	FirewallNewProtocol               string
+	FirewallNewSource                 string
+	FirewallNewAction                 string
 	DatabaseRestoreSQL                string
 	GeneratedSecret                   string
 	ResultPath                        string
@@ -373,6 +379,7 @@ func New(cfg config.Config, logger *slog.Logger, dataStore *store.Store, metrics
 		redis:              system.NewHelperRedisManager(helperClient),
 		supervisor:         system.NewHelperSupervisorManager(helperClient),
 		sshAccounts:        system.NewHelperSSHAccountManager(helperClient),
+		firewall:           system.NewHelperFirewallManager(helperClient),
 		dns:                system.NewRoute53DNSManager(cfg.AWSAccessKeyID, cfg.AWSSecretAccessKey),
 		helper:             helperClient,
 		auth:               authenticator,
@@ -481,6 +488,7 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/processes/options", a.handleProcessOptions)
 	a.router.HandleFunc("/processes/stream", a.handleProcessesStream)
 	a.router.HandleFunc("/logs", a.handleLogs)
+	a.router.HandleFunc("/firewall", a.handleFirewall)
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
@@ -503,6 +511,7 @@ func (a *App) nav() []NavItem {
 		{Label: "Deploys", Path: "/deploys"},
 		{Label: "Processes", Path: "/processes"},
 		{Label: "Logs", Path: "/logs"},
+		{Label: "Firewall", Path: "/firewall"},
 	}
 }
 

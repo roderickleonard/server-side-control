@@ -7531,3 +7531,112 @@ func (a *App) handleSiteFileAction(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "unknown action"})
 	}
 }
+
+func (a *App) handleFirewall(w http.ResponseWriter, r *http.Request) {
+	data := TemplateData{Title: "Firewall"}
+
+	fwStatus, statusErr := a.firewall.Status()
+	if statusErr == nil {
+		data.FirewallStatus = fwStatus
+	}
+
+	if r.Method == http.MethodGet {
+		if statusErr != nil {
+			data.RequestError = "Firewall status could not be loaded: " + statusErr.Error()
+		}
+		a.render(r.Context(), w, r.URL.Path, "firewall.html", data)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		data.RequestError = "The submitted form could not be parsed."
+		a.render(r.Context(), w, r.URL.Path, "firewall.html", data)
+		return
+	}
+
+	action := strings.TrimSpace(r.FormValue("firewall_action"))
+
+	switch action {
+	case "enable":
+		output, err := a.firewall.Enable()
+		if err != nil {
+			data.RequestError = "Failed to enable firewall: " + err.Error()
+		} else {
+			data.SuccessMessage = "Firewall enabled."
+			if output != "" {
+				data.CommandOutput = output
+			}
+		}
+		a.recordAudit(r.Context(), "firewall.enable", "", firewallOutcome(err), nil)
+	case "disable":
+		output, err := a.firewall.Disable()
+		if err != nil {
+			data.RequestError = "Failed to disable firewall: " + err.Error()
+		} else {
+			data.SuccessMessage = "Firewall disabled."
+			if output != "" {
+				data.CommandOutput = output
+			}
+		}
+		a.recordAudit(r.Context(), "firewall.disable", "", firewallOutcome(err), nil)
+	case "add_rule":
+		spec := system.FirewallRuleSpec{
+			Port:     strings.TrimSpace(r.FormValue("fw_port")),
+			Protocol: strings.TrimSpace(r.FormValue("fw_protocol")),
+			Source:   strings.TrimSpace(r.FormValue("fw_source")),
+			Action:   strings.TrimSpace(r.FormValue("fw_action")),
+		}
+		data.FirewallNewPort = spec.Port
+		data.FirewallNewProtocol = spec.Protocol
+		data.FirewallNewSource = spec.Source
+		data.FirewallNewAction = spec.Action
+		output, err := a.firewall.AddRule(spec)
+		if err != nil {
+			data.RequestError = "Failed to add rule: " + err.Error()
+		} else {
+			data.SuccessMessage = "Rule added."
+			if output != "" {
+				data.CommandOutput = output
+			}
+		}
+		a.recordAudit(r.Context(), "firewall.add_rule", "", firewallOutcome(err), map[string]any{"port": spec.Port, "protocol": spec.Protocol, "source": spec.Source, "action": spec.Action})
+	case "delete_rule":
+		numStr := strings.TrimSpace(r.FormValue("fw_rule_number"))
+		num, parseErr := strconv.Atoi(numStr)
+		if parseErr != nil || num < 1 {
+			data.RequestError = "Invalid rule number."
+		} else {
+			output, err := a.firewall.DeleteRule(num)
+			if err != nil {
+				data.RequestError = "Failed to delete rule: " + err.Error()
+			} else {
+				data.SuccessMessage = "Rule deleted."
+				if output != "" {
+					data.CommandOutput = output
+				}
+			}
+			a.recordAudit(r.Context(), "firewall.delete_rule", "", firewallOutcome(parseErr), map[string]any{"number": num})
+		}
+	default:
+		data.RequestError = "Unknown action."
+	}
+
+	// Reload status after mutation
+	if refreshed, err := a.firewall.Status(); err == nil {
+		data.FirewallStatus = refreshed
+	}
+
+	a.render(r.Context(), w, r.URL.Path, "firewall.html", data)
+}
+
+func firewallOutcome(err error) string {
+	if err == nil {
+		return "success"
+	}
+	return "failure"
+}
