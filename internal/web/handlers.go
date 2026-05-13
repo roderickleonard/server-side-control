@@ -27,6 +27,7 @@ import (
 
 	"github.com/kaganyegin/server-side-control/internal/auth"
 	"github.com/kaganyegin/server-side-control/internal/domain"
+	"github.com/kaganyegin/server-side-control/internal/store"
 	"github.com/kaganyegin/server-side-control/internal/system"
 )
 
@@ -2736,6 +2737,11 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 	}
 	versions := a.listPHPVersions()
 
+	usedPorts := []store.UsedPort(nil)
+	if a.store != nil {
+		usedPorts, _ = a.store.ListUsedPorts(r.Context())
+	}
+
 	if r.Method == http.MethodGet {
 		requestError := ""
 		if sitesErr != nil {
@@ -2748,6 +2754,7 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 			LinuxUsers:     users,
 			ManagedSites:   sites,
 			PHPVersions:    versions,
+			UsedPorts:      usedPorts,
 			RequestError:   requestError,
 		})
 		return
@@ -2814,6 +2821,26 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 		spec.UpstreamURL = ""
 	}
 
+	if spec.Mode == "reverse_proxy" && spec.UpstreamURL != "" {
+		if port := extractPortFromUpstream(spec.UpstreamURL); port != "" {
+			for _, up := range usedPorts {
+				if up.Port == port {
+					a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
+						Title:          "Sites",
+						DatabaseStatus: a.databaseStatus(r.Context()),
+						Metrics:        a.metrics.Snapshot(),
+						LinuxUsers:     users,
+						ManagedSites:   sites,
+						PHPVersions:    versions,
+						UsedPorts:      usedPorts,
+						RequestError:   fmt.Sprintf("Port %s is already used by %q.", port, up.Owner),
+					})
+					return
+				}
+			}
+		}
+	}
+
 	configPath, err := a.nginx.ApplySite(spec)
 	if err != nil {
 		a.recordAudit(r.Context(), "nginx.apply_site", spec.Name, "failure", map[string]any{"domain": spec.Domain, "mode": spec.Mode, "error": err.Error()})
@@ -2876,6 +2903,9 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 
 	a.recordAudit(r.Context(), "nginx.apply_site", spec.Name, "success", map[string]any{"domain": spec.Domain, "mode": spec.Mode, "config_path": configPath})
 	sites = a.listManagedSites(r)
+	if a.store != nil {
+		usedPorts, _ = a.store.ListUsedPorts(r.Context())
+	}
 	a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
 		Title:          "Sites",
 		DatabaseStatus: a.databaseStatus(r.Context()),
@@ -2883,6 +2913,7 @@ func (a *App) handleSites(w http.ResponseWriter, r *http.Request) {
 		LinuxUsers:     users,
 		ManagedSites:   sites,
 		PHPVersions:    versions,
+		UsedPorts:      usedPorts,
 		SuccessMessage: "Nginx site was applied, validated, and reloaded successfully.",
 		ResultPath:     configPath,
 	})
@@ -3510,6 +3541,21 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			data.SubdomainAutoDeploySecret = secret
+		}
+		if data.SubdomainMode == "reverse_proxy" && data.SubdomainUpstreamURL != "" && a.store != nil {
+			if port := extractPortFromUpstream(data.SubdomainUpstreamURL); port != "" {
+				if ups, _ := a.store.ListUsedPorts(r.Context()); ups != nil {
+					for _, up := range ups {
+						if up.Port == port {
+							data.RequestError = fmt.Sprintf("Port %s is already used by %q.", port, up.Owner)
+							break
+						}
+					}
+				}
+			}
+		}
+		if data.RequestError != "" {
+			break
 		}
 		subdomainRecord, siteSpec, err := buildSiteSubdomain(site, a.cfg.SubdomainRootBaseDir, data.SubdomainLabel, data.SubdomainMode, data.SubdomainUpstreamURL, data.SubdomainPHPVersion, data.SubdomainDirectoryName)
 		if err != nil {
@@ -5730,6 +5776,23 @@ func (a *App) renderSubdomainDetails(w http.ResponseWriter, r *http.Request, sit
 		data.SelectedSubdomain.MovePreviewTargetState = data.SubdomainMovePreviewTargetState
 	}
 	a.render(r.Context(), w, r.URL.Path, "subdomain_details.html", data)
+}
+
+// extractPortFromUpstream extracts the port number from an upstream URL such as
+// "127.0.0.1:3000", "http://127.0.0.1:3000", or "https://example.com:8443".
+func extractPortFromUpstream(upstream string) string {
+	s := upstream
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	if i := strings.IndexByte(s, '/'); i >= 0 {
+		s = s[:i]
+	}
+	_, port, err := net.SplitHostPort(s)
+	if err != nil {
+		return ""
+	}
+	return port
 }
 
 func extractEcosystemPort(content string) string {
