@@ -119,6 +119,7 @@ type TemplateData struct {
 	DatabaseDetails                   system.DatabaseDetails
 	SelectedDatabaseEntries           []system.DatabaseAccess
 	ManagedSites                      []domain.ManagedSite
+	UsedPorts                         []store.UsedPort
 	SelectedSite                      domain.ManagedSite
 	SelectedSubdomain                 domain.SiteSubdomain
 	PHPVersions                       []string

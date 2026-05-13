@@ -4,11 +4,64 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 
 	"github.com/kaganyegin/server-side-control/internal/domain"
 )
+
+// UsedPort describes a reverse-proxy upstream port already allocated to a site or subdomain.
+type UsedPort struct {
+	Port  string
+	Owner string // site name or subdomain full domain
+}
+
+// ListUsedPorts returns every port currently referenced by a reverse-proxy site or subdomain.
+func (s *Store) ListUsedPorts(ctx context.Context) ([]UsedPort, error) {
+	if s == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT name, upstream_url FROM managed_sites
+		WHERE runtime = 'reverse_proxy' AND upstream_url != ''
+		UNION ALL
+		SELECT full_domain, upstream_url FROM site_subdomains
+		WHERE runtime = 'reverse_proxy' AND upstream_url != ''
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list used ports: %w", err)
+	}
+	defer rows.Close()
+	var result []UsedPort
+	for rows.Next() {
+		var owner, upstream string
+		if err := rows.Scan(&owner, &upstream); err != nil {
+			continue
+		}
+		if port := upstreamPort(upstream); port != "" {
+			result = append(result, UsedPort{Port: port, Owner: owner})
+		}
+	}
+	return result, nil
+}
+
+// upstreamPort extracts the port number from an upstream URL such as
+// "127.0.0.1:3000", "http://127.0.0.1:3000", or "https://example.com:8443".
+func upstreamPort(upstream string) string {
+	s := upstream
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	if i := strings.IndexByte(s, '/'); i >= 0 {
+		s = s[:i]
+	}
+	_, port, err := net.SplitHostPort(s)
+	if err != nil {
+		return ""
+	}
+	return port
+}
 
 var mysqlNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,63}$`)
 

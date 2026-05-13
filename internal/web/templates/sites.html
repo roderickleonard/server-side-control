@@ -92,6 +92,38 @@
             <li>On failure, the manager rolls back the written file and leaves Nginx unchanged.</li>
         </ul>
     </article>
+
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Ports in use</span>
+                <h3 style="margin-bottom:0;">Allocated reverse-proxy ports</h3>
+            </div>
+            {{if .UsedPorts}}<span class="count-chip">{{len .UsedPorts}}</span>{{end}}
+        </div>
+        {{if .UsedPorts}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Port</th>
+                        <th>Owner (site / subdomain)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .UsedPorts}}
+                    <tr>
+                        <td><span class="badge subtle-badge" style="font-family:monospace;">:{{.Port}}</span></td>
+                        <td>{{.Owner}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p style="color:var(--muted);margin:0;">No reverse-proxy sites or subdomains configured yet.</p>
+        {{end}}
+    </article>
 </div>
 
 <div class="grid single">
