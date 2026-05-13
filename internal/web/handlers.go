@@ -908,6 +908,8 @@ func subdomainDetailTabForAction(action string) string {
 		return "deploy"
 	case "npm_install", "run_npm_script", "run_custom_command", "install_nvm", "install_node", "install_pm2", "install_composer", "start_pm2", "restart_pm2", "reload_pm2", "stop_pm2", "list_pm2", "show_pm2_logs", "save_runtime_command", "delete_runtime_command", "save_node_version":
 		return "runtime"
+	case "save_subdomain_file", "create_subdomain_file":
+		return "files"
 	case "enable_subdomain_tls", "move_subdomain_root", "move_subdomain_root_preview", "save_laravel_extra_writable_paths", "save_nginx_config", "validate_nginx_config", "rollback_nginx_config", "edit_subdomain_env", "delete_subdomain":
 		return "settings"
 	default:
@@ -4749,6 +4751,124 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 		data.RuntimeCommandNodeVersion = data.PreferredNodeVersion
 		data.RuntimeCommandBody = ""
 		successMessage = "Runtime command profile deleted."
+	case "save_subdomain_file":
+		mode := strings.TrimSpace(r.FormValue("file_mode"))
+		if err := validateFileMode(mode); err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		relPath := strings.TrimSpace(r.FormValue("file_path"))
+		if relPath == "" {
+			data.RequestError = "Select a file from the Files tab to edit."
+			break
+		}
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(subdomain.RootDirectory, relPath)
+		if resolveErr != nil {
+			data.RequestError = "File path is invalid: " + resolveErr.Error()
+			break
+		}
+		if !isEditableSiteFile(normalisedRel) {
+			data.RequestError = "This file extension is not allowed in the panel editor."
+			break
+		}
+		content := r.FormValue("file_content")
+		if len(content) > 2*1024*1024 {
+			data.RequestError = "File content exceeds the 2 MB editor limit."
+			break
+		}
+		if strings.HasSuffix(strings.ToLower(normalisedRel), ".json") {
+			trimmed := strings.TrimSpace(content)
+			if trimmed != "" && !json.Valid([]byte(trimmed)) {
+				data.RequestError = "JSON file is not valid; fix the syntax before saving."
+				data.SiteBrowserSelectedFile = normalisedRel
+				data.SiteBrowserFileContent = content
+				data.SiteBrowserFileEditable = true
+				break
+			}
+		}
+		_, saveErr := a.helper.Call(r.Context(), "files.write_text", map[string]any{
+			"path":       absPath,
+			"content":    content,
+			"owner":      site.OwnerLinuxUser,
+			"site_root":  subdomain.RootDirectory,
+			"max_bytes":  2 * 1024 * 1024,
+			"create_bak": true,
+			"mode":       mode,
+		}, nil)
+		if saveErr != nil {
+			data.RequestError = "Could not save the file: " + saveErr.Error()
+			a.recordAudit(r.Context(), "site.file.save", subdomain.FullDomain, "failure", map[string]any{"path": normalisedRel, "error": saveErr.Error()})
+			break
+		}
+		var saved string
+		if _, err := a.helper.Call(r.Context(), "files.read_text", map[string]any{"path": absPath, "max_bytes": 262144}, &saved); err == nil {
+			data.SiteBrowserFileContent = saved
+		} else {
+			data.SiteBrowserFileContent = content
+		}
+		data.SiteBrowserSelectedFile = normalisedRel
+		data.SiteBrowserCurrentPath = parentRelativePath(normalisedRel)
+		data.SiteBrowserParentPath = parentRelativePath(data.SiteBrowserCurrentPath)
+		data.SiteBrowserFileEditable = true
+		a.recordAudit(r.Context(), "site.file.save", subdomain.FullDomain, "success", map[string]any{"path": normalisedRel, "bytes": len(content), "mode": mode})
+	case "create_subdomain_file":
+		mode := strings.TrimSpace(r.FormValue("file_mode"))
+		if mode == "" {
+			mode = "644"
+		}
+		if err := validateFileMode(mode); err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		name := strings.TrimSpace(r.FormValue("new_file_name"))
+		if name == "" {
+			data.RequestError = "File name is required."
+			break
+		}
+		if strings.ContainsAny(name, `/\:*?"<>|`) || strings.HasPrefix(name, ".") && !isEditableSiteFile(name) {
+			data.RequestError = "File name contains invalid characters or uses a disallowed hidden extension."
+			break
+		}
+		dir := strings.TrimSpace(r.FormValue("file_dir"))
+		rel := name
+		if dir != "" {
+			rel = filepath.Join(dir, name)
+		}
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(subdomain.RootDirectory, rel)
+		if resolveErr != nil {
+			data.RequestError = "File path is invalid: " + resolveErr.Error()
+			break
+		}
+		if !isEditableSiteFile(normalisedRel) {
+			data.RequestError = "New files must use a supported text extension (json, env, yml, php, js, ...)."
+			break
+		}
+		initial := r.FormValue("file_content")
+		if len(initial) > 2*1024*1024 {
+			data.RequestError = "Initial content exceeds the 2 MB editor limit."
+			break
+		}
+		_, createErr := a.helper.Call(r.Context(), "files.write_text", map[string]any{
+			"path":        absPath,
+			"content":     initial,
+			"owner":       site.OwnerLinuxUser,
+			"site_root":   subdomain.RootDirectory,
+			"max_bytes":   2 * 1024 * 1024,
+			"mode":        mode,
+			"create_only": true,
+		}, nil)
+		if createErr != nil {
+			data.RequestError = "Could not create the file: " + createErr.Error()
+			a.recordAudit(r.Context(), "site.file.create", subdomain.FullDomain, "failure", map[string]any{"path": normalisedRel, "error": createErr.Error()})
+			break
+		}
+		data.SiteBrowserSelectedFile = normalisedRel
+		data.SiteBrowserCurrentPath = parentRelativePath(normalisedRel)
+		data.SiteBrowserParentPath = parentRelativePath(data.SiteBrowserCurrentPath)
+		data.SiteBrowserFileContent = initial
+		data.SiteBrowserFileEditable = true
+		a.recordAudit(r.Context(), "site.file.create", subdomain.FullDomain, "success", map[string]any{"path": normalisedRel, "mode": mode})
+		successMessage = normalisedRel + " created successfully."
 	case "save_node_version":
 		if !validNodeVersionSelection(data.PreferredNodeVersion) {
 			data.RequestError = "Node version is invalid. Use installed versions, exact semver, or aliases like lts/* or node."
@@ -7329,13 +7449,14 @@ func randomPassword(length int) (string, error) {
 
 // siteFileActionRequest is the body accepted by the AJAX file endpoint.
 type siteFileActionRequest struct {
-	SiteName string `json:"site_name"`
-	Action   string `json:"action"`
-	Path     string `json:"path"`
-	Dir      string `json:"dir"`
-	Name     string `json:"name"`
-	Content  string `json:"content"`
-	Mode     string `json:"mode"`
+	SiteName    string `json:"site_name"`
+	SubdomainID int64  `json:"subdomain_id"`
+	Action      string `json:"action"`
+	Path        string `json:"path"`
+	Dir         string `json:"dir"`
+	Name        string `json:"name"`
+	Content     string `json:"content"`
+	Mode        string `json:"mode"`
 }
 
 // handleSiteFileAction backs the Files tab's AJAX calls. It accepts
@@ -7368,6 +7489,21 @@ func (a *App) handleSiteFileAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rootDirectory := site.RootDirectory
+	if req.SubdomainID > 0 {
+		subdomains, subErr := a.store.ListSiteSubdomains(r.Context(), site.ID)
+		if subErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": "could not load subdomains"})
+			return
+		}
+		sub, found := findSiteSubdomain(subdomains, req.SubdomainID)
+		if !found {
+			writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "subdomain not found"})
+			return
+		}
+		rootDirectory = sub.RootDirectory
+	}
+
 	switch strings.ToLower(strings.TrimSpace(req.Action)) {
 	case "save":
 		mode := strings.TrimSpace(req.Mode)
@@ -7375,7 +7511,7 @@ func (a *App) handleSiteFileAction(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
-		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(site.RootDirectory, req.Path)
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(rootDirectory, req.Path)
 		if resolveErr != nil || normalisedRel == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file path is invalid"})
 			return
@@ -7395,7 +7531,7 @@ func (a *App) handleSiteFileAction(w http.ResponseWriter, r *http.Request) {
 			"path":       absPath,
 			"content":    req.Content,
 			"owner":      site.OwnerLinuxUser,
-			"site_root":  site.RootDirectory,
+			"site_root":  rootDirectory,
 			"max_bytes":  2 * 1024 * 1024,
 			"create_bak": true,
 			"mode":       mode,
@@ -7437,7 +7573,7 @@ func (a *App) handleSiteFileAction(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(req.Dir) != "" {
 			rel = filepath.Join(strings.TrimSpace(req.Dir), name)
 		}
-		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(site.RootDirectory, rel)
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(rootDirectory, rel)
 		if resolveErr != nil || normalisedRel == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file path is invalid"})
 			return
@@ -7450,7 +7586,7 @@ func (a *App) handleSiteFileAction(w http.ResponseWriter, r *http.Request) {
 			"path":        absPath,
 			"content":     req.Content,
 			"owner":       site.OwnerLinuxUser,
-			"site_root":   site.RootDirectory,
+			"site_root":   rootDirectory,
 			"max_bytes":   2 * 1024 * 1024,
 			"mode":        mode,
 			"create_only": true,
@@ -7476,7 +7612,7 @@ func (a *App) handleSiteFileAction(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file mode is required for chmod"})
 			return
 		}
-		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(site.RootDirectory, req.Path)
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(rootDirectory, req.Path)
 		if resolveErr != nil || normalisedRel == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file path is invalid"})
 			return
@@ -7490,7 +7626,7 @@ func (a *App) handleSiteFileAction(w http.ResponseWriter, r *http.Request) {
 			"path":      absPath,
 			"content":   current,
 			"owner":     site.OwnerLinuxUser,
-			"site_root": site.RootDirectory,
+			"site_root": rootDirectory,
 			"max_bytes": 2 * 1024 * 1024,
 			"mode":      mode,
 		}, nil)
@@ -7509,7 +7645,7 @@ func (a *App) handleSiteFileAction(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 	case "read":
-		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(site.RootDirectory, req.Path)
+		absPath, normalisedRel, resolveErr := resolveSiteBrowserPath(rootDirectory, req.Path)
 		if resolveErr != nil || normalisedRel == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "file path is invalid"})
 			return
