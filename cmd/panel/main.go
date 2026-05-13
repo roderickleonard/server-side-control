@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,9 +17,6 @@ import (
 )
 
 func main() {
-	seedMode := flag.Bool("seed", false, "migrate + seed the database with demo data, then exit")
-	flag.Parse()
-
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("load config", "error", err)
@@ -48,15 +44,6 @@ func main() {
 		if err := dataStore.Migrate(ctx); err != nil {
 			logger.Error("run migrations", "error", err)
 			os.Exit(1)
-		}
-
-		if *seedMode {
-			if err := dataStore.Seed(ctx); err != nil {
-				logger.Error("seed database", "error", err)
-				os.Exit(1)
-			}
-			logger.Info("database seeded successfully")
-			os.Exit(0)
 		}
 
 		repairedCount, repairErr := dataStore.RepairManagedSiteUpstreams(ctx)

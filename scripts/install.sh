@@ -18,13 +18,6 @@ GO_URL="https://go.dev/dl/${GO_TARBALL}"
 APT_UPDATED=0
 SKIP_INSTALLER="${SSC_SKIP_INSTALLER:-0}"
 FORCE_INSTALLER="${SSC_FORCE_INSTALLER:-0}"
-RUN_SEED=0
-
-for arg in "$@"; do
-    case "$arg" in
-        --seed) RUN_SEED=1 ;;
-    esac
-done
 
 if [[ "${EUID}" -ne 0 ]]; then
     echo "Run this installer as root on the Ubuntu target host."
@@ -196,12 +189,6 @@ if systemctl is-active --quiet server-side-control; then
     systemctl restart server-side-control
 else
     systemctl start server-side-control
-fi
-
-if [[ "$RUN_SEED" -eq 1 ]]; then
-    echo "Seeding database with demo data..."
-    env $(grep -v '^#' "$ENV_FILE" | xargs) "$BINARY_PATH" -seed
-    echo "Seed complete."
 fi
 
 printf '\nInstalled. Open the panel at the configured base URL.\n'
