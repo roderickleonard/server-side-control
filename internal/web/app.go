@@ -223,6 +223,7 @@ type TemplateData struct {
 	PanelTLSStatus                    domain.PanelTLSStatus
 	RedisStatus                       system.RedisStatus
 	MySQLServiceStatus                system.MySQLServiceStatus
+	MySQLRemoteAccessEnabled          bool
 	MySQLMaxConnections               string
 	MySQLMaxUserConnections           string
 	MySQLWaitTimeout                  string

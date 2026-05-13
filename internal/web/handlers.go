@@ -2528,6 +2528,38 @@ func (a *App) handleMySQLService(w http.ResponseWriter, r *http.Request) {
 		}
 		data.SuccessMessage = "MySQL service restarted successfully."
 		a.recordAudit(r.Context(), "mysql.restart_service", status.ServiceName, "success", nil)
+	case "enable_remote", "disable_remote":
+		if action == "enable_remote" {
+			data.MySQLBindAddress = "0.0.0.0"
+		} else {
+			data.MySQLBindAddress = "127.0.0.1"
+		}
+		spec, err := mysqlServiceConfigSpecFromForm(data)
+		if err != nil {
+			data.RequestError = err.Error()
+			break
+		}
+		output, err := a.databases.ConfigureService(spec)
+		data.CommandOutput = output
+		if err != nil {
+			data.RequestError = "Could not update bind address: " + mysqlServiceErrorMessage(err)
+			a.recordAudit(r.Context(), "mysql.remote_access", status.ServiceName, "failure", map[string]any{"action": action, "error": err.Error()})
+			break
+		}
+		restartOutput, restartErr := a.databases.RestartService()
+		data.CommandOutput += restartOutput
+		if restartErr != nil {
+			data.RequestError = "Bind address saved but service restart failed: " + mysqlServiceErrorMessage(restartErr)
+			a.recordAudit(r.Context(), "mysql.remote_access", status.ServiceName, "failure", map[string]any{"action": action, "error": restartErr.Error()})
+			break
+		}
+		data.MySQLRemoteAccessEnabled = action == "enable_remote"
+		if action == "enable_remote" {
+			data.SuccessMessage = "Remote access enabled. MySQL now listens on all interfaces (0.0.0.0). Ensure your firewall allows port " + data.MySQLPort + "."
+		} else {
+			data.SuccessMessage = "Remote access disabled. MySQL now only accepts local connections."
+		}
+		a.recordAudit(r.Context(), "mysql.remote_access", status.ServiceName, "success", map[string]any{"action": action, "bind_address": data.MySQLBindAddress})
 	case "run_query":
 		result, err := a.databases.ExecuteAdminQuery(data.MySQLAdminQuery, 250)
 		if err != nil {
@@ -2566,6 +2598,7 @@ func (a *App) mysqlServiceTemplateData(r *http.Request, status system.MySQLServi
 	data.MySQLTableOpenCache = defaultMySQLServiceField(status.TableOpenCache, "2000")
 	data.MySQLPort = defaultMySQLServiceField(status.Port, "3306")
 	data.MySQLBindAddress = firstNonEmpty(status.BindAddress, "127.0.0.1")
+	data.MySQLRemoteAccessEnabled = data.MySQLBindAddress != "127.0.0.1" && data.MySQLBindAddress != "localhost"
 	data.MySQLSlowQueryLogEnabled = status.SlowQueryLogEnabled
 	data.MySQLSlowQueryLogFile = firstNonEmpty(status.SlowQueryLogFile, "/var/log/mysql/slow-query.log")
 	data.MySQLLongQueryTime = firstNonEmpty(status.LongQueryTimeSeconds, "2")

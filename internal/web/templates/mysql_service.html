@@ -66,6 +66,58 @@
     </article>
 </div>
 
+<div class="grid single">
+    <article class="panel">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Network access</span>
+                <h3 style="margin-bottom:0;">Remote access</h3>
+            </div>
+            {{if .MySQLRemoteAccessEnabled}}
+            <span class="status-pill running">Enabled</span>
+            {{else}}
+            <span class="status-pill stopped">Disabled</span>
+            {{end}}
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap;margin-top:4px;">
+            <div style="flex:1;min-width:220px;">
+                <div class="info-grid">
+                    <div class="info-grid-item"><span class="info-label">Bind address</span><span style="font-family:monospace;">{{.MySQLServiceStatus.BindAddress}}</span></div>
+                    <div class="info-grid-item"><span class="info-label">Port</span><span style="font-family:monospace;">{{.MySQLServiceStatus.Port}}</span></div>
+                </div>
+                <p class="muted details-note" style="margin-top:10px;">
+                    {{if .MySQLRemoteAccessEnabled}}
+                    MySQL listens on all interfaces. Connect with: <code style="font-size:12px;">mysql -h &lt;your-server-ip&gt; -P {{.MySQLServiceStatus.Port}} -u &lt;user&gt; -p</code>
+                    {{else}}
+                    MySQL only accepts connections from <strong>localhost</strong>. Enable remote access to allow external clients.
+                    {{end}}
+                </p>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;min-width:200px;">
+                {{if .MySQLRemoteAccessEnabled}}
+                <form method="POST" action="/mysql">
+                    <input type="hidden" name="mysql_action" value="disable_remote">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" style="width:100%;">
+                        <i class="bi bi-lock"></i> Disable remote access
+                    </button>
+                </form>
+                {{else}}
+                <form method="POST" action="/mysql">
+                    <input type="hidden" name="mysql_action" value="enable_remote">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" style="width:100%;">
+                        <i class="bi bi-globe"></i> Enable remote access
+                    </button>
+                </form>
+                {{end}}
+                <p class="muted details-note" style="margin:0;">
+                    Enabling sets <code>bind-address=0.0.0.0</code> and restarts MySQL.<br>
+                    Make sure your firewall allows port {{.MySQLServiceStatus.Port}} from trusted IPs only.
+                </p>
+            </div>
+        </div>
+    </article>
+</div>
+
 <div class="grid">
     <article class="panel">
         <div class="section-head">
