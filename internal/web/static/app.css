@@ -1198,7 +1198,7 @@ li + li {
     position: fixed;
     top: 0;
     right: 0;
-    width: min(720px, calc(100vw - 32px));
+    width: 50vw;
     height: 100vh;
     background: linear-gradient(180deg, #08111f 0%, #0b1526 100%);
     color: #d9e7f5;
@@ -1287,7 +1287,7 @@ li + li {
 
 @media (max-width: 900px) {
     .terminal-drawer {
-        width: 100vw;
+        width: calc(100vw - 16px);
     }
 }
 
