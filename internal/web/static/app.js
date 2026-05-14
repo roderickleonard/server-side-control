@@ -469,8 +469,14 @@ document.addEventListener("DOMContentLoaded", () => {
         if (form.hasAttribute('data-stream-endpoint')) return false;
         if (form.hasAttribute('data-file-form')) return false;
         if (form.hasAttribute('data-no-ajax')) return false;
-        const action = (form.getAttribute('action') || '').toLowerCase();
-        if (action.includes('/login') || action.includes('/passkey')) return false;
+        // Use the resolved form.action (absolute URL) so forms without an explicit
+        // action attribute are correctly matched against the current page path.
+        try {
+            const actionPath = new URL(form.action, window.location.href).pathname.toLowerCase();
+            if (actionPath.startsWith('/login') || actionPath.startsWith('/passkey')) return false;
+        } catch {
+            return false;
+        }
         return true;
     }
 

@@ -33,7 +33,7 @@
             <div class="alert success" style="margin-bottom: 16px;">{{.SuccessMessage}}</div>
             {{end}}
             {{if .LoginRequiresTOTP}}
-            <form method="post" class="login-form">
+            <form method="post" class="login-form" data-no-ajax>
                 <input type="hidden" name="login_action" value="verify_totp">
                 <label>
                     <span>Username</span>
@@ -91,7 +91,7 @@
                 </button>
             </form>
             {{else if eq .LoginStage "password"}}
-            <form method="post" class="login-form">
+            <form method="post" class="login-form" data-no-ajax>
                 <input type="hidden" name="login_action" value="password_login">
                 <label>
                     <span>Username</span>
@@ -106,7 +106,7 @@
                 </button>
             </form>
             {{else}}
-            <form method="post" class="login-form">
+            <form method="post" class="login-form" data-no-ajax>
                 <input type="hidden" name="login_action" value="choose_username">
                 <label>
                     <span>Username</span>
