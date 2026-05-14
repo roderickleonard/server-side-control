@@ -6741,6 +6741,20 @@ func (a *App) listPHPInstallableVersions() []string {
 	return versions
 }
 
+func filterOutInstalled(candidates, installed []string) []string {
+	installedSet := make(map[string]struct{}, len(installed))
+	for _, v := range installed {
+		installedSet[v] = struct{}{}
+	}
+	out := make([]string, 0, len(candidates))
+	for _, v := range candidates {
+		if _, ok := installedSet[v]; !ok {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 func (a *App) listPHPExtensionStatuses(versions []string) []system.PHPExtensionStatus {
 	statuses := make([]system.PHPExtensionStatus, 0, len(versions))
 	for _, version := range versions {
@@ -6791,7 +6805,7 @@ func (a *App) phpTemplateData(r *http.Request) TemplateData {
 		OpenAIModel:              firstNonEmpty(strings.TrimSpace(a.cfg.OpenAIModel), "gpt-4.1-mini"),
 		ManagedSites:             a.listManagedSites(r),
 		PHPVersions:              versions,
-		PHPInstallableVersions:   a.listPHPInstallableVersions(),
+		PHPInstallableVersions:   filterOutInstalled(a.listPHPInstallableVersions(), versions),
 		PHPExtensionStatuses:     statuses,
 		PHPExtensionStatusesJSON: template.JS(encodedStatuses),
 		PHPDiagnostics:           a.listPHPDiagnostics(versions),
