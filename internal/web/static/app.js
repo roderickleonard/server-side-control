@@ -493,7 +493,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const resp = await fetch(form.action || window.location.href, {
                 method: 'POST',
-                body: new FormData(form),
+                body: new URLSearchParams(new FormData(form)),
                 headers: { 'X-Requested-With': 'fetch' },
             });
             html = await resp.text();
