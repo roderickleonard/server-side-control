@@ -367,3 +367,161 @@ document.addEventListener("DOMContentLoaded", () => {
         window.location.reload();
     });
 });
+
+// ── Global AJAX + Toast system ────────────────────────────────────────────────
+(function () {
+    'use strict';
+
+    // Toast host container
+    const toastHost = document.createElement('div');
+    toastHost.id = 'psk-toast-host';
+    document.body.appendChild(toastHost);
+
+    function showToast(message, type) {
+        const toast = document.createElement('div');
+        toast.className = 'psk-toast psk-toast-' + (type || 'info');
+        const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
+        toast.innerHTML = '<span class="psk-toast-icon">' + icon + '</span><span class="psk-toast-text">' + message + '</span>';
+        toastHost.appendChild(toast);
+        requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('psk-toast-visible')));
+        const dismiss = () => {
+            toast.classList.remove('psk-toast-visible');
+            toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+        };
+        const timer = setTimeout(dismiss, 4500);
+        toast.addEventListener('click', () => { clearTimeout(timer); dismiss(); });
+    }
+
+    window.PanelToast = { show: showToast };
+
+    // Re-run inline <script> tags after content swap
+    function runScripts(container) {
+        container.querySelectorAll('script').forEach((old) => {
+            if (old.type && old.type !== 'text/javascript') return;
+            const s = document.createElement('script');
+            Array.from(old.attributes).forEach((a) => s.setAttribute(a.name, a.value));
+            s.textContent = old.textContent;
+            old.parentNode.replaceChild(s, old);
+        });
+    }
+
+    // Re-apply bar chart widths
+    function applyVisuals(root) {
+        root.querySelectorAll('[data-pct]').forEach((el) => {
+            el.style.width = Math.min(parseInt(el.getAttribute('data-pct') || '0', 10) || 0, 100) + '%';
+        });
+        root.querySelectorAll('[data-load]').forEach((el) => {
+            const load = parseFloat(el.getAttribute('data-load') || '0') || 0;
+            const cores = parseInt(el.getAttribute('data-cores') || '1', 10) || 1;
+            el.style.width = Math.min(Math.round(load / cores * 100), 100) + '%';
+        });
+        const memBars = Array.from(root.querySelectorAll('[data-mem]'));
+        const maxMem = memBars.reduce((m, el) => Math.max(m, parseInt(el.getAttribute('data-mem') || '0', 10) || 0), 0);
+        if (maxMem > 0) {
+            memBars.forEach((el) => {
+                el.style.width = Math.round((parseInt(el.getAttribute('data-mem') || '0', 10) || 0) * 100 / maxMem) + '%';
+            });
+        }
+    }
+
+    // Re-bind delete-site modal triggers after content swap
+    function bindDeleteSiteModal() {
+        document.querySelectorAll('.delete-site-trigger').forEach((trigger) => {
+            if (trigger._pskModalBound) return;
+            trigger._pskModalBound = true;
+            trigger.addEventListener('click', () => {
+                const g = (id) => document.getElementById(id);
+                const siteName = trigger.getAttribute('data-site-name') || 'site';
+                if (g('delete-site-title')) g('delete-site-title').textContent = 'Delete ' + siteName;
+                if (g('delete-site-name-input')) g('delete-site-name-input').value = siteName;
+                ['domain', 'mode', 'upstream', 'root', 'config'].forEach((key) => {
+                    const el = g('delete-site-' + key);
+                    if (el) el.textContent = trigger.getAttribute('data-site-' + key) || '-';
+                });
+                const form = g('delete-site-form');
+                if (form) { form.reset(); if (g('delete-site-name-input')) g('delete-site-name-input').value = siteName; }
+            });
+        });
+    }
+
+    function afterSwap(main) {
+        runScripts(main);
+        applyVisuals(main);
+        bindDeleteSiteModal();
+        document.dispatchEvent(new CustomEvent('psk:content-loaded', { bubbles: false }));
+    }
+
+    // Button loading state
+    function setLoading(btn, on) {
+        if (!btn) return;
+        if (on) {
+            btn._pskHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="psk-spinner" aria-hidden="true"></span>';
+        } else {
+            btn.disabled = false;
+            if (btn._pskHtml != null) btn.innerHTML = btn._pskHtml;
+        }
+    }
+
+    function shouldIntercept(form) {
+        if (!form || form.method.toLowerCase() === 'get') return false;
+        if (form.hasAttribute('data-stream-endpoint')) return false;
+        if (form.hasAttribute('data-file-form')) return false;
+        if (form.hasAttribute('data-no-ajax')) return false;
+        const action = (form.getAttribute('action') || '').toLowerCase();
+        if (action.includes('/login') || action.includes('/passkey')) return false;
+        return true;
+    }
+
+    document.addEventListener('submit', async (event) => {
+        const form = event.target;
+        if (!shouldIntercept(form)) return;
+        if (event.defaultPrevented) return;
+        event.preventDefault();
+
+        const btn = form.querySelector('[type="submit"]');
+        setLoading(btn, true);
+
+        let html, finalUrl;
+        try {
+            const resp = await fetch(form.action || window.location.href, {
+                method: 'POST',
+                body: new FormData(form),
+                headers: { 'X-Requested-With': 'fetch' },
+            });
+            html = await resp.text();
+            finalUrl = resp.url;
+        } catch {
+            setLoading(btn, false);
+            showToast('Network error — please try again.', 'error');
+            return;
+        }
+
+        setLoading(btn, false);
+
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+
+        doc.querySelectorAll('.alert').forEach((alert) => {
+            const text = alert.textContent.trim();
+            if (!text) return;
+            showToast(text, alert.classList.contains('success') ? 'success' : 'error');
+        });
+
+        const newMain = doc.querySelector('main.content');
+        const curMain = document.querySelector('main.content');
+        if (newMain && curMain) {
+            curMain.innerHTML = newMain.innerHTML;
+            afterSwap(curMain);
+        }
+
+        const newTitle = doc.querySelector('title');
+        if (newTitle) document.title = newTitle.textContent;
+
+        if (finalUrl && finalUrl !== window.location.href) {
+            history.pushState(null, '', finalUrl);
+        }
+    });
+
+    window.addEventListener('popstate', () => window.location.reload());
+})();

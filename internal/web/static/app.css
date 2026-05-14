@@ -2948,3 +2948,70 @@ body.login-page {
 .file-toast-success { background: #047857; }
 .file-toast-error   { background: #991b1b; }
 .file-toast-info    { background: #1f2937; }
+
+/* ── Global toast system (top-right) ── */
+#psk-toast-host {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 20000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.psk-toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 260px;
+    max-width: 420px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.45;
+    color: #f8fafc;
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.22), 0 2px 8px rgba(15, 23, 42, 0.12);
+    opacity: 0;
+    transform: translateX(20px);
+    transition: opacity 200ms ease, transform 200ms ease;
+    pointer-events: all;
+    cursor: pointer;
+}
+
+.psk-toast-visible {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.psk-toast-success { background: #047857; }
+.psk-toast-error   { background: #be123c; }
+.psk-toast-info    { background: #1e40af; }
+.psk-toast-warning { background: #b45309; }
+
+.psk-toast-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+    margin-top: 1px;
+    opacity: 0.9;
+}
+
+.psk-toast-text { flex: 1; }
+
+/* ── Button spinner ── */
+.psk-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: psk-spin 0.65s linear infinite;
+    vertical-align: middle;
+}
+
+@keyframes psk-spin {
+    to { transform: rotate(360deg); }
+}
