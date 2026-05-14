@@ -30,7 +30,7 @@
     {{template "service_ai_panel" .}}
 </div>
 
-<div class="grid">
+<div class="grid wide-left">
     <article class="panel">
         <h3><i class="bi bi-activity" style="color:var(--accent);"></i>Service status</h3>
         <div class="info-grid">
@@ -61,7 +61,7 @@
     </article>
 </div>
 
-<div class="grid">
+<div class="grid wide-left">
     <article class="panel">
         <h3><i class="bi bi-key" style="color:var(--accent);"></i>Credentials and port</h3>
         <form method="post" class="stack-form redis-stream-form" data-stream-endpoint="/redis/stream">
@@ -115,6 +115,9 @@
             </div>
         </form>
     </article>
+</div>
+
+<div class="grid three">
     <article class="panel">
         <h3><i class="bi bi-broadcast" style="color:var(--muted);"></i>Connection test</h3>
         <form method="post" class="stack-form redis-stream-form" data-stream-endpoint="/redis/stream">

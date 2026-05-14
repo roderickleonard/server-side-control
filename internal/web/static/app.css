@@ -695,8 +695,17 @@ li + li {
     margin-bottom: 16px;
 }
 
-.grid.single {
-    grid-template-columns: 1fr;
+.grid.single     { grid-template-columns: 1fr; }
+.grid.three      { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid.wide-left  { grid-template-columns: 2fr 1fr; }
+.grid.wide-right { grid-template-columns: 1fr 2fr; }
+
+/* Stack helper: vertical panel column inside a grid cell */
+.panel-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
 }
 
 .grid:last-child {
