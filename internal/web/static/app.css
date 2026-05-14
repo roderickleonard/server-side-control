@@ -1172,6 +1172,22 @@ li + li {
 
 /* ── Command output ────────────────────────────────────────────────────── */
 
+.code-block {
+    margin-top: 12px;
+    padding: 14px 16px;
+    border-radius: var(--r);
+    background: #0d1117;
+    color: #8fb4d8;
+    max-height: 360px;
+    overflow-y: auto;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    font-family: "SFMono-Regular", "Consolas", "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    border: 1px solid rgba(255,255,255,0.06);
+}
+
 .command-output {
     margin-top: 12px;
     padding: 14px 16px;
