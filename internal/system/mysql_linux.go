@@ -1069,15 +1069,20 @@ func detectMySQLServiceName() string {
 }
 
 func detectMySQLManagedConfigPath() string {
-	for _, dir := range []string{"/etc/mysql/conf.d", "/etc/mysql/mysql.conf.d", "/etc/my.cnf.d"} {
+	// On Ubuntu/Debian, /etc/mysql/my.cnf includes conf.d/ first, then
+	// mysql.conf.d/ — so mysql.conf.d/mysqld.cnf (which sets
+	// bind-address=127.0.0.1) overrides anything written to conf.d/.
+	// We must write to mysql.conf.d/ AND use a name that sorts after
+	// mysqld.cnf so our settings are read last and win.
+	for _, dir := range []string{"/etc/mysql/mysql.conf.d", "/etc/mysql/conf.d", "/etc/my.cnf.d"} {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
-			return filepath.Join(dir, "server-side-control.cnf")
+			return filepath.Join(dir, "zzz-server-side-control.cnf")
 		}
 	}
 	if info, err := os.Stat("/etc/mysql"); err == nil && info.IsDir() {
-		return "/etc/mysql/conf.d/server-side-control.cnf"
+		return "/etc/mysql/mysql.conf.d/zzz-server-side-control.cnf"
 	}
-	return "/etc/my.cnf.d/server-side-control.cnf"
+	return "/etc/my.cnf.d/zzz-server-side-control.cnf"
 }
 
 func systemdUnitExists(service string) bool {
