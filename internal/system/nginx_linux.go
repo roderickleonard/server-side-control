@@ -211,15 +211,20 @@ func ensureSiteRootDirectory(rootDirectory string, ownerLinuxUser string) error 
 		return ErrUserNotFound
 	}
 
-	chownTarget := targetPath
-	ownerBasePath := filepath.Join("/var/www", ownerLinuxUser)
-	if strings.HasPrefix(targetPath, ownerBasePath+"/") {
-		chownTarget = ownerBasePath
-	}
-	cmd := exec.CommandContext(ctx, "chown", "-R", ownerLinuxUser+":"+ownerLinuxUser, chownTarget)
+	// Only chown the specific new directory, never the parent.
+	// Chowning /var/www/{user} recursively would clobber permissions of every
+	// sibling subdomain already living under that directory.
+	cmd := exec.CommandContext(ctx, "chown", "-R", ownerLinuxUser+":"+ownerLinuxUser, targetPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("chown site root directory: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	// Fix ownership on the parent base directory itself (non-recursive) so the
+	// user can list their own web root without touching sibling directories.
+	ownerBasePath := filepath.Join("/var/www", ownerLinuxUser)
+	if strings.HasPrefix(targetPath, ownerBasePath+"/") {
+		baseCmd := exec.CommandContext(ctx, "chown", ownerLinuxUser+":"+ownerLinuxUser, ownerBasePath)
+		_ = baseCmd.Run() // best-effort; not fatal if this fails
 	}
 	return nil
 }
