@@ -162,13 +162,39 @@ func (linuxRuntimeManager) StartPM2(spec PM2StartSpec) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	pm2Command := ""
+
+	// Resolve the exact node binary path so that PM2 uses a pinned interpreter
+	// for this process.  Using `--interpreter /full/path/to/node` means the
+	// process keeps running on the correct Node version even when nvm alias
+	// default is later changed by another site or subdomain.
+	interpreterFlag := ""
 	if spec.NodeVersion != "" {
+		installAndFind := buildNVMCommand(homeDirectory,
+			"nvm install "+shellQuote(spec.NodeVersion)+" && nvm which "+shellQuote(spec.NodeVersion))
+		nodePath, findErr := runBashAsUser(ctx, spec.User, installAndFind)
+		if findErr == nil {
+			// nvm which may print multiple lines; take the last one that looks like a path
+			for _, line := range strings.Split(nodePath, "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "/") && strings.HasSuffix(line, "/node") {
+					interpreterFlag = " --interpreter " + shellQuote(line)
+				}
+			}
+		}
+		if interpreterFlag == "" {
+			// fallback: set nvm use so at least the current invocation is correct
+			interpreterFlag = ""
+		}
+	}
+
+	pm2Command := ""
+	if spec.NodeVersion != "" && interpreterFlag == "" {
+		// Could not resolve exact path; fall back to nvm use (best-effort)
 		pm2Command += "nvm install " + shellQuote(spec.NodeVersion) + " && nvm use " + shellQuote(spec.NodeVersion) + " && "
 	}
 	pm2Command += "cd " + shellQuote(spec.WorkingDirectory)
 	pm2Command += " && pm2 delete " + shellQuote(spec.ProcessName) + " >/dev/null 2>&1 || true"
-	pm2Command += " && pm2 start " + shellQuote(resolvedScriptPath) + " --name " + shellQuote(spec.ProcessName) + " --cwd " + shellQuote(spec.WorkingDirectory)
+	pm2Command += " && pm2 start " + shellQuote(resolvedScriptPath) + " --name " + shellQuote(spec.ProcessName) + " --cwd " + shellQuote(spec.WorkingDirectory) + interpreterFlag
 	if spec.Arguments != "" {
 		pm2Command += " -- " + shellJoin(strings.Fields(spec.Arguments))
 	}
