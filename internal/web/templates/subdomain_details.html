@@ -8,6 +8,9 @@
         <span class="pb-eyebrow"><a href="/sites" style="color:rgba(255,255,255,.7);text-decoration:none;">Sites</a> / <a href="/sites/details?name={{.SelectedSite.Name}}&tab=domains" style="color:rgba(255,255,255,.7);text-decoration:none;">{{.SelectedSite.Name}}</a> / Subdomain</span>
         <h2>{{.SelectedSubdomain.FullDomain}}</h2>
         <p class="pb-lead">{{.SelectedSubdomain.Runtime}} &nbsp;·&nbsp; Owner: {{.SelectedSite.OwnerLinuxUser}}</p>
+        <a href="/sites/details?name={{.SelectedSite.Name}}&tab=domains" class="pb-back-btn">
+            <i class="bi bi-arrow-left"></i> Back to {{.SelectedSite.Name}}
+        </a>
     </div>
     <div class="pb-stats">
         <div class="pb-stat">
