@@ -494,10 +494,36 @@ document.addEventListener("DOMContentLoaded", () => {
         const btn = submitter || form.querySelector('[type="submit"]');
         setLoading(btn, true);
 
-        // Pass the submitter as the second FormData argument so that button
-        // name/value pairs (e.g. name="details_action" value="save_nginx_config")
-        // are included in the serialised body — without it they are silently dropped.
-        const formData = submitter ? new FormData(form, submitter) : new FormData(form);
+        // Sync nginx textarea content into the hidden mirror inputs on nginx-action-forms.
+        // Each nginx-action-form lives outside the textarea but references it via data-editor.
+        const editorID = form.getAttribute('data-editor');
+        if (editorID) {
+            const textarea = document.getElementById(editorID);
+            if (textarea) {
+                form.querySelectorAll('.nginx-content-mirror').forEach((mirror) => {
+                    mirror.value = textarea.value;
+                });
+            }
+            // Rollback forms also carry a revision select reference.
+            const revSelectID = form.getAttribute('data-revision-select');
+            if (revSelectID) {
+                const revSelect = document.getElementById(revSelectID);
+                if (revSelect) {
+                    form.querySelectorAll('.nginx-revision-mirror').forEach((mirror) => {
+                        mirror.value = revSelect.value;
+                    });
+                }
+            }
+        }
+
+        // new FormData(form) never includes the clicked submit button's name/value.
+        // new FormData(form, submitter) does, but only in Chrome 112+/Safari 16.4+.
+        // Safest cross-browser approach: build FormData normally, then manually
+        // append the submitter's name/value so it always reaches the server.
+        const formData = new FormData(form);
+        if (submitter && submitter.name) {
+            formData.append(submitter.name, submitter.value || '');
+        }
 
         let html, finalUrl;
         try {

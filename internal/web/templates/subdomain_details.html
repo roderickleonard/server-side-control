@@ -942,25 +942,42 @@
             </div>
         </form>
         {{range .NginxEditors}}
-        <form method="post" class="stack-form compact-form" style="margin-top:16px;gap:8px;">
-            <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
-            <input type="hidden" name="subdomain_id" value="{{$.SelectedSubdomain.ID}}">
-            <input type="hidden" name="nginx_target_type" value="subdomain">
-            <input type="hidden" name="nginx_target_id" value="{{.TargetID}}">
+        {{/* Shared textarea id for this editor so the hidden forms can reference it */}}
+        {{$editorID := printf "nginx-content-%d" .TargetID}}
+        <div class="stack-form compact-form nginx-editor-group" style="margin-top:16px;gap:8px;">
             <label>
                 <span>Nginx config</span>
-                <textarea name="nginx_config_content" rows="14">{{.Content}}</textarea>
+                <textarea id="{{$editorID}}" name="nginx_config_content" rows="14">{{.Content}}</textarea>
             </label>
             {{if .Notice}}<div class="details-note">{{.Notice}}</div>{{end}}
             <div class="form-actions">
-                <button type="submit" name="details_action" value="save_nginx_config" class="btn btn-sm btn-outline-secondary">Save config</button>
-                <button type="submit" name="details_action" value="validate_nginx_config" class="btn btn-sm btn-outline-secondary">Validate only</button>
+                {{/* Each action is its own form with a hidden details_action input so
+                     the correct action always reaches the server regardless of browser
+                     version or AJAX interceptor behaviour. */}}
+                <form method="post" class="nginx-action-form" data-editor="{{$editorID}}">
+                    <input type="hidden" name="details_action" value="save_nginx_config">
+                    <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                    <input type="hidden" name="subdomain_id" value="{{$.SelectedSubdomain.ID}}">
+                    <input type="hidden" name="nginx_target_type" value="subdomain">
+                    <input type="hidden" name="nginx_target_id" value="{{.TargetID}}">
+                    <input type="hidden" name="nginx_config_content" class="nginx-content-mirror">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Save config</button>
+                </form>
+                <form method="post" class="nginx-action-form" data-editor="{{$editorID}}">
+                    <input type="hidden" name="details_action" value="validate_nginx_config">
+                    <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                    <input type="hidden" name="subdomain_id" value="{{$.SelectedSubdomain.ID}}">
+                    <input type="hidden" name="nginx_target_type" value="subdomain">
+                    <input type="hidden" name="nginx_target_id" value="{{.TargetID}}">
+                    <input type="hidden" name="nginx_config_content" class="nginx-content-mirror">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Validate only</button>
+                </form>
             </div>
             {{if .Revisions}}
             <div class="form-grid two-up">
                 <label>
                     <span>Revision</span>
-                    <select name="nginx_revision_id">
+                    <select id="nginx-revision-{{.TargetID}}" name="nginx_revision_id">
                         <option value="">Select a revision</option>
                         {{range .Revisions}}
                         <option value="{{.ID}}">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</option>
@@ -968,11 +985,20 @@
                     </select>
                 </label>
                 <div class="form-actions" style="align-self:end;">
-                    <button type="submit" name="details_action" value="rollback_nginx_config" class="btn btn-sm btn-outline-secondary">Rollback selected revision</button>
+                    <form method="post" class="nginx-action-form" data-editor="{{$editorID}}" data-revision-select="nginx-revision-{{.TargetID}}">
+                        <input type="hidden" name="details_action" value="rollback_nginx_config">
+                        <input type="hidden" name="site_name" value="{{$.SelectedSite.Name}}">
+                        <input type="hidden" name="subdomain_id" value="{{$.SelectedSubdomain.ID}}">
+                        <input type="hidden" name="nginx_target_type" value="subdomain">
+                        <input type="hidden" name="nginx_target_id" value="{{.TargetID}}">
+                        <input type="hidden" name="nginx_config_content" class="nginx-content-mirror">
+                        <input type="hidden" name="nginx_revision_id" class="nginx-revision-mirror">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Rollback selected revision</button>
+                    </form>
                 </div>
             </div>
             {{end}}
-        </form>
+        </div>
         {{end}}
         <form method="post" class="inline-form" style="margin-top:16px;">
             <input type="hidden" name="details_action" value="delete_subdomain">
