@@ -486,14 +486,24 @@ document.addEventListener("DOMContentLoaded", () => {
         if (event.defaultPrevented) return;
         event.preventDefault();
 
-        const btn = form.querySelector('[type="submit"]');
+        // Use the actual clicked button for the spinner; fall back to the first
+        // submit button when the event doesn't carry a submitter reference.
+        const submitter = event.submitter instanceof HTMLButtonElement || event.submitter instanceof HTMLInputElement
+            ? event.submitter
+            : null;
+        const btn = submitter || form.querySelector('[type="submit"]');
         setLoading(btn, true);
+
+        // Pass the submitter as the second FormData argument so that button
+        // name/value pairs (e.g. name="details_action" value="save_nginx_config")
+        // are included in the serialised body — without it they are silently dropped.
+        const formData = submitter ? new FormData(form, submitter) : new FormData(form);
 
         let html, finalUrl;
         try {
             const resp = await fetch(form.action || window.location.href, {
                 method: 'POST',
-                body: new URLSearchParams(new FormData(form)),
+                body: new URLSearchParams(formData),
                 headers: { 'X-Requested-With': 'fetch' },
             });
             html = await resp.text();
