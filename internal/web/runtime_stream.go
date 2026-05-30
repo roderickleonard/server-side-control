@@ -1039,9 +1039,19 @@ func (a *App) handleDatabaseDetailsStream(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	if err := r.ParseMultipartForm(a.cfg.DatabaseRestoreMaxBytes); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid form payload"})
-		return
+	// The restore action sends multipart/form-data (file upload), while other
+	// actions (e.g. backup) send application/x-www-form-urlencoded. Parse
+	// according to content-type so both work correctly.
+	if strings.Contains(r.Header.Get("Content-Type"), "multipart/form-data") {
+		if err := r.ParseMultipartForm(a.cfg.DatabaseRestoreMaxBytes); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid form payload"})
+			return
+		}
+	} else {
+		if err := r.ParseForm(); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid form payload"})
+			return
+		}
 	}
 	streamWriter, ok := streamResponseWriter(w)
 	if !ok {
