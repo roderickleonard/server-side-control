@@ -1,0 +1,101 @@
+{{define "content"}}
+{{/* ── Page Banner ── */}}
+<div class="page-banner pb-blue">
+    <div class="pb-icon"><i class="bi bi-ethernet"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Network</span>
+        <h2>Ports</h2>
+        <p class="pb-lead">Every nginx proxy on this server, the ports it listens on, and the backend port each one forwards to.</p>
+    </div>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{len .PortProxies}}</strong>
+            <span>Proxies</span>
+        </div>
+        <div class="pb-stat">
+            <strong>{{len .PortBackendPorts}}</strong>
+            <span>Backend ports</span>
+        </div>
+    </div>
+</div>
+
+{{range .PortScanNotices}}
+<div class="alert mb-3">{{.}}</div>
+{{end}}
+
+<div class="grid single">
+    <article class="panel">
+        <div class="section-head">
+            <h3 style="margin-bottom:0;"><i class="bi bi-hdd-network" style="color:var(--accent);"></i>Backend ports in use</h3>
+            <span class="count-chip">{{len .PortBackendPorts}}</span>
+        </div>
+        <p class="muted details-note">Ports that nginx forwards traffic to via <code>proxy_pass</code>. Use this to pick a free port for a new app.</p>
+        {{if .PortBackendPorts}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:120px;">Port</th>
+                        <th>Used by</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .PortBackendPorts}}
+                    <tr>
+                        <td><span class="badge">{{.Port}}</span></td>
+                        <td class="text-break" style="font-size:12.5px;">{{range $i, $owner := .Owners}}{{if $i}}, {{end}}{{$owner}}{{end}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted">No reverse-proxy backend ports were found in the nginx configuration.</p>
+        {{end}}
+    </article>
+</div>
+
+<div class="grid single">
+    <article class="panel">
+        <div class="section-head">
+            <h3 style="margin-bottom:0;"><i class="bi bi-ethernet" style="color:var(--accent);"></i>All nginx proxies</h3>
+            <span class="count-chip">{{len .PortProxies}}</span>
+        </div>
+        {{if .PortProxies}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Domain</th>
+                        <th>Listen</th>
+                        <th>TLS</th>
+                        <th>Proxy target</th>
+                        <th>Backend port</th>
+                        <th>Config file</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .PortProxies}}
+                    <tr>
+                        <td>
+                            <strong>{{.Domain}}</strong>
+                            {{if gt (len .Domains) 1}}<div class="muted" style="font-size:11px;">{{range $i, $d := .Domains}}{{if $i}} · {{end}}{{$d}}{{end}}</div>{{end}}
+                        </td>
+                        <td>{{range $i, $p := .ListenPorts}}{{if $i}} {{end}}<span class="badge subtle-badge">{{$p}}</span>{{end}}</td>
+                        <td>
+                            {{if .SSL}}<span class="status-pill success">TLS</span>{{else}}<span class="status-pill unknown">plain</span>{{end}}
+                        </td>
+                        <td class="text-break" style="font-size:12px;">{{if .Upstream}}<code>{{.Upstream}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
+                        <td>{{if .UpstreamPort}}<span class="badge">{{.UpstreamPort}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+                        <td><span class="muted" style="font-size:11.5px;">{{.ConfigFile}}</span></td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted">No nginx server blocks were found. The panel scans the enabled-sites directory and <code>/etc/nginx/conf.d</code>.</p>
+        {{end}}
+    </article>
+</div>
+{{end}}
