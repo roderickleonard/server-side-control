@@ -348,6 +348,9 @@ type TemplateData struct {
 	NginxConfigNotice                 string
 	EnvFileContent                    string
 	EcosystemPort                     string
+	PortProxies                       []PortProxy
+	PortBackendPorts                  []PortUsage
+	PortScanNotices                   []string
 	Alerts                            []string
 	Nav                               []NavItem
 	Now                               time.Time
@@ -487,6 +490,7 @@ func (a *App) registerRoutes() {
 	a.router.HandleFunc("/processes", a.handleProcesses)
 	a.router.HandleFunc("/processes/options", a.handleProcessOptions)
 	a.router.HandleFunc("/processes/stream", a.handleProcessesStream)
+	a.router.HandleFunc("/ports", a.handlePorts)
 	a.router.HandleFunc("/logs", a.handleLogs)
 	a.router.HandleFunc("/firewall", a.handleFirewall)
 }
@@ -510,6 +514,7 @@ func (a *App) nav() []NavItem {
 		{Label: "Supervisor", Path: "/supervisor"},
 		{Label: "Deploys", Path: "/deploys"},
 		{Label: "Processes", Path: "/processes"},
+		{Label: "Ports", Path: "/ports"},
 		{Label: "Logs", Path: "/logs"},
 		{Label: "Firewall", Path: "/firewall"},
 	}
