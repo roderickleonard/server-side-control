@@ -572,6 +572,83 @@ func readIfExists(path string) ([]byte, bool) {
 	return content, true
 }
 
+// nginxPathExists reports whether a path exists without following symlinks, so a
+// sites-enabled symlink (even a dangling one) is detected.
+func nginxPathExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+// SetNginxConfigEnabled enables or disables the named config (a bare file name
+// in the sites-available directory) by adding or removing its sites-enabled
+// symlink, then validates and reloads nginx, reverting the link change if either
+// step fails.
+func SetNginxConfigEnabled(availableDir string, enabledDir string, binary string, certbot string, name string, enabled bool) error {
+	if !IsSafeNginxConfigName(name) {
+		return ErrInvalidRootDirectory
+	}
+	name = strings.TrimSpace(name)
+	if availableDir == "" {
+		availableDir = "/etc/nginx/sites-available"
+	}
+	if enabledDir == "" {
+		enabledDir = "/etc/nginx/sites-enabled"
+	}
+	if binary == "" {
+		binary = "nginx"
+	}
+	m := linuxNginxManager{availableDir: availableDir, enabledDir: enabledDir, binary: binary, certbot: certbot}
+	availablePath := filepath.Join(availableDir, name)
+	enabledPath := filepath.Join(enabledDir, name)
+
+	// Capture the exact prior state so it can be restored on failure. hadLink is
+	// true only when enabledPath is a symlink; previousTarget is what it pointed
+	// to (so revert recreates the original link, not a guessed one).
+	previousTarget, hadLink := readLinkIfExists(enabledPath)
+
+	// Refuse to delete a real (non-symlink) file in sites-enabled: it cannot be
+	// recreated from sites-available, so removing it would be unrecoverable.
+	if !hadLink && nginxPathExists(enabledPath) {
+		return fmt.Errorf("%s is not a symlink; refusing to modify it", enabledPath)
+	}
+
+	revert := func() {
+		if enabled {
+			if !hadLink {
+				_ = os.Remove(enabledPath)
+			}
+		} else if hadLink {
+			_ = os.Symlink(previousTarget, enabledPath)
+		}
+	}
+
+	if enabled {
+		if !fileExists(availablePath) {
+			return fmt.Errorf("nginx config %q does not exist in %s", name, availableDir)
+		}
+		if !hadLink {
+			if err := os.Symlink(availablePath, enabledPath); err != nil && !os.IsExist(err) {
+				return fmt.Errorf("enable nginx config: %w", err)
+			}
+		}
+	} else if hadLink {
+		if err := os.Remove(enabledPath); err != nil {
+			return fmt.Errorf("disable nginx config: %w", err)
+		}
+	}
+
+	if err := m.ValidateConfig(""); err != nil {
+		revert()
+		return err
+	}
+	if err := m.Reload(); err != nil {
+		revert()
+		_ = m.Reload()
+		return err
+	}
+	return nil
+}
+
 // nginxConfigPathInDir reports whether path is an absolute file located directly
 // inside dir. Used to keep privileged config writes confined to the managed
 // nginx directory.

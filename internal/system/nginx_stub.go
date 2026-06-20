@@ -33,3 +33,7 @@ func (stubNginxManager) Reload() error {
 func ApplyPanelProxy(availableDir string, enabledDir string, binary string, spec PanelProxySpec) (string, error) {
 	return "", fmt.Errorf("nginx management is only supported on Ubuntu target hosts")
 }
+
+func SetNginxConfigEnabled(availableDir string, enabledDir string, binary string, certbot string, name string, enabled bool) error {
+	return fmt.Errorf("nginx management is only supported on Ubuntu target hosts")
+}

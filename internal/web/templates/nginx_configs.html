@@ -1,0 +1,94 @@
+{{define "content"}}
+<div class="page-banner pb-purple">
+    <div class="pb-icon"><i class="bi bi-file-earmark-code"></i></div>
+    <div class="pb-body">
+        <span class="pb-eyebrow">Nginx</span>
+        <h2>Config files</h2>
+        <p class="pb-lead">View, edit, enable or disable any Nginx config in sites-available — including the stock <code>default</code> site that can shadow your domains.</p>
+    </div>
+    <div class="pb-stats">
+        <div class="pb-stat">
+            <strong>{{len .NginxConfigFiles}}</strong>
+            <span>Configs</span>
+        </div>
+    </div>
+</div>
+
+{{if .RequestError}}<div class="alert mb-3">{{.RequestError}}</div>{{end}}
+{{if .SuccessMessage}}<div class="alert success mb-3">{{.SuccessMessage}}</div>{{end}}
+{{range .NginxConfigNotices}}<div class="alert mb-3">{{.}}</div>{{end}}
+{{if .CommandOutput}}<pre class="command-output">{{.CommandOutput}}</pre>{{end}}
+
+{{if .NginxEditName}}
+<div class="grid single">
+    <article class="panel">
+        <div class="section-head">
+            <h3 style="margin-bottom:0;"><i class="bi bi-pencil-square" style="color:var(--accent);"></i>Editing {{.NginxEditName}}</h3>
+            <a href="/nginx" class="btn btn-sm btn-outline-secondary">Cancel</a>
+        </div>
+        <p class="muted details-note">Saving validates with <code>nginx -t</code> first and automatically restores the previous content if validation or reload fails.</p>
+        <form method="post" class="stack-form">
+            <input type="hidden" name="nginx_config_name" value="{{.NginxEditName}}">
+            <textarea name="nginx_config_content" rows="20" spellcheck="false" style="font-family:var(--mono,monospace);font-size:12.5px;">{{.NginxEditContent}}</textarea>
+            <div class="form-actions">
+                <button type="submit" name="nginx_action" value="validate_config" class="btn btn-sm btn-outline-secondary">Validate only</button>
+                <button type="submit" name="nginx_action" value="save_config">Save &amp; reload</button>
+            </div>
+        </form>
+    </article>
+</div>
+{{end}}
+
+<div class="grid single">
+    <article class="panel">
+        <div class="section-head">
+            <h3 style="margin-bottom:0;"><i class="bi bi-list-ul" style="color:var(--accent);"></i>sites-available</h3>
+            <span class="count-chip">{{len .NginxConfigFiles}}</span>
+        </div>
+        {{if .NginxConfigFiles}}
+        <div class="table-card table-responsive">
+            <table class="table table-hover align-middle table-theme mb-0">
+                <thead>
+                    <tr>
+                        <th>Config file</th>
+                        <th>Status</th>
+                        <th>Server names</th>
+                        <th>Owner</th>
+                        <th style="text-align:right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .NginxConfigFiles}}
+                    <tr>
+                        <td><strong>{{.Name}}</strong></td>
+                        <td>
+                            {{if .Enabled}}<span class="status-pill success">enabled</span>{{else}}<span class="status-pill unknown">disabled</span>{{end}}
+                        </td>
+                        <td class="text-break" style="font-size:12px;">
+                            {{if .Domains}}{{range $i, $d := .Domains}}{{if $i}}, {{end}}{{$d}}{{end}}{{else}}<span class="muted">—</span>{{end}}
+                        </td>
+                        <td style="font-size:12px;">
+                            {{if .Managed}}<span class="badge subtle-badge">site: {{.Managed}}</span>{{else}}<span class="muted">unmanaged</span>{{end}}
+                        </td>
+                        <td>
+                            <div class="form-actions" style="justify-content:flex-end;gap:6px;margin:0;">
+                                <a href="/nginx?edit={{.Name}}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                                <form method="post" class="inline-form" style="margin:0;">
+                                    <input type="hidden" name="nginx_action" value="set_enabled">
+                                    <input type="hidden" name="nginx_config_name" value="{{.Name}}">
+                                    <input type="hidden" name="nginx_config_enabled" value="{{if .Enabled}}0{{else}}1{{end}}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">{{if .Enabled}}Disable{{else}}Enable{{end}}</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="muted">No Nginx config files were found in sites-available.</p>
+        {{end}}
+    </article>
+</div>
+{{end}}
