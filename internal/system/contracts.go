@@ -236,6 +236,13 @@ type TLSRequest struct {
 	Domain   string
 	Email    string
 	Redirect bool
+	// AdditionalDomains are extra names (SANs) to include on the same
+	// certificate, e.g. "www.example.com". Domain stays the primary/cert name.
+	AdditionalDomains []string
+	// ConfigPath, when set, is the nginx config whose server_name is extended to
+	// cover the additional domains so the certbot http-01 challenge succeeds for
+	// each of them. Empty means no server_name surgery is attempted.
+	ConfigPath string
 }
 
 type NginxManager interface {

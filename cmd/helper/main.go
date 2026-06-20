@@ -234,7 +234,7 @@ func handleStreamMode() {
 			_, _ = fmt.Fprintf(os.Stderr, "decode tls request: %v\n", err)
 			os.Exit(1)
 		}
-		_, _ = fmt.Fprintf(os.Stdout, "Requesting TLS for %s\n\n", strings.TrimSpace(input.Domain))
+		_, _ = fmt.Fprintf(os.Stdout, "Requesting TLS for %s\n\n", strings.Join(system.NormalizeTLSDomains(input.Domain, input.AdditionalDomains), ", "))
 		output, err := system.NewNginxManager(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, cfg.CertbotBinary).EnableTLS(input)
 		if output != "" {
 			_, _ = io.WriteString(os.Stdout, output)

@@ -285,20 +285,77 @@ func (m linuxNginxManager) Reload() error {
 func (m linuxNginxManager) EnableTLS(request TLSRequest) (string, error) {
 	request.Domain = strings.TrimSpace(request.Domain)
 	request.Email = strings.TrimSpace(request.Email)
-	if !domainPattern.MatchString(request.Domain) {
-		return "", ErrInvalidDomain
-	}
 	if !emailPattern.MatchString(request.Email) {
 		return "", ErrInvalidEmail
 	}
+	if request.Domain == "" {
+		return "", ErrInvalidDomain
+	}
 
-	args := []string{"--nginx", "-d", request.Domain, "-m", request.Email, "--agree-tos", "--non-interactive"}
+	// Build the full certificate domain list: primary first, then any extra SANs.
+	domains := NormalizeTLSDomains(request.Domain, request.AdditionalDomains)
+	if len(domains) == 0 {
+		return "", ErrInvalidDomain
+	}
+	primary := domains[0]
+	for _, d := range domains {
+		if !domainPattern.MatchString(d) {
+			if d == primary {
+				return "", ErrInvalidDomain
+			}
+			return "", fmt.Errorf("additional domain %q is invalid: %w", d, ErrInvalidDomain)
+		}
+	}
+
+	// When extra domains are requested and the site's config is known (and lives
+	// inside the managed nginx directory), make sure each alias appears in that
+	// config's server_name so certbot's nginx http-01 challenge can be answered
+	// for every domain. Done before certbot runs. Track the change so it can be
+	// reverted if certbot later fails — otherwise nginx would advertise names it
+	// has no certificate for.
+	var originalConfig []byte
+	serverNameChanged := false
+	if request.ConfigPath != "" && len(domains) > 1 && nginxConfigPathInDir(request.ConfigPath, m.availableDir) {
+		if content, ok := readIfExists(request.ConfigPath); ok {
+			if updated, changed := AddServerNameAliases(string(content), primary, domains[1:]); changed {
+				if err := os.WriteFile(request.ConfigPath, []byte(updated), 0o644); err != nil {
+					return "", fmt.Errorf("update server_name for TLS: %w", err)
+				}
+				if err := m.ValidateConfig(""); err != nil {
+					_ = os.WriteFile(request.ConfigPath, content, 0o644) // roll back
+					return "", err
+				}
+				if err := m.Reload(); err != nil {
+					_ = os.WriteFile(request.ConfigPath, content, 0o644) // roll back
+					return "", err
+				}
+				originalConfig = content
+				serverNameChanged = true
+			}
+		}
+	}
+
+	// --cert-name pins the lineage to the primary domain so the certificate is
+	// always stored under /etc/letsencrypt/live/<primary>/ regardless of how
+	// many SANs are present or the order they are passed.
+	args := []string{"--nginx", "--cert-name", primary}
+	for _, d := range domains {
+		args = append(args, "-d", d)
+	}
+	args = append(args, "-m", request.Email, "--agree-tos", "--non-interactive")
 	if request.Redirect {
 		args = append(args, "--redirect")
 	}
 	cmd := exec.Command(m.certbot, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		// Revert the server_name aliases we added so nginx does not keep serving
+		// names that never got a certificate.
+		if serverNameChanged {
+			if writeErr := os.WriteFile(request.ConfigPath, originalConfig, 0o644); writeErr == nil {
+				_ = m.Reload()
+			}
+		}
 		return "", fmt.Errorf("certbot failed: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	if err := m.ValidateConfig(""); err != nil {
@@ -307,7 +364,7 @@ func (m linuxNginxManager) EnableTLS(request TLSRequest) (string, error) {
 	if err := m.Reload(); err != nil {
 		return "", err
 	}
-	return renderTLSServerBlock(request.Domain), nil
+	return renderTLSServerBlock(primary), nil
 }
 
 func renderNginxConfig(spec SiteSpec) string {
@@ -513,6 +570,16 @@ func readIfExists(path string) ([]byte, bool) {
 		return nil, false
 	}
 	return content, true
+}
+
+// nginxConfigPathInDir reports whether path is an absolute file located directly
+// inside dir. Used to keep privileged config writes confined to the managed
+// nginx directory.
+func nginxConfigPathInDir(path string, dir string) bool {
+	if !filepath.IsAbs(path) {
+		return false
+	}
+	return filepath.Dir(filepath.Clean(path)) == filepath.Clean(dir)
 }
 
 func fileExists(path string) bool {

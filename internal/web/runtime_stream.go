@@ -961,14 +961,21 @@ func (a *App) handleSitesStream(w http.ResponseWriter, r *http.Request) {
 		a.recordAudit(r.Context(), "nginx.delete_site", site.Name, "success", map[string]any{"config_path": site.NginxConfigPath, "root_directory": site.RootDirectory})
 		_, _ = io.WriteString(streamWriter, "\n\n[command completed]\n")
 	case "tls":
-		request := system.TLSRequest{Domain: strings.TrimSpace(r.FormValue("tls_domain")), Email: strings.TrimSpace(r.FormValue("tls_email")), Redirect: r.FormValue("tls_redirect") == "1"}
+		primaryDomain := strings.TrimSpace(r.FormValue("tls_domain"))
+		request := system.TLSRequest{
+			Domain:            primaryDomain,
+			AdditionalDomains: parseAdditionalDomains(r.FormValue("tls_additional_domains")),
+			Email:             strings.TrimSpace(r.FormValue("tls_email")),
+			Redirect:          r.FormValue("tls_redirect") == "1",
+			ConfigPath:        siteConfigPathForDomain(sites, primaryDomain),
+		}
 		_, _ = io.WriteString(streamWriter, "$ request tls certificate\n\n")
 		if err := a.streamHelperAction(r.Context(), streamWriter, "nginx.enable_tls", request); err != nil {
-			a.recordAudit(r.Context(), "nginx.enable_tls", request.Domain, "failure", map[string]any{"email": request.Email, "error": err.Error()})
+			a.recordAudit(r.Context(), "nginx.enable_tls", request.Domain, "failure", map[string]any{"email": request.Email, "additional_domains": request.AdditionalDomains, "error": err.Error()})
 			_, _ = io.WriteString(streamWriter, "\n\n[command failed]\n")
 			return
 		}
-		a.recordAudit(r.Context(), "nginx.enable_tls", request.Domain, "success", map[string]any{"email": request.Email, "redirect": request.Redirect})
+		a.recordAudit(r.Context(), "nginx.enable_tls", request.Domain, "success", map[string]any{"email": request.Email, "redirect": request.Redirect, "additional_domains": request.AdditionalDomains})
 		_, _ = io.WriteString(streamWriter, "\n\n[command completed]\n")
 	default:
 		_, _ = io.WriteString(streamWriter, "Unsupported site action.\n\n[command failed]\n")
