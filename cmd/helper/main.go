@@ -982,6 +982,17 @@ func handle(cfg config.Config, request system.HelperRequest) {
 			return
 		}
 		writeSuccess(nil, "nginx config validated successfully", nil)
+	case "nginx.set_config_enabled":
+		var input struct {
+			Name    string `json:"name"`
+			Enabled bool   `json:"enabled"`
+		}
+		if err := json.Unmarshal(request.Input, &input); err != nil {
+			writeFailure(err, "")
+			return
+		}
+		err := system.SetNginxConfigEnabled(cfg.NginxAvailableDir, cfg.NginxEnabledDir, cfg.NginxBinary, cfg.CertbotBinary, input.Name, input.Enabled)
+		writeSuccess(nil, "", err)
 	case "deploy.run":
 		var spec system.DeploySpec
 		if err := json.Unmarshal(request.Input, &spec); err != nil {

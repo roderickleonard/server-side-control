@@ -9,6 +9,20 @@ import (
 // capturing its leading indentation and the space-separated name list.
 var serverNameDirective = regexp.MustCompile(`(?m)^([ \t]*)server_name[ \t]+([^;{}]+);`)
 
+// IsSafeNginxConfigName reports whether name is a plain config file name (a
+// single path segment) that is safe to join onto the nginx config directories —
+// no path separators, no traversal, not empty.
+func IsSafeNginxConfigName(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	if strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
+		return false
+	}
+	return true
+}
+
 // NormalizeTLSDomains returns the certificate's full domain list: the primary
 // domain first, followed by the additional domains, lower-cased, trimmed and
 // de-duplicated. Empty entries are dropped.

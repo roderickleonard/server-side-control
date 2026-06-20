@@ -39,6 +39,7 @@ var allowedHelperActions = map[string]struct{}{
 	"nginx.enable_tls":              {},
 	"nginx.write_config":            {},
 	"nginx.validate_config":         {},
+	"nginx.set_config_enabled":      {},
 	"deploy.run":                    {},
 	"deploy.run_custom_git_command": {},
 	"deploy.rollback":               {},

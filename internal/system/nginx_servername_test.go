@@ -130,3 +130,28 @@ func TestAddServerNameAliasesQuotedIdempotent(t *testing.T) {
 		t.Errorf("expected no change when alias already present (quoted primary):\n%s", out)
 	}
 }
+
+func TestIsSafeNginxConfigName(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"default", true},
+		{"ohannes-main.conf", true},
+		{"site.example.com.conf", true},
+		{"", false},
+		{".", false},
+		{"..", false},
+		{"../secret", false},
+		{"foo/bar", false},
+		{"foo\\bar", false},
+		{"a/../../etc/passwd", false},
+		{"  spaced.conf  ", true}, // trimmed, no separators
+		{"weird..name", false},    // contains ".."
+	}
+	for _, c := range cases {
+		if got := IsSafeNginxConfigName(c.in); got != c.want {
+			t.Errorf("IsSafeNginxConfigName(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
