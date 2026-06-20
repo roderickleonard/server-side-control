@@ -2975,15 +2975,18 @@ func buildManagedSiteRootDirectory(users []system.LinuxUser, ownerLinuxUser stri
 }
 
 func (a *App) handleSiteTLS(w http.ResponseWriter, r *http.Request, users []system.LinuxUser, sites []domain.ManagedSite, versions []string) {
+	primaryDomain := strings.TrimSpace(r.FormValue("tls_domain"))
 	request := system.TLSRequest{
-		Domain:   r.FormValue("tls_domain"),
-		Email:    r.FormValue("tls_email"),
-		Redirect: r.FormValue("tls_redirect") == "1",
+		Domain:            primaryDomain,
+		AdditionalDomains: parseAdditionalDomains(r.FormValue("tls_additional_domains")),
+		Email:             r.FormValue("tls_email"),
+		Redirect:          r.FormValue("tls_redirect") == "1",
+		ConfigPath:        siteConfigPathForDomain(sites, primaryDomain),
 	}
 
 	output, err := a.nginx.EnableTLS(request)
 	if err != nil {
-		a.recordAudit(r.Context(), "nginx.enable_tls", request.Domain, "failure", map[string]any{"email": request.Email, "error": err.Error()})
+		a.recordAudit(r.Context(), "nginx.enable_tls", request.Domain, "failure", map[string]any{"email": request.Email, "additional_domains": request.AdditionalDomains, "error": err.Error()})
 		message := err.Error()
 		if errors.Is(err, system.ErrInvalidDomain) {
 			message = "Domain format is invalid for TLS issuance."
@@ -3004,7 +3007,7 @@ func (a *App) handleSiteTLS(w http.ResponseWriter, r *http.Request, users []syst
 		return
 	}
 
-	a.recordAudit(r.Context(), "nginx.enable_tls", request.Domain, "success", map[string]any{"email": request.Email, "redirect": request.Redirect})
+	a.recordAudit(r.Context(), "nginx.enable_tls", request.Domain, "success", map[string]any{"email": request.Email, "redirect": request.Redirect, "additional_domains": request.AdditionalDomains})
 	a.render(r.Context(), w, r.URL.Path, "sites.html", TemplateData{
 		Title:          "Sites",
 		DatabaseStatus: a.databaseStatus(r.Context()),
@@ -3407,9 +3410,11 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 		successMessage = "npm run " + scriptName + " completed successfully."
 	case "enable_tls":
 		tlsRequest := system.TLSRequest{
-			Domain:   strings.TrimSpace(r.FormValue("tls_domain")),
-			Email:    strings.TrimSpace(r.FormValue("tls_email")),
-			Redirect: r.FormValue("tls_redirect") == "1",
+			Domain:            strings.TrimSpace(r.FormValue("tls_domain")),
+			AdditionalDomains: parseAdditionalDomains(r.FormValue("tls_additional_domains")),
+			Email:             strings.TrimSpace(r.FormValue("tls_email")),
+			Redirect:          r.FormValue("tls_redirect") == "1",
+			ConfigPath:        strings.TrimSpace(site.NginxConfigPath),
 		}
 		output, actionErr = a.nginx.EnableTLS(tlsRequest)
 		if actionErr != nil {
@@ -3422,10 +3427,10 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			}
 			data.RequestError = message
 			data.CommandOutput = output
-			a.recordAudit(r.Context(), "nginx.enable_tls", tlsRequest.Domain, "failure", map[string]any{"email": tlsRequest.Email, "error": actionErr.Error()})
+			a.recordAudit(r.Context(), "nginx.enable_tls", tlsRequest.Domain, "failure", map[string]any{"email": tlsRequest.Email, "additional_domains": tlsRequest.AdditionalDomains, "error": actionErr.Error()})
 			break
 		}
-		a.recordAudit(r.Context(), "nginx.enable_tls", tlsRequest.Domain, "success", map[string]any{"email": tlsRequest.Email, "redirect": tlsRequest.Redirect})
+		a.recordAudit(r.Context(), "nginx.enable_tls", tlsRequest.Domain, "success", map[string]any{"email": tlsRequest.Email, "redirect": tlsRequest.Redirect, "additional_domains": tlsRequest.AdditionalDomains})
 		data.CommandOutput = output
 		successMessage = "TLS certificate was issued and Nginx reloaded successfully."
 	case "edit_env":
@@ -3815,15 +3820,16 @@ func (a *App) handleSiteDetails(w http.ResponseWriter, r *http.Request) {
 			data.RequestError = "TLS email is required for the subdomain certificate."
 			break
 		}
-		output, actionErr = a.nginx.EnableTLS(system.TLSRequest{Domain: selected.FullDomain, Email: data.SubdomainTLSEmail, Redirect: r.FormValue("subdomain_tls_redirect") == "1"})
+		subdomainExtraDomains := parseAdditionalDomains(r.FormValue("subdomain_tls_additional_domains"))
+		output, actionErr = a.nginx.EnableTLS(system.TLSRequest{Domain: selected.FullDomain, AdditionalDomains: subdomainExtraDomains, Email: data.SubdomainTLSEmail, Redirect: r.FormValue("subdomain_tls_redirect") == "1", ConfigPath: strings.TrimSpace(selected.NginxConfigPath)})
 		if actionErr != nil {
 			data.RequestError = "Could not enable TLS for subdomain: " + actionErr.Error()
 			data.CommandOutput = output
-			a.recordAudit(r.Context(), "site.subdomain.enable_tls", selected.FullDomain, "failure", map[string]any{"email": data.SubdomainTLSEmail, "error": actionErr.Error()})
+			a.recordAudit(r.Context(), "site.subdomain.enable_tls", selected.FullDomain, "failure", map[string]any{"email": data.SubdomainTLSEmail, "additional_domains": subdomainExtraDomains, "error": actionErr.Error()})
 			break
 		}
 		data.CommandOutput = output
-		a.recordAudit(r.Context(), "site.subdomain.enable_tls", selected.FullDomain, "success", map[string]any{"email": data.SubdomainTLSEmail})
+		a.recordAudit(r.Context(), "site.subdomain.enable_tls", selected.FullDomain, "success", map[string]any{"email": data.SubdomainTLSEmail, "additional_domains": subdomainExtraDomains})
 		successMessage = "Subdomain TLS enabled successfully."
 	case "restart_pm2":
 		processName := strings.TrimSpace(r.FormValue("process_name"))
@@ -5094,7 +5100,7 @@ func (a *App) handleSubdomainDetails(w http.ResponseWriter, r *http.Request) {
 			data.RequestError = "TLS email is required for the subdomain certificate."
 			break
 		}
-		output, actionErr := a.nginx.EnableTLS(system.TLSRequest{Domain: subdomain.FullDomain, Email: data.SubdomainTLSEmail, Redirect: r.FormValue("subdomain_tls_redirect") == "1"})
+		output, actionErr := a.nginx.EnableTLS(system.TLSRequest{Domain: subdomain.FullDomain, AdditionalDomains: parseAdditionalDomains(r.FormValue("subdomain_tls_additional_domains")), Email: data.SubdomainTLSEmail, Redirect: r.FormValue("subdomain_tls_redirect") == "1", ConfigPath: strings.TrimSpace(subdomain.NginxConfigPath)})
 		if actionErr != nil {
 			data.RequestError = "Could not enable TLS for subdomain: " + actionErr.Error()
 			data.CommandOutput = output

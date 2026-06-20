@@ -1477,6 +1477,10 @@ NODE_ENV=production">{{.EnvFileContent}}</textarea>
                     <input type="text" name="tls_email" placeholder="ops@example.com" required>
                 </label>
             </div>
+            <label>
+                <span>Additional domains <span class="muted">(one per line — included on the same certificate; each must already resolve to this server)</span></span>
+                <textarea name="tls_additional_domains" rows="2" placeholder="www.{{.SelectedSite.DomainName}}"></textarea>
+            </label>
             <label class="checkbox-row">
                 <input type="checkbox" name="tls_redirect" value="1" checked>
                 <span>Redirect HTTP to HTTPS</span>
